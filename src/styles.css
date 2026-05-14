@@ -13,6 +13,7 @@
   --border-strong: #ccd3ca;
   --primary: #23635a;
   --primary-hover: #1b554d;
+  --primary-soft: rgb(35 99 90 / 14%);
   --primary-text: #ffffff;
   --danger: #a53b32;
   --danger-bg: #fff1ee;
@@ -46,6 +47,7 @@
   --border-strong: #42504a;
   --primary: #4aa79a;
   --primary-hover: #5bb9ac;
+  --primary-soft: rgb(74 167 154 / 18%);
   --primary-text: #071412;
   --danger: #ff8a7d;
   --danger-bg: #351c1a;
@@ -548,6 +550,65 @@ textarea:focus,
   border: 1px solid var(--danger-border);
   border-radius: 8px;
   font-size: 13px;
+}
+
+.generation-progress {
+  display: grid;
+  gap: 9px;
+  padding: 12px;
+  background: var(--surface-soft);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.progress-copy {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+}
+
+.progress-copy div {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.progress-copy strong {
+  color: var(--text-strong);
+  font-size: 14px;
+}
+
+.progress-copy span,
+.generation-progress p {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.progress-copy b {
+  flex: 0 0 auto;
+  color: var(--primary);
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+}
+
+.progress-track {
+  height: 9px;
+  overflow: hidden;
+  background: var(--primary-soft);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+}
+
+.progress-track span {
+  display: block;
+  height: 100%;
+  background: linear-gradient(90deg, var(--primary), var(--primary-hover));
+  border-radius: inherit;
+  transition: width 420ms ease;
 }
 
 .empty-state {

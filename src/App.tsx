@@ -72,6 +72,48 @@ function fileToDataUrl(file: File) {
   })
 }
 
+function estimateGenerationDurationMs(
+  mode: 'text' | 'image',
+  quality: string,
+  count: number,
+  referenceCount: number
+) {
+  const qualityExtra: Record<string, number> = {
+    low: -10000,
+    standard: 0,
+    medium: 12000,
+    high: 26000,
+    hd: 30000,
+    auto: 8000,
+  }
+  const base = mode === 'image' ? 72000 : 52000
+  const countExtra = Math.max(0, count - 1) * 18000
+  const referenceExtra = mode === 'image' ? Math.max(1, referenceCount) * 5000 : 0
+
+  return Math.max(30000, base + (qualityExtra[quality] ?? 8000) + countExtra + referenceExtra)
+}
+
+function estimateProgress(elapsedMs: number, estimatedMs: number) {
+  const ratio = Math.min(elapsedMs / estimatedMs, 1)
+  const easedRatio = 1 - Math.pow(1 - ratio, 2.25)
+  return Math.max(3, Math.min(96, Math.round(easedRatio * 96)))
+}
+
+function formatDuration(totalSeconds: number) {
+  const minutes = Math.floor(totalSeconds / 60)
+  const seconds = totalSeconds % 60
+  if (minutes === 0) return `${seconds}s`
+  return `${minutes}m ${seconds.toString().padStart(2, '0')}s`
+}
+
+function progressStage(progress: number, mode: 'text' | 'image') {
+  if (progress < 12) return '提交生成请求'
+  if (mode === 'image' && progress < 28) return '上传参考图'
+  if (progress < 72) return mode === 'image' ? '根据参考图生成' : '模型生成中'
+  if (progress < 96) return '等待结果返回'
+  return '即将完成'
+}
+
 export function App() {
   const [baseUrl, setBaseUrl] = useState(DEFAULT_BASE_URL)
   const [apiKey, setApiKey] = useState('')
@@ -93,6 +135,9 @@ export function App() {
   const [referenceImages, setReferenceImages] = useState<ReferenceImage[]>([])
   const [isLoadingModels, setIsLoadingModels] = useState(false)
   const [isGenerating, setIsGenerating] = useState(false)
+  const [generationStartedAt, setGenerationStartedAt] = useState<number | null>(null)
+  const [generationProgress, setGenerationProgress] = useState(0)
+  const [generationElapsedSeconds, setGenerationElapsedSeconds] = useState(0)
   const [images, setImages] = useState<LocalImageRecord[]>([])
   const [previewImage, setPreviewImage] = useState<LocalImageRecord | null>(null)
   const [status, setStatus] = useState('未连接')
@@ -105,6 +150,22 @@ export function App() {
         return diff || a.id.localeCompare(b.id)
       }),
     [models]
+  )
+
+  const estimatedGenerationMs = useMemo(
+    () =>
+      estimateGenerationDurationMs(
+        generationMode,
+        quality,
+        count,
+        referenceImages.length
+      ),
+    [count, generationMode, quality, referenceImages.length]
+  )
+
+  const remainingSeconds = Math.max(
+    0,
+    Math.ceil((estimatedGenerationMs - generationElapsedSeconds * 1000) / 1000)
   )
 
   useEffect(() => {
@@ -147,6 +208,20 @@ export function App() {
     window.addEventListener('keydown', closeOnEscape)
     return () => window.removeEventListener('keydown', closeOnEscape)
   }, [previewImage])
+
+  useEffect(() => {
+    if (!isGenerating || !generationStartedAt) return
+
+    const updateProgress = () => {
+      const elapsedMs = Date.now() - generationStartedAt
+      setGenerationElapsedSeconds(Math.floor(elapsedMs / 1000))
+      setGenerationProgress(estimateProgress(elapsedMs, estimatedGenerationMs))
+    }
+
+    updateProgress()
+    const timer = window.setInterval(updateProgress, 500)
+    return () => window.clearInterval(timer)
+  }, [estimatedGenerationMs, generationStartedAt, isGenerating])
 
   async function refreshImages() {
     setImages(await listImages())
@@ -254,6 +329,9 @@ export function App() {
 
     setError('')
     setStatus(generationMode === 'image' ? '正在根据参考图生成图片...' : '正在生成图片...')
+    setGenerationStartedAt(Date.now())
+    setGenerationElapsedSeconds(0)
+    setGenerationProgress(3)
     setIsGenerating(true)
 
     try {
@@ -290,6 +368,7 @@ export function App() {
 
       await saveImages(records)
       await refreshImages()
+      setGenerationProgress(100)
       setStatus(`已生成 ${records.length} 张图片，已保存到本机`)
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
@@ -297,6 +376,7 @@ export function App() {
       setStatus('生成失败')
     } finally {
       setIsGenerating(false)
+      setGenerationStartedAt(null)
     }
   }
 
@@ -606,6 +686,33 @@ export function App() {
                 ))}
               </select>
             </label>
+          ) : null}
+          {isGenerating ? (
+            <section className='generation-progress' aria-live='polite'>
+              <div className='progress-copy'>
+                <div>
+                  <strong>{progressStage(generationProgress, generationMode)}</strong>
+                  <span>
+                    已等待 {formatDuration(generationElapsedSeconds)} · 预计还需{' '}
+                    {formatDuration(remainingSeconds)}
+                  </span>
+                </div>
+                <b>{generationProgress}%</b>
+              </div>
+              <div
+                className='progress-track'
+                role='progressbar'
+                aria-valuemin={0}
+                aria-valuemax={100}
+                aria-valuenow={generationProgress}
+                aria-label='图片生成进度'
+              >
+                <span style={{ width: `${generationProgress}%` }} />
+              </div>
+              <p>
+                当前接口不会返回真实生成百分比，这里按请求类型、数量和质量估算；图片返回后会自动保存到本机图库。
+              </p>
+            </section>
           ) : null}
           {error ? <div className='error-box'>{error}</div> : null}
         </section>

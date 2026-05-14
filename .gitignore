@@ -4,6 +4,7 @@ dist-electron/
 release/
 tmp-responsive-check/
 .playwright-mcp/
+.edge-github-profile/
 *.tsbuildinfo
 .env
 .env.*

@@ -687,33 +687,6 @@ export function App() {
               </select>
             </label>
           ) : null}
-          {isGenerating ? (
-            <section className='generation-progress' aria-live='polite'>
-              <div className='progress-copy'>
-                <div>
-                  <strong>{progressStage(generationProgress, generationMode)}</strong>
-                  <span>
-                    已等待 {formatDuration(generationElapsedSeconds)} · 预计还需{' '}
-                    {formatDuration(remainingSeconds)}
-                  </span>
-                </div>
-                <b>{generationProgress}%</b>
-              </div>
-              <div
-                className='progress-track'
-                role='progressbar'
-                aria-valuemin={0}
-                aria-valuemax={100}
-                aria-valuenow={generationProgress}
-                aria-label='图片生成进度'
-              >
-                <span style={{ width: `${generationProgress}%` }} />
-              </div>
-              <p>
-                当前接口不会返回真实生成百分比，这里按请求类型、数量和质量估算；图片返回后会自动保存到本机图库。
-              </p>
-            </section>
-          ) : null}
           {error ? <div className='error-box'>{error}</div> : null}
         </section>
 
@@ -819,6 +792,36 @@ export function App() {
             <p>{previewImage.revisedPrompt || previewImage.prompt}</p>
           </div>
         </div>
+      ) : null}
+
+      {isGenerating ? (
+        <section className='generation-progress-floating' aria-live='polite'>
+          <div className='generation-progress'>
+            <div className='progress-copy'>
+              <div>
+                <strong>{progressStage(generationProgress, generationMode)}</strong>
+                <span>
+                  已等待 {formatDuration(generationElapsedSeconds)} · 预计还需{' '}
+                  {formatDuration(remainingSeconds)}
+                </span>
+              </div>
+              <b>{generationProgress}%</b>
+            </div>
+            <div
+              className='progress-track'
+              role='progressbar'
+              aria-valuemin={0}
+              aria-valuemax={100}
+              aria-valuenow={generationProgress}
+              aria-label='图片生成进度'
+            >
+              <span style={{ width: `${generationProgress}%` }} />
+            </div>
+            <p>
+              当前接口不会返回真实生成百分比，这里按请求类型、数量和质量估算；图片返回后会自动保存到本机图库。
+            </p>
+          </div>
+        </section>
       ) : null}
     </div>
   )

@@ -150,6 +150,14 @@ function authHeaders(apiKey: string) {
   }
 }
 
+function bearerHeaders(apiKey: string) {
+  const key = apiKey.trim()
+  if (!key) throw new Error('API Key is required')
+  return {
+    Authorization: `Bearer ${key}`,
+  }
+}
+
 async function fetchJson<T>(
   url: string,
   init: RequestInit,
@@ -189,6 +197,43 @@ async function downloadAsDataUrl(url: string) {
   const arrayBuffer = await response.arrayBuffer()
   const base64 = Buffer.from(arrayBuffer).toString('base64')
   return `data:${contentType};base64,${base64}`
+}
+
+async function parseImageResponse(
+  result: { data?: Array<{ url?: string; b64_json?: string; revised_prompt?: string }> }
+) {
+  const data = Array.isArray(result.data) ? result.data : []
+  const images: GeneratedImage[] = []
+
+  for (const item of data) {
+    if (item.b64_json) {
+      images.push({
+        src: `data:image/png;base64,${item.b64_json}`,
+        revisedPrompt: item.revised_prompt,
+      })
+      continue
+    }
+    if (item.url) {
+      images.push({
+        src: await downloadAsDataUrl(item.url),
+        revisedPrompt: item.revised_prompt,
+      })
+    }
+  }
+
+  if (images.length === 0) {
+    throw new Error('No image returned by upstream')
+  }
+
+  return { images }
+}
+
+function fileFromReferenceImage(image: NonNullable<ImageGenerationPayload['referenceImages']>[number]) {
+  const match = image.dataUrl.match(/^data:([^;]+);base64,(.+)$/)
+  if (!match) throw new Error(`Invalid reference image: ${image.name}`)
+  const type = image.type || match[1] || 'image/png'
+  const buffer = Buffer.from(match[2], 'base64')
+  return new File([buffer], image.name || `${image.id}.png`, { type })
 }
 
 async function createWindow() {
@@ -336,6 +381,41 @@ ipcMain.handle(
 ipcMain.handle(
   'images:generate',
   async (_event, payload: ImageGenerationPayload): Promise<ImageGenerationResult> => {
+    if (payload.mode === 'image') {
+      const references = payload.referenceImages || []
+      if (references.length === 0) {
+        throw new Error('At least one reference image is required')
+      }
+
+      const form = new FormData()
+      form.set('model', payload.model)
+      form.set('prompt', payload.prompt)
+      form.set('size', payload.size)
+      form.set('quality', payload.quality)
+      form.set('n', String(payload.count))
+      form.set('response_format', payload.responseFormat)
+      if (payload.inputFidelity) {
+        form.set('input_fidelity', payload.inputFidelity)
+      }
+      references.forEach((image) => {
+        form.append('image[]', fileFromReferenceImage(image))
+      })
+
+      const result = await fetchJson<{
+        data?: Array<{ url?: string; b64_json?: string; revised_prompt?: string }>
+      }>(
+        resolveUrl(payload.baseUrl, '/v1/images/edits'),
+        {
+          method: 'POST',
+          headers: bearerHeaders(payload.apiKey),
+          body: form,
+        },
+        'Image edit failed'
+      )
+
+      return parseImageResponse(result)
+    }
+
     const body = {
       model: payload.model,
       prompt: payload.prompt,
@@ -357,30 +437,7 @@ ipcMain.handle(
       'Image generation failed'
     )
 
-    const data = Array.isArray(result.data) ? result.data : []
-    const images: GeneratedImage[] = []
-
-    for (const item of data) {
-      if (item.b64_json) {
-        images.push({
-          src: `data:image/png;base64,${item.b64_json}`,
-          revisedPrompt: item.revised_prompt,
-        })
-        continue
-      }
-      if (item.url) {
-        images.push({
-          src: await downloadAsDataUrl(item.url),
-          revisedPrompt: item.revised_prompt,
-        })
-      }
-    }
-
-    if (images.length === 0) {
-      throw new Error('No image returned by upstream')
-    }
-
-    return { images }
+    return parseImageResponse(result)
   }
 )
 

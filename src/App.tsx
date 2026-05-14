@@ -4,6 +4,7 @@ import {
   ExternalLink,
   FolderOpen,
   Image as ImageIcon,
+  Images,
   KeyRound,
   Loader2,
   Monitor,
@@ -24,7 +25,7 @@ import {
   saveImages,
 } from './storage'
 import { bridge } from './bridge'
-import type { LocalImageRecord, ModelOption, ThemeMode } from './types'
+import type { LocalImageRecord, ModelOption, ReferenceImage, ThemeMode } from './types'
 
 const DEFAULT_BASE_URL = 'https://cc.api-corp.top'
 const DEFAULT_MODEL = 'gpt-image-2'
@@ -33,6 +34,7 @@ const SHOP_URL = 'https://pay.ldxp.cn/shop/LY6AR08H'
 const sizes = ['1024x1024', '1024x1536', '1536x1024', '1024x1792', '1792x1024']
 const qualities = ['auto', 'standard', 'hd', 'low', 'medium', 'high']
 const counts = [1, 2, 3, 4]
+const inputFidelities = ['low', 'high'] as const
 const themeOptions: Array<{ value: ThemeMode; label: string; icon: typeof Sun }> = [
   { value: 'light', label: '亮色', icon: Sun },
   { value: 'dark', label: '暗色', icon: Moon },
@@ -61,6 +63,15 @@ function newImageId(index: number) {
   return `${Date.now()}-${index}-${crypto.randomUUID()}`
 }
 
+function fileToDataUrl(file: File) {
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(String(reader.result))
+    reader.onerror = () => reject(reader.error)
+    reader.readAsDataURL(file)
+  })
+}
+
 export function App() {
   const [baseUrl, setBaseUrl] = useState(DEFAULT_BASE_URL)
   const [apiKey, setApiKey] = useState('')
@@ -70,6 +81,7 @@ export function App() {
   const [resolvedTheme, setResolvedTheme] = useState<'light' | 'dark'>('light')
   const [models, setModels] = useState<ModelOption[]>([])
   const [model, setModel] = useState(DEFAULT_MODEL)
+  const [generationMode, setGenerationMode] = useState<'text' | 'image'>('text')
   const [prompt, setPrompt] = useState('')
   const [size, setSize] = useState('1024x1024')
   const [quality, setQuality] = useState('auto')
@@ -77,6 +89,8 @@ export function App() {
   const [responseFormat, setResponseFormat] = useState<'url' | 'b64_json'>(
     'url'
   )
+  const [inputFidelity, setInputFidelity] = useState<'low' | 'high'>('high')
+  const [referenceImages, setReferenceImages] = useState<ReferenceImage[]>([])
   const [isLoadingModels, setIsLoadingModels] = useState(false)
   const [isGenerating, setIsGenerating] = useState(false)
   const [images, setImages] = useState<LocalImageRecord[]>([])
@@ -178,6 +192,31 @@ export function App() {
     await bridge.openExternal(SHOP_URL)
   }
 
+  async function addReferenceFiles(files: FileList | File[]) {
+    const imageFiles = [...files].filter((file) => file.type.startsWith('image/'))
+    if (imageFiles.length === 0) return
+
+    const remainingSlots = Math.max(0, 4 - referenceImages.length)
+    const selectedFiles = imageFiles.slice(0, remainingSlots)
+    const nextImages = await Promise.all(
+      selectedFiles.map(async (file) => ({
+        id: `${Date.now()}-${crypto.randomUUID()}`,
+        name: file.name,
+        type: file.type || 'image/png',
+        dataUrl: await fileToDataUrl(file),
+      }))
+    )
+
+    setReferenceImages((current) => [...current, ...nextImages])
+    if (imageFiles.length > remainingSlots) {
+      setStatus('最多添加 4 张参考图')
+    }
+  }
+
+  function removeReferenceImage(id: string) {
+    setReferenceImages((current) => current.filter((image) => image.id !== id))
+  }
+
   async function handleFetchModels() {
     setError('')
     setStatus('正在获取模型...')
@@ -208,21 +247,28 @@ export function App() {
       setError('请先输入提示词')
       return
     }
+    if (generationMode === 'image' && referenceImages.length === 0) {
+      setError('图片引导模式需要先添加参考图')
+      return
+    }
 
     setError('')
-    setStatus('正在生成图片...')
+    setStatus(generationMode === 'image' ? '正在根据参考图生成图片...' : '正在生成图片...')
     setIsGenerating(true)
 
     try {
       const result = await bridge.generateImages({
         baseUrl,
         apiKey,
+        mode: generationMode,
         model,
         prompt: finalPrompt,
         size,
         quality,
         count,
         responseFormat,
+        inputFidelity,
+        referenceImages: generationMode === 'image' ? referenceImages : undefined,
       })
 
       const createdAt = Date.now()
@@ -235,6 +281,11 @@ export function App() {
         quality,
         createdAt,
         revisedPrompt: item.revisedPrompt,
+        mode: generationMode,
+        referenceImageNames:
+          generationMode === 'image'
+            ? referenceImages.map((image) => image.name)
+            : undefined,
       }))
 
       await saveImages(records)
@@ -446,12 +497,85 @@ export function App() {
         <section className='prompt-panel'>
           <div>
             <h2>生成图片</h2>
-            <p>结果会转成本地图片数据保存，关闭软件后仍在本机图库中。</p>
+            <p>支持文生图和图片引导，结果会保存到本机图库。</p>
           </div>
+
+          <div className='mode-tabs' aria-label='生成模式'>
+            <button
+              className={generationMode === 'text' ? 'active' : ''}
+              onClick={() => setGenerationMode('text')}
+              type='button'
+            >
+              <Sparkles size={16} />
+              文生图
+            </button>
+            <button
+              className={generationMode === 'image' ? 'active' : ''}
+              onClick={() => setGenerationMode('image')}
+              type='button'
+            >
+              <Images size={16} />
+              图片引导
+            </button>
+          </div>
+
+          {generationMode === 'image' ? (
+            <section
+              className='reference-panel'
+              onDragOver={(event) => event.preventDefault()}
+              onDrop={(event) => {
+                event.preventDefault()
+                void addReferenceFiles(event.dataTransfer.files)
+              }}
+            >
+              <div>
+                <strong>参考图</strong>
+                <span>最多 4 张，拖入或选择图片后用提示词描述要如何变化。</span>
+              </div>
+              <label className='upload-box'>
+                <ImageIcon size={18} />
+                <span>选择图片</span>
+                <input
+                  type='file'
+                  accept='image/*'
+                  multiple
+                  onChange={(event) => {
+                    if (event.target.files) {
+                      void addReferenceFiles(event.target.files)
+                    }
+                    event.currentTarget.value = ''
+                  }}
+                />
+              </label>
+              {referenceImages.length > 0 ? (
+                <div className='reference-grid'>
+                  {referenceImages.map((image) => (
+                    <article key={image.id} className='reference-card'>
+                      <img src={image.dataUrl} alt={image.name} />
+                      <span title={image.name}>{image.name}</span>
+                      <button
+                        className='icon-button'
+                        onClick={() => removeReferenceImage(image.id)}
+                        aria-label={`移除 ${image.name}`}
+                        type='button'
+                      >
+                        <X size={15} />
+                      </button>
+                    </article>
+                  ))}
+                </div>
+              ) : null}
+            </section>
+          ) : null}
+
           <textarea
             value={prompt}
             onChange={(event) => setPrompt(event.target.value)}
-            placeholder='例如：一张现代科技风的产品海报，干净背景，柔和光线，高清摄影质感'
+            placeholder={
+              generationMode === 'image'
+                ? '例如：保留主体姿态和构图，改成现代科技海报风格，柔和光线，高清摄影质感'
+                : '例如：一张现代科技风的产品海报，干净背景，柔和光线，高清摄影质感'
+            }
           />
           <div className='actions-row'>
             <button
@@ -466,6 +590,23 @@ export function App() {
               清空提示词
             </button>
           </div>
+          {generationMode === 'image' ? (
+            <label className='field compact-field'>
+              <span>参考图保真度</span>
+              <select
+                value={inputFidelity}
+                onChange={(event) =>
+                  setInputFidelity(event.target.value as 'low' | 'high')
+                }
+              >
+                {inputFidelities.map((item) => (
+                  <option key={item} value={item}>
+                    {item}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ) : null}
           {error ? <div className='error-box'>{error}</div> : null}
         </section>
 
@@ -504,7 +645,7 @@ export function App() {
                 <div className='image-meta'>
                   <strong>{image.model}</strong>
                   <span>
-                    {image.size} · {image.quality} ·{' '}
+                    {image.mode === 'image' ? '图片引导' : '文生图'} · {image.size} · {image.quality} ·{' '}
                     {new Date(image.createdAt).toLocaleString()}
                   </span>
                   <p>{image.revisedPrompt || image.prompt}</p>

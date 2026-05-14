@@ -16,12 +16,22 @@ export type ModelOption = {
 export type ImageGenerationPayload = {
   baseUrl: string
   apiKey: string
+  mode?: 'text' | 'image'
   model: string
   prompt: string
   size: string
   quality: string
   count: number
   responseFormat: 'url' | 'b64_json'
+  inputFidelity?: 'low' | 'high'
+  referenceImages?: ReferenceImage[]
+}
+
+export type ReferenceImage = {
+  id: string
+  name: string
+  type: string
+  dataUrl: string
 }
 
 export type GeneratedImage = {
@@ -44,6 +54,8 @@ export type LocalImageRecord = {
   quality: string
   createdAt: number
   revisedPrompt?: string
+  mode?: 'text' | 'image'
+  referenceImageNames?: string[]
 }
 
 export type ImageToolsBridge = {

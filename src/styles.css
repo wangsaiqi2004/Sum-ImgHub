@@ -1209,9 +1209,12 @@ select:disabled {
   padding: 14px;
   overflow: hidden;
   color: var(--text);
+  background: var(--field);
   border: 1px solid transparent;
   border-radius: 8px;
+  font-family: inherit;
   font-size: 13px;
+  font-weight: 400;
   line-height: 1.6;
   pointer-events: none;
   white-space: pre-wrap;
@@ -1237,12 +1240,15 @@ select:disabled {
   position: relative;
   z-index: 1;
   min-height: 244px;
-  background: transparent;
+  color: transparent;
+  background: transparent !important;
   caret-color: var(--text);
 }
 
-.prompt-textarea.has-value {
+.prompt-textarea.has-value,
+.prompt-textarea.has-value:focus {
   color: transparent;
+  background: transparent !important;
 }
 
 .prompt-textarea::placeholder {

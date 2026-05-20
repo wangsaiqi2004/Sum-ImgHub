@@ -256,7 +256,7 @@ export function AssetNode({ id, data }: NodeProps<AssetFlowNode>) {
             {data.referenceImages.map((image) => (
               <article key={image.id} onDragStart={(event) => event.preventDefault()}>
                 <img
-                  src={image.dataUrl}
+                  src={image.dataUrl || ''}
                   alt={image.name}
                   draggable={false}
                   onDragStart={(event) => event.preventDefault()}

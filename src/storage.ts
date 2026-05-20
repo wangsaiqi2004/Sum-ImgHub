@@ -6,8 +6,9 @@ import type {
 } from './types'
 
 const DB_NAME = 'gpt-image-tools'
-const DB_VERSION = 2
+const DB_VERSION = 3
 const IMAGES_STORE = 'images'
+const REFERENCE_IMAGE_BLOBS_STORE = 'reference-image-blobs'
 const SETTINGS_STORE = 'settings'
 const SETTINGS_ID = 'app'
 
@@ -29,6 +30,9 @@ function openDb(): Promise<IDBDatabase> {
       if (!db.objectStoreNames.contains(IMAGES_STORE)) {
         const store = db.createObjectStore(IMAGES_STORE, { keyPath: 'id' })
         store.createIndex('createdAt', 'createdAt')
+      }
+      if (!db.objectStoreNames.contains(REFERENCE_IMAGE_BLOBS_STORE)) {
+        db.createObjectStore(REFERENCE_IMAGE_BLOBS_STORE, { keyPath: 'id' })
       }
       if (!db.objectStoreNames.contains(SETTINGS_STORE)) {
         db.createObjectStore(SETTINGS_STORE, { keyPath: 'id' })
@@ -151,6 +155,27 @@ export async function deleteImage(id: string) {
 export async function clearImages() {
   await withStore(IMAGES_STORE, 'readwrite', (store) => {
     store.clear()
+  })
+}
+
+export type ReferenceImageBlobRecord = {
+  id: string
+  dataUrl: string
+}
+
+export async function listReferenceImageBlobs(): Promise<ReferenceImageBlobRecord[]> {
+  const result = await withStore<ReferenceImageBlobRecord[]>(
+    REFERENCE_IMAGE_BLOBS_STORE,
+    'readonly',
+    (store) => store.getAll()
+  )
+  return result || []
+}
+
+export async function saveReferenceImageBlobs(records: ReferenceImageBlobRecord[]) {
+  await withStore(REFERENCE_IMAGE_BLOBS_STORE, 'readwrite', (store) => {
+    store.clear()
+    records.forEach((record) => store.put(record))
   })
 }
 

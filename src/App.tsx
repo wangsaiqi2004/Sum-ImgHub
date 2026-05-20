@@ -51,8 +51,10 @@ import {
   getSettings,
   importBackup,
   listImages,
+  listReferenceImageBlobs,
   saveSettings,
   saveImages,
+  saveReferenceImageBlobs,
 } from './storage'
 import { bridge } from './bridge'
 import {
@@ -202,6 +204,69 @@ function getWorkflowNodeReferenceImages(node?: Pick<WorkflowNode, 'data'> | null
 
 function normalizeAssetNodeReferenceImages(images: ReferenceImage[]) {
   return ensureReferenceTitles(images).slice(0, 1)
+}
+
+function stripReferenceImageDataUrl(image: ReferenceImage): Omit<ReferenceImage, 'dataUrl'> {
+  const { dataUrl: _dataUrl, ...rest } = image
+  return rest
+}
+
+function serializeWorkflowCanvases(canvases: WorkflowCanvas[]) {
+  return canvases.map((canvas) => ({
+    ...canvas,
+    nodes: canvas.nodes.map((node) => {
+      if (node.type !== 'asset') return node
+
+      const referenceImages = getWorkflowNodeReferenceImages(node).map(stripReferenceImageDataUrl)
+
+      return {
+        ...node,
+        data: referenceImages.length > 0 ? { referenceImages } : {},
+      }
+    }),
+  }))
+}
+
+function extractReferenceImageBlobs(canvases: WorkflowCanvas[]) {
+  const records: Array<{ id: string; dataUrl: string }> = []
+
+  canvases.forEach((canvas) => {
+    canvas.nodes.forEach((node) => {
+      if (node.type !== 'asset') return
+      getWorkflowNodeReferenceImages(node).forEach((image) => {
+        if (!image.dataUrl) return
+        records.push({ id: image.id, dataUrl: image.dataUrl })
+      })
+    })
+  })
+
+  return records
+}
+
+function hydrateWorkflowCanvases(
+  canvases: WorkflowCanvas[],
+  blobs: Array<{ id: string; dataUrl: string }>
+) {
+  if (blobs.length === 0) return canvases
+
+  const blobById = new Map(blobs.map((blob) => [blob.id, blob.dataUrl]))
+
+  return canvases.map((canvas) => ({
+    ...canvas,
+    nodes: canvas.nodes.map((node) => {
+      if (node.type !== 'asset') return node
+
+      const referenceImages = getWorkflowNodeReferenceImages(node).map((image) => ({
+        ...image,
+        dataUrl: image.dataUrl || blobById.get(image.id) || '',
+      }))
+
+      return {
+        ...node,
+        data: referenceImages.length > 0 ? { referenceImages } : {},
+      }
+    }),
+  }))
 }
 
 function cloneWorkflowNodes(nodes: WorkflowNode[], legacyReferenceImages: ReferenceImage[] = []) {
@@ -734,6 +799,7 @@ export function App() {
   const [flowInstance, setFlowInstance] =
     useState<ReactFlowInstance<WorkflowNode, WorkflowEdge> | null>(null)
   const generationTaskIdsRef = useRef(new Set<string>())
+  const lastSavedReferenceImageBlobSignatureRef = useRef('')
 
   const activeCanvas = useMemo(
     () => canvases.find((canvas) => canvas.id === activeCanvasId) || canvases[0],
@@ -749,6 +815,14 @@ export function App() {
   const activeCanvasGenerating = activeCanvas ? isCanvasGenerating(activeCanvas) : false
   const latestImage =
     images.find((image) => image.id === activeCanvas?.latestImageId) || null
+  const referenceImageBlobs = useMemo(
+    () => extractReferenceImageBlobs(canvases),
+    [canvases]
+  )
+  const referenceImageBlobSignature = useMemo(
+    () => referenceImageBlobs.map((blob) => `${blob.id}:${blob.dataUrl}`).join('|'),
+    [referenceImageBlobs]
+  )
 
   const updateActiveCanvas = useCallback(
     (updater: (canvas: WorkflowCanvas) => WorkflowCanvas) => {
@@ -895,8 +969,41 @@ export function App() {
   }, [activeCanvas, activeCanvasId, canvases])
 
   useEffect(() => {
-    window.localStorage.setItem(WORKFLOW_CANVASES_STORAGE_KEY, JSON.stringify(canvases))
+    try {
+      window.localStorage.setItem(
+        WORKFLOW_CANVASES_STORAGE_KEY,
+        JSON.stringify(serializeWorkflowCanvases(canvases))
+      )
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      if (/quota/i.test(message)) {
+        setStatus('画布已切换到磁盘缓存保存')
+      } else {
+        setError(message)
+      }
+    }
   }, [canvases])
+
+  useEffect(() => {
+    let cancelled = false
+
+    void listReferenceImageBlobs()
+      .then((blobs) => {
+        if (cancelled || blobs.length === 0) return
+        setCanvases((current) => hydrateWorkflowCanvases(current, blobs))
+      })
+      .catch(() => {})
+
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  useEffect(() => {
+    if (referenceImageBlobSignature === lastSavedReferenceImageBlobSignatureRef.current) return
+    lastSavedReferenceImageBlobSignatureRef.current = referenceImageBlobSignature
+    void saveReferenceImageBlobs(referenceImageBlobs)
+  }, [referenceImageBlobSignature, referenceImageBlobs])
 
   useEffect(() => {
     if (activeCanvas?.id) {

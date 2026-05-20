@@ -43,6 +43,7 @@ export type ImageGenerationPayload = {
 export type ReferenceImage = {
   id: string
   name: string
+  title?: string
   type: string
   dataUrl: string
 }

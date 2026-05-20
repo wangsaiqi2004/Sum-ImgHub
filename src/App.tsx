@@ -82,6 +82,7 @@ const sizes = ['1024x1024', '1024x1536', '1536x1024', '1024x1792', '1792x1024']
 const qualities = ['auto', 'standard', 'hd', 'low', 'medium', 'high']
 const counts = [1, 2, 3, 4]
 const inputFidelities = ['low', 'high'] as const
+const MAX_REFERENCE_IMAGES = 8
 const themeOptions: Array<{ value: ThemeMode; label: string; icon: typeof Sun }> = [
   { value: 'light', label: '亮色', icon: Sun },
   { value: 'dark', label: '暗色', icon: Moon },
@@ -136,14 +137,14 @@ const initialWorkflowNodes: WorkflowNode[] = [
 
 const initialWorkflowEdges: WorkflowEdge[] = [
   {
-    id: 'asset-1-generate-1',
+    id: 'asset-1-prompt-1',
     type: 'blueprint',
     source: 'asset-1',
-    target: 'generate-1',
+    target: 'prompt-1',
     sourceHandle: 'reference',
-    targetHandle: 'image',
+    targetHandle: 'reference',
     className: 'edge-blue',
-    data: { label: '参考图 -> 图片生成' },
+    data: { label: '参考图 -> 文字描述' },
   },
   {
     id: 'prompt-1-generate-1',
@@ -188,6 +189,61 @@ function cloneWorkflowEdges(edges: WorkflowEdge[]) {
   }))
 }
 
+function normalizeReferenceTitle(value: string) {
+  return value
+    .trim()
+    .replace(/^@+/, '')
+    .replace(/\.[^.]+$/, '')
+    .replace(/\s+/g, '-')
+    .replace(/[，。,.!！?？;；:：、()[\]{}<>《》"'“”‘’]/g, '')
+    .slice(0, 24)
+}
+
+function referenceTitleFromFileName(name: string, index: number) {
+  return normalizeReferenceTitle(name) || `参考图${index + 1}`
+}
+
+function ensureReferenceTitles(images: ReferenceImage[]) {
+  return images.map((image, index) => ({
+    ...image,
+    title: normalizeReferenceTitle(image.title || image.name) || `参考图${index + 1}`,
+  }))
+}
+
+function normalizeWorkflowEdges(edges: WorkflowEdge[], nodes: WorkflowNode[]) {
+  const promptNode = nodes.find((node) => node.type === 'prompt')
+  const seen = new Set<string>()
+  const normalizedEdges: WorkflowEdge[] = []
+
+  edges.forEach((edge) => {
+    let nextEdge = { ...edge, data: { ...edge.data } }
+
+    if (
+      nextEdge.sourceHandle === 'reference' &&
+      nextEdge.targetHandle === 'image' &&
+      promptNode
+    ) {
+      nextEdge = {
+        ...nextEdge,
+        id: `${nextEdge.source}-reference-${promptNode.id}-reference`,
+        target: promptNode.id,
+        targetHandle: 'reference',
+        className: 'edge-blue',
+        data: { ...nextEdge.data, label: '参考图 -> 文字描述' },
+      }
+    }
+
+    if (nextEdge.targetHandle === 'image') return
+
+    const key = `${nextEdge.source}-${nextEdge.sourceHandle}-${nextEdge.target}-${nextEdge.targetHandle}`
+    if (seen.has(key)) return
+    seen.add(key)
+    normalizedEdges.push(nextEdge)
+  })
+
+  return normalizedEdges
+}
+
 function normalizePromptOptimizationPreset(value: unknown): PromptOptimizationPreset {
   return promptOptimizationPresets.some((preset) => preset.value === value)
     ? (value as PromptOptimizationPreset)
@@ -203,11 +259,14 @@ function createWorkflowCanvas(index: number, base?: WorkflowCanvas): WorkflowCan
     name: base ? `${base.name} 副本` : `画布 ${index}`,
     updatedAt: now,
     nodes: cloneWorkflowNodes(base?.nodes || initialWorkflowNodes),
-    edges: cloneWorkflowEdges(base?.edges || initialWorkflowEdges),
+    edges: normalizeWorkflowEdges(
+      cloneWorkflowEdges(base?.edges || initialWorkflowEdges),
+      cloneWorkflowNodes(base?.nodes || initialWorkflowNodes)
+    ),
     prompt: base?.prompt || '',
     promptOptimizationPreset: base?.promptOptimizationPreset || DEFAULT_PROMPT_OPTIMIZATION_PRESET,
     generationMode: base?.generationMode || 'text',
-    referenceImages: base?.referenceImages ? [...base.referenceImages] : [],
+    referenceImages: base?.referenceImages ? ensureReferenceTitles(base.referenceImages) : [],
     latestImageId: base?.latestImageId,
   }
 }
@@ -222,23 +281,26 @@ function normalizeStoredCanvases(value: unknown): WorkflowCanvas[] {
     const canvas = item as Partial<WorkflowCanvas>
     if (typeof canvas.id !== 'string' || typeof canvas.name !== 'string') return
 
+    const normalizedNodes = Array.isArray(canvas.nodes)
+      ? cloneWorkflowNodes(canvas.nodes as WorkflowNode[])
+      : cloneWorkflowNodes(initialWorkflowNodes)
+    const rawEdges = Array.isArray(canvas.edges)
+      ? cloneWorkflowEdges(canvas.edges as WorkflowEdge[])
+      : cloneWorkflowEdges(initialWorkflowEdges)
+
     canvases.push({
       id: canvas.id,
       name: canvas.name || `画布 ${index + 1}`,
       updatedAt: typeof canvas.updatedAt === 'number' ? canvas.updatedAt : Date.now(),
-      nodes: Array.isArray(canvas.nodes)
-        ? cloneWorkflowNodes(canvas.nodes as WorkflowNode[])
-        : cloneWorkflowNodes(initialWorkflowNodes),
-      edges: Array.isArray(canvas.edges)
-        ? cloneWorkflowEdges(canvas.edges as WorkflowEdge[])
-        : cloneWorkflowEdges(initialWorkflowEdges),
+      nodes: normalizedNodes,
+      edges: normalizeWorkflowEdges(rawEdges, normalizedNodes),
       prompt: typeof canvas.prompt === 'string' ? canvas.prompt : '',
       promptOptimizationPreset: normalizePromptOptimizationPreset(
         canvas.promptOptimizationPreset
       ),
       generationMode: canvas.generationMode === 'image' ? 'image' : 'text',
       referenceImages: Array.isArray(canvas.referenceImages)
-        ? (canvas.referenceImages as ReferenceImage[])
+        ? ensureReferenceTitles(canvas.referenceImages as ReferenceImage[])
         : [],
       latestImageId:
         typeof canvas.latestImageId === 'string' ? canvas.latestImageId : undefined,
@@ -275,6 +337,32 @@ function imageModelScore(model: ModelOption) {
   if (id.includes('flux')) return 4
   if (id.includes('image')) return 5
   return 20
+}
+
+function extractReferenceMentions(prompt: string) {
+  const mentions: string[] = []
+  const pattern = /@([^\s@，。,.!！?？;；:：、()[\]{}<>《》"'“”‘’]+)/g
+  let match: RegExpExecArray | null
+  while ((match = pattern.exec(prompt)) !== null) {
+    const title = normalizeReferenceTitle(match[1] || '')
+    if (title && !mentions.includes(title)) mentions.push(title)
+  }
+  return mentions
+}
+
+function resolvePromptReferenceImages(prompt: string, images: ReferenceImage[]) {
+  const mentions = extractReferenceMentions(prompt)
+  if (mentions.length === 0) return { mentions, images: [], missing: [] }
+
+  const matchedImages: ReferenceImage[] = []
+  const missing: string[] = []
+  mentions.forEach((mention) => {
+    const image = images.find((item) => normalizeReferenceTitle(item.title || item.name) === mention)
+    if (image) matchedImages.push(image)
+    else missing.push(mention)
+  })
+
+  return { mentions, images: matchedImages, missing }
 }
 
 function downloadDataUrl(src: string, filename: string) {
@@ -662,12 +750,13 @@ export function App() {
     const imageFiles = [...files].filter((file) => file.type.startsWith('image/'))
     if (imageFiles.length === 0) return
 
-    const remainingSlots = Math.max(0, 4 - referenceImages.length)
+    const remainingSlots = Math.max(0, MAX_REFERENCE_IMAGES - referenceImages.length)
     const selectedFiles = imageFiles.slice(0, remainingSlots)
     const nextImages = await Promise.all(
-      selectedFiles.map(async (file) => ({
+      selectedFiles.map(async (file, index) => ({
         id: createLocalId('reference'),
         name: file.name,
+        title: referenceTitleFromFileName(file.name, referenceImages.length + index),
         type: file.type || 'image/png',
         dataUrl: await fileToDataUrl(file),
       }))
@@ -675,7 +764,7 @@ export function App() {
 
     setReferenceImages((current) => [...current, ...nextImages])
     setGenerationMode('image')
-    if (imageFiles.length > remainingSlots) setStatus('最多添加 4 张参考图')
+    if (imageFiles.length > remainingSlots) setStatus(`最多添加 ${MAX_REFERENCE_IMAGES} 张参考图`)
   }
 
   function removeReferenceImage(id: string) {
@@ -683,6 +772,14 @@ export function App() {
       referenceImages.length <= 1 && referenceImages.some((image) => image.id === id)
     setReferenceImages((current) => current.filter((image) => image.id !== id))
     if (willRemoveLastReference) setGenerationMode('text')
+  }
+
+  function updateReferenceImageTitle(id: string, title: string) {
+    setReferenceImages((current) =>
+      current.map((image) =>
+        image.id === id ? { ...image, title: normalizeReferenceTitle(title) } : image
+      )
+    )
   }
 
   async function handleFetchModels() {
@@ -797,13 +894,31 @@ export function App() {
       setError('请先输入提示词')
       return
     }
-    if (generationMode === 'image' && referenceImages.length === 0) {
-      setError('图片引导模式需要先添加参考图')
+    const resolvedReferences = resolvePromptReferenceImages(finalPrompt, referenceImages)
+    const hasReferencePromptConnection = edges.some(
+      (edge) =>
+        edge.sourceHandle === 'reference' &&
+        edge.targetHandle === 'reference' &&
+        nodes.find((node) => node.id === edge.source)?.type === 'asset' &&
+        nodes.find((node) => node.id === edge.target)?.type === 'prompt'
+    )
+    if (resolvedReferences.mentions.length > 0 && !hasReferencePromptConnection) {
+      setError('请先把参考图片节点连接到文字描述节点，再使用 @引用参考图')
       return
     }
+    if (resolvedReferences.missing.length > 0) {
+      setError(`没有找到这些 @参考图：${resolvedReferences.missing.join('、')}`)
+      return
+    }
+    const effectiveGenerationMode: 'text' | 'image' =
+      resolvedReferences.images.length > 0 ? 'image' : 'text'
 
     setError('')
-    setStatus(generationMode === 'image' ? '正在根据参考图生成图片...' : '正在生成图片...')
+    setStatus(
+      effectiveGenerationMode === 'image'
+        ? `正在根据 ${resolvedReferences.images.length} 张 @参考图生成图片...`
+        : '正在生成图片...'
+    )
     setGenerationStartedAt(Date.now())
     setGenerationElapsedSeconds(0)
     setGenerationProgress(3)
@@ -813,7 +928,7 @@ export function App() {
       const result = await bridge.generateImages({
         baseUrl,
         apiKey,
-        mode: generationMode,
+        mode: effectiveGenerationMode,
         model,
         prompt: finalPrompt,
         size,
@@ -821,7 +936,8 @@ export function App() {
         count,
         responseFormat,
         inputFidelity,
-        referenceImages: generationMode === 'image' ? referenceImages : undefined,
+        referenceImages:
+          effectiveGenerationMode === 'image' ? resolvedReferences.images : undefined,
       })
 
       const createdAt = Date.now()
@@ -834,10 +950,10 @@ export function App() {
         quality,
         createdAt,
         revisedPrompt: item.revisedPrompt,
-        mode: generationMode,
+        mode: effectiveGenerationMode,
         referenceImageNames:
-          generationMode === 'image'
-            ? referenceImages.map((image) => image.name)
+          effectiveGenerationMode === 'image'
+            ? resolvedReferences.images.map((image) => image.title || image.name)
             : undefined,
       }))
 
@@ -972,6 +1088,7 @@ export function App() {
         referenceImages,
         addReferenceFiles,
         removeReferenceImage,
+        updateReferenceImageTitle,
       }
     }
 
@@ -1069,7 +1186,7 @@ export function App() {
           label:
             edge.data?.label ||
             (edge.source.startsWith('asset')
-              ? '参考图 -> 图片生成'
+              ? '参考图 -> 文字描述'
               : edge.source.startsWith('generate')
                 ? '生成图 -> 参考图'
                 : '提示词 -> 图片生成'),
@@ -1078,30 +1195,31 @@ export function App() {
         animated:
           edge.source.includes('prompt') ||
           (isGenerating && edge.source.includes('generate')) ||
-          (generationMode === 'image' && edge.source.includes('asset')),
+          edge.source.includes('asset'),
       })),
-    [deleteWorkflowEdge, edges, generationMode, isGenerating]
+    [deleteWorkflowEdge, edges, isGenerating]
   )
 
   const isValidConnection: IsValidConnection<WorkflowEdge> = useCallback(
     (connection) => {
       const source = nodes.find((node) => node.id === connection.source)
       const target = nodes.find((node) => node.id === connection.target)
-      if (!source || !target || target.type !== 'generate') return false
+      if (!source || !target) return false
       if (source.id === target.id) return false
 
       if (source.type === 'asset') {
-        return connection.sourceHandle === 'reference' && connection.targetHandle === 'image'
+        return (
+          target.type === 'prompt' &&
+          connection.sourceHandle === 'reference' &&
+          connection.targetHandle === 'reference'
+        )
       }
 
       if (source.type === 'prompt') {
-        return connection.sourceHandle === 'prompt' && connection.targetHandle === 'prompt'
-      }
-
-      if (source.type === 'generate') {
         return (
-          connection.sourceHandle === 'generated-image' &&
-          connection.targetHandle === 'image'
+          target.type === 'generate' &&
+          connection.sourceHandle === 'prompt' &&
+          connection.targetHandle === 'prompt'
         )
       }
 
@@ -1119,19 +1237,13 @@ export function App() {
 
       const sourceType = connection.source?.split('-')[0]
       const label =
-        sourceType === 'asset'
-          ? '参考图 -> 图片生成'
-          : sourceType === 'generate'
-            ? '生成图 -> 参考图'
-            : '提示词 -> 图片生成'
+        sourceType === 'asset' ? '参考图 -> 文字描述' : '提示词 -> 图片生成'
       const className =
         sourceType === 'asset'
           ? 'edge-blue'
           : sourceType === 'prompt'
             ? 'edge-violet'
-            : sourceType === 'generate'
-              ? 'edge-pink'
-              : 'edge-green'
+            : 'edge-green'
 
       setEdges((currentEdges) => {
         const withoutPreviousInput = currentEdges.filter(

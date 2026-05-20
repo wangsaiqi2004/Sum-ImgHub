@@ -36,6 +36,7 @@ export type AssetNodeData = {
   referenceImages: ReferenceImage[]
   addReferenceFiles: (files: FileList | File[]) => void
   removeReferenceImage: (id: string) => void
+  updateReferenceImageTitle: (id: string, title: string) => void
 } & BaseNodeData
 
 export type PromptNodeData = {
@@ -185,6 +186,19 @@ export function AssetNode({ id, data }: NodeProps<AssetFlowNode>) {
                 >
                   <X size={14} />
                 </button>
+                <label className='asset-title-field'>
+                  <span>@</span>
+                  <input
+                    value={image.title ?? image.name}
+                    onChange={(event) =>
+                      data.updateReferenceImageTitle(image.id, event.target.value)
+                    }
+                    onClick={(event) => event.stopPropagation()}
+                    onDragStart={(event) => event.preventDefault()}
+                    placeholder='参考图标题'
+                    spellCheck={false}
+                  />
+                </label>
               </article>
             ))}
           </div>
@@ -237,9 +251,15 @@ export function PromptNode({ id, data }: NodeProps<PromptFlowNode>) {
       }
       onDelete={data.onDeleteNode}
     >
-      <div className='node-port-row node-port-row-source'>
-        <span>提示词输出</span>
-        <Handle type='source' position={Position.Right} id='prompt' />
+      <div className='node-port-grid prompt-port-grid'>
+        <div className='node-port-row node-port-row-target'>
+          <Handle type='target' position={Position.Left} id='reference' />
+          <span>参考图输入</span>
+        </div>
+        <div className='node-port-row node-port-row-source'>
+          <span>提示词输出</span>
+          <Handle type='source' position={Position.Right} id='prompt' />
+        </div>
       </div>
       <label className='prompt-optimization-select nodrag'>
         <span>优化方向</span>
@@ -262,8 +282,8 @@ export function PromptNode({ id, data }: NodeProps<PromptFlowNode>) {
         onChange={(event) => data.setPrompt(event.target.value)}
         placeholder={
           data.generationMode === 'image'
-            ? '输入图像生成提示词，例如：保留主体姿态，改成科技海报风格，清晰主视觉'
-            : '产品海报、科技感、高级材质、清晰主视觉'
+            ? '输入图像生成提示词，例如：使用 @商品图 的包装元素，改成科技海报风格'
+            : '产品海报、科技感、高级材质、清晰主视觉；需要参考图时输入 @参考图标题'
         }
       />
     </NodeShell>
@@ -279,16 +299,10 @@ export function GenerateNode({ id, data }: NodeProps<GenerateFlowNode>) {
       subtitle='Generation'
       onDelete={data.onDeleteNode}
     >
-      <div className='node-port-grid'>
-        <div className='node-input-stack'>
-          <div className='node-port-row node-port-row-target'>
-            <Handle type='target' position={Position.Left} id='image' />
-            <span>参考图输入</span>
-          </div>
-          <div className='node-port-row node-port-row-target'>
-            <Handle type='target' position={Position.Left} id='prompt' />
-            <span>提示词输入</span>
-          </div>
+      <div className='node-port-grid generate-port-grid'>
+        <div className='node-port-row node-port-row-target'>
+          <Handle type='target' position={Position.Left} id='prompt' />
+          <span>提示词输入</span>
         </div>
         <div className='node-port-row node-port-row-source node-port-row-output'>
           <span>生成图片输出</span>

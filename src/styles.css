@@ -1092,7 +1092,11 @@ select:disabled {
 }
 
 .asset-preview-count-3,
-.asset-preview-count-4 {
+.asset-preview-count-4,
+.asset-preview-count-5,
+.asset-preview-count-6,
+.asset-preview-count-7,
+.asset-preview-count-8 {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
@@ -1124,6 +1128,44 @@ select:disabled {
   top: 5px;
   width: 25px;
   height: 25px;
+}
+
+.asset-title-field {
+  position: absolute;
+  left: 6px;
+  right: 6px;
+  bottom: 6px;
+  z-index: 3;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 3px;
+  min-width: 0;
+  padding: 3px 6px;
+  color: var(--text);
+  background: rgb(15 18 26 / 70%);
+  border: 1px solid rgb(255 255 255 / 18%);
+  border-radius: 7px;
+  box-shadow: 0 8px 18px rgb(0 0 0 / 30%);
+  backdrop-filter: blur(12px);
+}
+
+.asset-title-field span {
+  color: var(--blue);
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.asset-title-field input {
+  min-width: 0;
+  height: 20px;
+  padding: 0;
+  color: var(--text);
+  background: transparent;
+  border: 0;
+  outline: none;
+  font-size: 11px;
+  font-weight: 800;
 }
 
 .node-file-button {

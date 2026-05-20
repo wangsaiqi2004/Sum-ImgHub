@@ -5,6 +5,7 @@ export type AppSettings = {
   persistApiKey: boolean
   apiKey?: string
   codexApiKey?: string
+  textModel?: string
   themeMode?: ThemeMode
 }
 

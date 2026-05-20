@@ -16,6 +16,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   persistApiKey: false,
   apiKey: '',
   codexApiKey: '',
+  textModel: 'gpt-5.5',
   themeMode: 'dark',
 }
 
@@ -81,6 +82,7 @@ function normalizeSettings(settings: Partial<AppSettings> | undefined): AppSetti
     persistApiKey: Boolean(settings?.persistApiKey),
     apiKey: settings?.persistApiKey ? settings.apiKey || '' : '',
     codexApiKey: settings?.persistApiKey ? settings.codexApiKey || '' : '',
+    textModel: settings?.textModel || DEFAULT_SETTINGS.textModel,
     themeMode: settings?.themeMode || 'dark',
   }
 }
@@ -89,6 +91,7 @@ function backupSettingsFrom(settings: AppSettings): BackupSettings {
   return {
     baseUrl: settings.baseUrl || DEFAULT_SETTINGS.baseUrl,
     persistApiKey: false,
+    textModel: settings.textModel || DEFAULT_SETTINGS.textModel,
     themeMode: settings.themeMode || 'system',
   }
 }
@@ -179,9 +182,11 @@ export async function importBackup(backup: unknown): Promise<number> {
     await saveSettings({
       ...current,
       baseUrl: candidate.settings.baseUrl || current.baseUrl,
+      textModel: candidate.settings.textModel || current.textModel,
       themeMode: candidate.settings.themeMode || current.themeMode,
       persistApiKey: false,
       apiKey: '',
+      codexApiKey: '',
     })
   }
 

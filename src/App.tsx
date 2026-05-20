@@ -67,6 +67,7 @@ import type { LocalImageRecord, ModelOption, ReferenceImage, ThemeMode } from '.
 
 const DEFAULT_BASE_URL = 'https://cc.api-corp.top'
 const DEFAULT_MODEL = 'gpt-image-2'
+const DEFAULT_TEXT_MODEL = 'gpt-5.5'
 const SHOP_URL = 'https://pay.ldxp.cn/shop/LY6AR08H'
 const CONSOLE_URL = 'https://cc.api-corp.top/'
 
@@ -337,6 +338,7 @@ export function App() {
   const [resolvedTheme, setResolvedTheme] = useState<'light' | 'dark'>('dark')
   const [models, setModels] = useState<ModelOption[]>([])
   const [model, setModel] = useState(DEFAULT_MODEL)
+  const [textModel, setTextModel] = useState(DEFAULT_TEXT_MODEL)
   const [size, setSize] = useState('1024x1024')
   const [quality, setQuality] = useState('auto')
   const [count, setCount] = useState(1)
@@ -471,6 +473,7 @@ export function App() {
       setBaseUrl(settings.baseUrl || DEFAULT_BASE_URL)
       setPersistApiKey(Boolean(settings.persistApiKey))
       setThemeMode(settings.themeMode || 'system')
+      setTextModel(settings.textModel || DEFAULT_TEXT_MODEL)
       if (settings.persistApiKey && settings.apiKey) setApiKey(settings.apiKey)
       if (settings.persistApiKey && settings.codexApiKey) setCodexApiKey(settings.codexApiKey)
     })
@@ -565,7 +568,7 @@ export function App() {
   }
 
   async function handleSaveSettings() {
-    await saveSettings({ baseUrl, persistApiKey, apiKey, codexApiKey, themeMode })
+    await saveSettings({ baseUrl, persistApiKey, apiKey, codexApiKey, textModel, themeMode })
     setStatus(persistApiKey ? '设置已保存' : '设置已保存，API Key 未落盘')
   }
 
@@ -576,6 +579,7 @@ export function App() {
       persistApiKey,
       apiKey,
       codexApiKey,
+      textModel,
       themeMode: nextThemeMode,
     })
     setStatus('主题已切换')
@@ -604,6 +608,7 @@ export function App() {
       setBaseUrl(settings.baseUrl || DEFAULT_BASE_URL)
       setPersistApiKey(Boolean(settings.persistApiKey))
       setThemeMode(settings.themeMode || 'system')
+      setTextModel(settings.textModel || DEFAULT_TEXT_MODEL)
       setApiKey('')
       setCodexApiKey('')
       await refreshImages()
@@ -684,11 +689,13 @@ export function App() {
       setCodexApiKey(result.codexApiKey)
       setPersistApiKey(true)
       setModel(result.model || DEFAULT_MODEL)
+      setTextModel(result.codexModel || DEFAULT_TEXT_MODEL)
       await saveSettings({
         baseUrl: result.baseUrl,
         persistApiKey: true,
         apiKey: result.apiKey,
         codexApiKey: result.codexApiKey,
+        textModel: result.codexModel || DEFAULT_TEXT_MODEL,
         themeMode,
       })
       setLoginPassword('')
@@ -725,7 +732,7 @@ export function App() {
       const optimizedPrompt = await bridge.optimizePrompt({
         baseUrl,
         apiKey: codexApiKey,
-        model: 'gpt-5.5',
+        model: textModel.trim() || DEFAULT_TEXT_MODEL,
         prompt: currentPrompt,
         mode: generationMode,
       })
@@ -987,6 +994,7 @@ export function App() {
       referenceImages,
       prompt,
       codexApiKey,
+      textModel,
       isOptimizingPrompt,
       model,
       sortedModels,
@@ -1322,23 +1330,76 @@ export function App() {
               spellCheck={false}
             />
           </label>
-          <label className='field'>
-            <span>API Key</span>
-            <input
-              value={apiKey}
-              onChange={(event) => setApiKey(event.target.value)}
-              type='password'
-              placeholder='sk-...'
-              spellCheck={false}
-            />
-          </label>
+
+          <div className='connection-config-block'>
+            <div className='connection-config-title'>
+              <Sparkles size={14} />
+              <span>文本模型</span>
+              <small>用于优化提示词</small>
+            </div>
+            <label className='field'>
+              <span>文本模型名称</span>
+              <input
+                value={textModel}
+                onChange={(event) => setTextModel(event.target.value)}
+                placeholder='gpt-5.5'
+                spellCheck={false}
+              />
+            </label>
+            <label className='field'>
+              <span>文本模型 API Key</span>
+              <input
+                value={codexApiKey}
+                onChange={(event) => setCodexApiKey(event.target.value)}
+                type='password'
+                placeholder='sk-...'
+                spellCheck={false}
+              />
+            </label>
+          </div>
+
+          <div className='connection-config-block'>
+            <div className='connection-config-title'>
+              <Sparkles size={14} />
+              <span>生图模型</span>
+            </div>
+            <label className='field'>
+              <span>生图模型名称</span>
+              <select value={model} onChange={(event) => setModel(event.target.value)}>
+                {sortedModels.length === 0 ? (
+                  <option value={model}>{model}</option>
+                ) : (
+                  <>
+                    {sortedModels.some((item) => item.id === model) ? null : (
+                      <option value={model}>{model}</option>
+                    )}
+                    {sortedModels.map((item) => (
+                      <option key={item.id} value={item.id}>
+                        {item.id}
+                      </option>
+                    ))}
+                  </>
+                )}
+              </select>
+            </label>
+            <label className='field'>
+              <span>生图模型 API Key</span>
+              <input
+                value={apiKey}
+                onChange={(event) => setApiKey(event.target.value)}
+                type='password'
+                placeholder='sk-...'
+                spellCheck={false}
+              />
+            </label>
+          </div>
           <label className='checkbox-row'>
             <input
               type='checkbox'
               checked={persistApiKey}
               onChange={(event) => setPersistApiKey(event.target.checked)}
             />
-            <span>将 API Key 保存到当前浏览器</span>
+            <span>将两个 API Key 保存到当前浏览器</span>
           </label>
           <div className='button-grid'>
             <button

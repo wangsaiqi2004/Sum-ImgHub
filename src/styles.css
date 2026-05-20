@@ -1126,22 +1126,24 @@ select:disabled {
   position: absolute;
   right: 5px;
   top: 5px;
+  z-index: 4;
   width: 25px;
   height: 25px;
 }
 
 .asset-title-field {
   position: absolute;
-  left: 6px;
-  right: 6px;
-  bottom: 6px;
+  left: 50%;
+  top: 6px;
   z-index: 3;
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);
   align-items: center;
   gap: 3px;
-  min-width: 0;
+  width: min(70%, 132px);
+  min-width: 72px;
   padding: 3px 6px;
+  transform: translateX(-50%);
   color: var(--text);
   background: rgb(15 18 26 / 70%);
   border: 1px solid rgb(255 255 255 / 18%);

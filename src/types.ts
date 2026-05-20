@@ -38,6 +38,7 @@ export type ImageGenerationPayload = {
   responseFormat: 'url' | 'b64_json'
   inputFidelity?: 'low' | 'high'
   referenceImages?: ReferenceImage[]
+  onTaskUpdate?: (task: ImageGenerationTask) => void
 }
 
 export type ReferenceImage = {
@@ -55,6 +56,21 @@ export type GeneratedImage = {
 
 export type ImageGenerationResult = {
   images: GeneratedImage[]
+}
+
+export type ImageGenerationTaskStatus = 'queued' | 'running' | 'completed' | 'failed' | 'expired'
+
+export type ImageGenerationTask = {
+  taskId: string
+  status: ImageGenerationTaskStatus
+  createdAt: number
+  updatedAt: number
+  completedAt?: number | null
+  error?: string | null
+  result?: {
+    data?: Array<{ url?: string; b64_json?: string; revised_prompt?: string }>
+  } | null
+  pollAfterMs?: number
 }
 
 export type ManagedNewApiLoginPayload = {

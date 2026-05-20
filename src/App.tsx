@@ -2,6 +2,7 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type KeyboardEvent as ReactKeyboardEvent,
   type MouseEvent as ReactMouseEvent,
@@ -58,12 +59,14 @@ import {
   GalleryStrip,
   edgeTypes,
   nodeTypes,
+  PROMPT_REFERENCE_HANDLE_IDS,
   type AssetNodeData,
   type BlueprintEdgeData,
   type GenerateNodeData,
   type PromptNodeData,
 } from './workflowNodes'
 import type {
+  ImageGenerationTask,
   LocalImageRecord,
   ModelOption,
   PromptOptimizationPreset,
@@ -124,10 +127,23 @@ type WorkflowCanvas = {
   latestImageId?: string
 }
 
+type PendingGenerationTaskRecord = {
+  taskId: string
+  prompt: string
+  model: string
+  size: string
+  quality: string
+  mode: 'text' | 'image'
+  referenceImageNames?: string[]
+  canvasId?: string
+  createdAt: number
+}
+
 type StateUpdater<T> = T | ((current: T) => T)
 
 const WORKFLOW_CANVASES_STORAGE_KEY = 'gpt-image-tools.workflow-canvases.v1'
 const ACTIVE_CANVAS_STORAGE_KEY = 'gpt-image-tools.active-canvas.v1'
+const PENDING_GENERATION_TASKS_STORAGE_KEY = 'gpt-image-tools.pending-generation-tasks.v1'
 
 const initialWorkflowNodes: WorkflowNode[] = [
   { id: 'asset-1', type: 'asset', position: { x: -520, y: -130 }, data: {} },
@@ -142,7 +158,7 @@ const initialWorkflowEdges: WorkflowEdge[] = [
     source: 'asset-1',
     target: 'prompt-1',
     sourceHandle: 'reference',
-    targetHandle: 'reference',
+    targetHandle: 'reference-1',
     className: 'edge-blue',
     data: { label: '参考图 -> 文字描述' },
   },
@@ -227,7 +243,21 @@ function normalizeWorkflowEdges(edges: WorkflowEdge[], nodes: WorkflowNode[]) {
         ...nextEdge,
         id: `${nextEdge.source}-reference-${promptNode.id}-reference`,
         target: promptNode.id,
-        targetHandle: 'reference',
+        targetHandle: PROMPT_REFERENCE_HANDLE_IDS[0] || 'reference-1',
+        className: 'edge-blue',
+        data: { ...nextEdge.data, label: '参考图 -> 文字描述' },
+      }
+    }
+
+    if (
+      nextEdge.sourceHandle === 'reference' &&
+      nextEdge.targetHandle === 'reference' &&
+      promptNode
+    ) {
+      nextEdge = {
+        ...nextEdge,
+        target: promptNode.id,
+        targetHandle: PROMPT_REFERENCE_HANDLE_IDS[0] || 'reference-1',
         className: 'edge-blue',
         data: { ...nextEdge.data, label: '参考图 -> 文字描述' },
       }
@@ -326,6 +356,46 @@ function loadActiveCanvasId() {
   } catch {
     return ''
   }
+}
+
+function loadPendingGenerationTasks() {
+  try {
+    const raw = window.localStorage.getItem(PENDING_GENERATION_TASKS_STORAGE_KEY)
+    if (!raw) return []
+    const parsed = JSON.parse(raw)
+    if (!Array.isArray(parsed)) return []
+    return parsed.filter((item): item is PendingGenerationTaskRecord => {
+      return (
+        item &&
+        typeof item === 'object' &&
+        typeof item.taskId === 'string' &&
+        typeof item.prompt === 'string' &&
+        typeof item.model === 'string' &&
+        typeof item.size === 'string' &&
+        typeof item.quality === 'string' &&
+        (item.mode === 'text' || item.mode === 'image') &&
+        typeof item.createdAt === 'number'
+      )
+    })
+  } catch {
+    return []
+  }
+}
+
+function savePendingGenerationTasks(tasks: PendingGenerationTaskRecord[]) {
+  window.localStorage.setItem(PENDING_GENERATION_TASKS_STORAGE_KEY, JSON.stringify(tasks))
+}
+
+function upsertPendingGenerationTask(record: PendingGenerationTaskRecord) {
+  const current = loadPendingGenerationTasks()
+  const next = current.filter((item) => item.taskId !== record.taskId)
+  next.push(record)
+  savePendingGenerationTasks(next)
+}
+
+function removePendingGenerationTask(taskId: string) {
+  const next = loadPendingGenerationTasks().filter((item) => item.taskId !== taskId)
+  savePendingGenerationTasks(next)
 }
 
 function imageModelScore(model: ModelOption) {
@@ -439,6 +509,37 @@ function progressStage(progress: number, mode: 'text' | 'image') {
   return '即将完成'
 }
 
+function taskStatusLabel(status: ImageGenerationTask['status']) {
+  if (status === 'queued') return '任务已提交服务器后台'
+  if (status === 'running') return '服务器正在生成，结果会暂存在缓存区'
+  if (status === 'completed') return '服务器已返回结果，正在保存到本地'
+  if (status === 'expired') return '服务器临时缓存已过期'
+  return '服务器后台生成失败'
+}
+
+async function readGenerationTask(taskId: string) {
+  const response = await fetch(`/api/openai/tasks/${encodeURIComponent(taskId)}`)
+  const text = await response.text()
+  let body: { success?: boolean; message?: string; data?: ImageGenerationTask } | null = null
+
+  if (text) {
+    try {
+      body = JSON.parse(text)
+    } catch {
+      throw new Error('查询服务器任务状态失败：返回了无效数据')
+    }
+  }
+
+  if (!response.ok) {
+    throw new Error(body?.message || `查询服务器任务状态失败：HTTP ${response.status}`)
+  }
+  if (!body?.success || !body.data) {
+    throw new Error(body?.message || '查询服务器任务状态失败')
+  }
+
+  return body.data
+}
+
 export function App() {
   const [baseUrl, setBaseUrl] = useState(DEFAULT_BASE_URL)
   const [apiKey, setApiKey] = useState('')
@@ -473,6 +574,7 @@ export function App() {
   const [paneMenu, setPaneMenu] = useState<PaneMenu>(null)
   const [flowInstance, setFlowInstance] =
     useState<ReactFlowInstance<WorkflowNode, WorkflowEdge> | null>(null)
+  const generationTaskIdsRef = useRef(new Set<string>())
 
   const activeCanvas = useMemo(
     () => canvases.find((canvas) => canvas.id === activeCanvasId) || canvases[0],
@@ -607,6 +709,10 @@ export function App() {
   }, [])
 
   useEffect(() => {
+    void resumePersistedGenerationTasks()
+  }, [])
+
+  useEffect(() => {
     if (!activeCanvas && canvases[0]) {
       setActiveCanvasId(canvases[0].id)
       return
@@ -691,6 +797,165 @@ export function App() {
 
   async function refreshImages() {
     setImages(await listImages())
+  }
+
+  function savePendingGenerationTaskRecord(
+    task: ImageGenerationTask,
+    context: {
+      prompt: string
+      model: string
+      size: string
+      quality: string
+      mode: 'text' | 'image'
+      referenceImageNames?: string[]
+      canvasId?: string
+    }
+  ) {
+    upsertPendingGenerationTask({
+      taskId: task.taskId,
+      createdAt: task.createdAt,
+      ...context,
+    })
+  }
+
+  function clearPendingGenerationTaskRecord(taskId: string) {
+    removePendingGenerationTask(taskId)
+  }
+
+  function buildLocalImageRecords(
+    images: Array<{ src: string; revisedPrompt?: string }>,
+    context: {
+      prompt: string
+      model: string
+      size: string
+      quality: string
+      mode: 'text' | 'image'
+      referenceImageNames?: string[]
+    }
+  ) {
+    const createdAt = Date.now()
+    return images.map((item, index) => ({
+      id: newImageId(index),
+      src: item.src,
+      prompt: context.prompt,
+      model: context.model,
+      size: context.size,
+      quality: context.quality,
+      createdAt,
+      revisedPrompt: item.revisedPrompt,
+      mode: context.mode,
+      referenceImageNames: context.referenceImageNames,
+    }))
+  }
+
+  async function persistCompletedTaskResult(
+    taskId: string,
+    generatedImages: Array<{ src: string; revisedPrompt?: string }>,
+    context: {
+      prompt: string
+      model: string
+      size: string
+      quality: string
+      mode: 'text' | 'image'
+      referenceImageNames?: string[]
+      canvasId?: string
+    }
+  ) {
+    const records = buildLocalImageRecords(generatedImages, context)
+    await saveImages(records)
+    if (context.canvasId && records[0]) {
+      setCanvases((currentCanvases) =>
+        currentCanvases.map((canvas) =>
+          canvas.id === context.canvasId
+            ? { ...canvas, latestImageId: records[0].id, updatedAt: Date.now() }
+            : canvas
+        )
+      )
+    }
+    await refreshImages()
+    clearPendingGenerationTaskRecord(taskId)
+    return records
+  }
+
+  async function urlToDataUrlLocal(url: string) {
+    const response = await fetch(url)
+    if (!response.ok) throw new Error(`Failed to download image: ${response.status}`)
+    const blob = await response.blob()
+    return new Promise<string>((resolve, reject) => {
+      const reader = new FileReader()
+      reader.onload = () => resolve(String(reader.result))
+      reader.onerror = () => reject(reader.error)
+      reader.readAsDataURL(blob)
+    })
+  }
+
+  async function taskResultToGeneratedImages(taskResult: ImageGenerationTask['result']) {
+    const images: Array<{ src: string; revisedPrompt?: string }> = []
+    for (const item of taskResult?.data || []) {
+      if (item.b64_json) {
+        images.push({
+          src: `data:image/png;base64,${item.b64_json}`,
+          revisedPrompt: item.revised_prompt,
+        })
+      } else if (item.url) {
+        images.push({
+          src: await urlToDataUrlLocal(item.url),
+          revisedPrompt: item.revised_prompt,
+        })
+      }
+    }
+    return images
+  }
+
+  async function resumePersistedGenerationTasks() {
+    const pendingTasks = loadPendingGenerationTasks()
+    for (const task of pendingTasks) {
+      if (generationTaskIdsRef.current.has(task.taskId)) continue
+      generationTaskIdsRef.current.add(task.taskId)
+
+      try {
+        setIsGenerating(true)
+        setGenerationStartedAt(task.createdAt)
+        setGenerationElapsedSeconds(0)
+        setGenerationProgress(8)
+        setStatus(taskStatusLabel('queued'))
+
+        let currentTask = await readGenerationTask(task.taskId)
+        while (currentTask.status === 'queued' || currentTask.status === 'running') {
+          setStatus(taskStatusLabel(currentTask.status))
+          setGenerationProgress(currentTask.status === 'running' ? 68 : 24)
+          await new Promise((resolve) => window.setTimeout(resolve, currentTask.pollAfterMs || 1500))
+          currentTask = await readGenerationTask(task.taskId)
+        }
+
+        if (currentTask.status === 'failed' || currentTask.status === 'expired') {
+          clearPendingGenerationTaskRecord(task.taskId)
+          setError(currentTask.error || '服务器后台生图失败')
+          setStatus(taskStatusLabel(currentTask.status))
+          continue
+        }
+
+        if (!currentTask.result) {
+          clearPendingGenerationTaskRecord(task.taskId)
+          setError('服务器后台任务没有返回生成结果')
+          setStatus('生成失败')
+          continue
+        }
+
+        const generatedImages = await taskResultToGeneratedImages(currentTask.result)
+        await persistCompletedTaskResult(task.taskId, generatedImages, task)
+        setGenerationProgress(100)
+        setStatus('服务器缓存结果已恢复到本地图库')
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err)
+        setError(message)
+        setStatus('恢复后台任务失败')
+      } finally {
+        generationTaskIdsRef.current.delete(task.taskId)
+        setIsGenerating(false)
+        setGenerationStartedAt(null)
+      }
+    }
   }
 
   async function handleSaveSettings() {
@@ -898,7 +1163,7 @@ export function App() {
     const hasReferencePromptConnection = edges.some(
       (edge) =>
         edge.sourceHandle === 'reference' &&
-        edge.targetHandle === 'reference' &&
+        (edge.targetHandle === 'reference' || edge.targetHandle?.startsWith('reference-')) &&
         nodes.find((node) => node.id === edge.source)?.type === 'asset' &&
         nodes.find((node) => node.id === edge.target)?.type === 'prompt'
     )
@@ -912,17 +1177,32 @@ export function App() {
     }
     const effectiveGenerationMode: 'text' | 'image' =
       resolvedReferences.images.length > 0 ? 'image' : 'text'
+    const referenceImageNames =
+      effectiveGenerationMode === 'image'
+        ? resolvedReferences.images.map((image) => image.title || image.name)
+        : undefined
+    const generationContext = {
+      prompt: finalPrompt,
+      model,
+      size,
+      quality,
+      mode: effectiveGenerationMode,
+      referenceImageNames,
+      canvasId: generatingCanvasId || undefined,
+    }
 
     setError('')
     setStatus(
       effectiveGenerationMode === 'image'
-        ? `正在根据 ${resolvedReferences.images.length} 张 @参考图生成图片...`
-        : '正在生成图片...'
+        ? `正在根据 ${resolvedReferences.images.length} 张 @参考图提交后台任务...`
+        : '正在提交后台生图任务...'
     )
     setGenerationStartedAt(Date.now())
     setGenerationElapsedSeconds(0)
-    setGenerationProgress(3)
+    setGenerationProgress(5)
     setIsGenerating(true)
+
+    let currentTaskId = ''
 
     try {
       const result = await bridge.generateImages({
@@ -938,43 +1218,36 @@ export function App() {
         inputFidelity,
         referenceImages:
           effectiveGenerationMode === 'image' ? resolvedReferences.images : undefined,
+        onTaskUpdate: (task) => {
+          currentTaskId = task.taskId
+          generationTaskIdsRef.current.add(task.taskId)
+          savePendingGenerationTaskRecord(task, generationContext)
+          setStatus(taskStatusLabel(task.status))
+          if (task.status === 'queued') setGenerationProgress(18)
+          if (task.status === 'running') setGenerationProgress(66)
+          if (task.status === 'completed') setGenerationProgress(94)
+          if (task.status === 'failed' || task.status === 'expired') setGenerationProgress(0)
+        },
       })
 
-      const createdAt = Date.now()
-      const records = result.images.map((item, index) => ({
-        id: newImageId(index),
-        src: item.src,
-        prompt: finalPrompt,
-        model,
-        size,
-        quality,
-        createdAt,
-        revisedPrompt: item.revisedPrompt,
-        mode: effectiveGenerationMode,
-        referenceImageNames:
-          effectiveGenerationMode === 'image'
-            ? resolvedReferences.images.map((image) => image.title || image.name)
-            : undefined,
-      }))
-
-      await saveImages(records)
-      if (generatingCanvasId && records[0]) {
-        setCanvases((currentCanvases) =>
-          currentCanvases.map((canvas) =>
-            canvas.id === generatingCanvasId
-              ? { ...canvas, latestImageId: records[0].id, updatedAt: Date.now() }
-              : canvas
-          )
-        )
+      if (!currentTaskId) {
+        throw new Error('任务提交成功，但没有返回任务 ID')
       }
-      await refreshImages()
+
+      const records = await persistCompletedTaskResult(
+        currentTaskId,
+        result.images,
+        generationContext
+      )
       setGenerationProgress(100)
-      setStatus(`已生成 ${records.length} 张图片，已保存到当前浏览器`)
+      setStatus(`已生成 ${records.length} 张图片，服务器缓存已同步到本地`)
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
       setError(message)
+      if (currentTaskId) clearPendingGenerationTaskRecord(currentTaskId)
       setStatus('生成失败')
     } finally {
+      if (currentTaskId) generationTaskIdsRef.current.delete(currentTaskId)
       setIsGenerating(false)
       setGenerationStartedAt(null)
     }
@@ -1209,10 +1482,11 @@ export function App() {
       if (source.id === target.id) return false
 
       if (source.type === 'asset') {
+        const targetHandle = connection.targetHandle || ''
         return (
           target.type === 'prompt' &&
           connection.sourceHandle === 'reference' &&
-          connection.targetHandle === 'reference'
+          PROMPT_REFERENCE_HANDLE_IDS.includes(targetHandle)
         )
       }
 
@@ -1662,7 +1936,9 @@ export function App() {
             <Trash2 size={16} />
             清空图库
           </button>
-          <p>图片和设置保存在当前浏览器 IndexedDB。备份文件不包含 API Key。</p>
+          <p>
+            图片和设置保存在当前浏览器 IndexedDB。生成任务先提交到服务器后台，结果会短暂缓存在服务器再同步到本地图库；备份文件不包含 API Key。
+          </p>
         </section>
 
         <section className='dock-panel gallery-dock'>

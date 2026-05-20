@@ -2,6 +2,7 @@ import type {
   ImageApiClient,
   ImageGenerationPayload,
   ImageGenerationResult,
+  ImageGenerationTask,
   ManagedNewApiLoginResult,
   ModelOption,
   PromptOptimizationPayload,
@@ -61,6 +62,45 @@ function assertApiSuccess<T>(
     throw new Error(fallback)
   }
   return body.data
+}
+
+function delay(ms: number) {
+  return new Promise((resolve) => window.setTimeout(resolve, ms))
+}
+
+function assertTaskResponse(
+  body: { success?: boolean; message?: string; data?: ImageGenerationTask },
+  fallback: string
+) {
+  return assertApiSuccess(body, fallback)
+}
+
+async function waitForImageTask(
+  firstTask: ImageGenerationTask,
+  onTaskUpdate?: (task: ImageGenerationTask) => void
+) {
+  let task = firstTask
+  onTaskUpdate?.(task)
+
+  while (task.status === 'queued' || task.status === 'running') {
+    await delay(Math.max(800, task.pollAfterMs || 1500))
+    const response = await fetch(`/api/openai/tasks/${encodeURIComponent(task.taskId)}`)
+    const body = await parseJsonResponse<{
+      success?: boolean
+      message?: string
+      data?: ImageGenerationTask
+    }>(response, 'Image task polling failed')
+    task = assertTaskResponse(body, '查询生图任务失败')
+    onTaskUpdate?.(task)
+  }
+
+  if (task.status === 'failed' || task.status === 'expired') {
+    throw new Error(task.error || '服务器后台生图任务失败')
+  }
+  if (task.status !== 'completed' || !task.result) {
+    throw new Error('服务器后台任务没有返回生成结果')
+  }
+  return task.result
 }
 
 async function urlToDataUrl(url: string) {
@@ -256,10 +296,14 @@ export const bridge: ImageApiClient = {
         body: form,
       })
       const body = await parseJsonResponse<{
-        data?: Array<{ url?: string; b64_json?: string; revised_prompt?: string }>
+        success?: boolean
+        message?: string
+        data?: ImageGenerationTask
       }>(response, 'Image edit failed')
+      const task = assertTaskResponse(body, '提交图像参考生成任务失败')
+      const result = await waitForImageTask(task, payload.onTaskUpdate)
 
-      return parseImageResult(body)
+      return parseImageResult(result)
     }
 
     const response = await fetch(openAiImageProxyUrl('generations', payload.baseUrl), {
@@ -275,9 +319,13 @@ export const bridge: ImageApiClient = {
       }),
     })
     const body = await parseJsonResponse<{
-      data?: Array<{ url?: string; b64_json?: string; revised_prompt?: string }>
+      success?: boolean
+      message?: string
+      data?: ImageGenerationTask
     }>(response, 'Image generation failed')
+    const task = assertTaskResponse(body, '提交生图任务失败')
+    const result = await waitForImageTask(task, payload.onTaskUpdate)
 
-    return parseImageResult(body)
+    return parseImageResult(result)
   },
 }

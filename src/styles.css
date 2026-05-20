@@ -362,6 +362,17 @@ select:disabled {
   margin: 0 4px 10px;
 }
 
+.prompt-port-grid {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 8px;
+}
+
+.prompt-reference-port-list {
+  display: grid;
+  gap: 6px;
+  margin: 0 4px 10px;
+}
+
 .node-port-grid .node-port-row-source {
   align-self: start;
   margin-top: 0;

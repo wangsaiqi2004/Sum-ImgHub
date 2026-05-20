@@ -35,6 +35,9 @@ import type {
 } from './types'
 
 type GenerationMode = 'text' | 'image'
+export const PROMPT_REFERENCE_HANDLE_IDS = Array.from({ length: 8 }, (_, index) =>
+  `reference-${index + 1}`
+)
 
 type BaseNodeData = {
   onDeleteNode: (id: string) => void
@@ -378,9 +381,13 @@ export function PromptNode({ id, data }: NodeProps<PromptFlowNode>) {
       onDelete={data.onDeleteNode}
     >
       <div className='node-port-grid prompt-port-grid'>
-        <div className='node-port-row node-port-row-target'>
-          <Handle type='target' position={Position.Left} id='reference' />
-          <span>参考图输入</span>
+        <div className='prompt-reference-port-list'>
+          {PROMPT_REFERENCE_HANDLE_IDS.map((handleId, index) => (
+            <div key={handleId} className='node-port-row node-port-row-target'>
+              <Handle type='target' position={Position.Left} id={handleId} />
+              <span>参考图输入 {index + 1}</span>
+            </div>
+          ))}
         </div>
         <div className='node-port-row node-port-row-source'>
           <span>提示词输出</span>

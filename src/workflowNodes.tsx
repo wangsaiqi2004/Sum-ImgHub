@@ -139,7 +139,10 @@ export function AssetNode({ id, data }: NodeProps<AssetFlowNode>) {
       subtitle='Reference'
       onDelete={data.onDeleteNode}
     >
-      <Handle type='source' position={Position.Right} id='reference' />
+      <div className='node-port-row node-port-row-source'>
+        <span>参考图输出</span>
+        <Handle type='source' position={Position.Right} id='reference' />
+      </div>
       <div
         className='asset-drop nodrag'
         onDragOver={(event) => event.preventDefault()}
@@ -220,7 +223,10 @@ export function PromptNode({ id, data }: NodeProps<PromptFlowNode>) {
       subtitle='Prompt'
       onDelete={data.onDeleteNode}
     >
-      <Handle type='source' position={Position.Right} id='prompt' />
+      <div className='node-port-row node-port-row-source'>
+        <span>提示词输出</span>
+        <Handle type='source' position={Position.Right} id='prompt' />
+      </div>
       <textarea
         className='node-textarea nodrag'
         value={data.prompt}
@@ -244,8 +250,16 @@ export function GenerateNode({ id, data }: NodeProps<GenerateFlowNode>) {
       subtitle='Generation'
       onDelete={data.onDeleteNode}
     >
-      <Handle type='target' position={Position.Left} id='image' style={{ top: 82 }} />
-      <Handle type='target' position={Position.Left} id='prompt' style={{ top: 164 }} />
+      <div className='node-input-stack'>
+        <div className='node-port-row node-port-row-target'>
+          <Handle type='target' position={Position.Left} id='image' />
+          <span>参考图输入</span>
+        </div>
+        <div className='node-port-row node-port-row-target'>
+          <Handle type='target' position={Position.Left} id='prompt' />
+          <span>提示词输入</span>
+        </div>
+      </div>
       <div className='generation-preview'>
         {data.image ? (
           <button
@@ -424,6 +438,7 @@ export function BlueprintEdge({
   targetPosition,
   data,
   markerEnd,
+  selected,
 }: EdgeProps<BlueprintFlowEdge>) {
   const [edgePath, labelX, labelY] = getBezierPath({
     sourceX,
@@ -437,23 +452,24 @@ export function BlueprintEdge({
   return (
     <>
       <BaseEdge id={id} path={edgePath} markerEnd={markerEnd} />
-      <EdgeLabelRenderer>
-        <div
-          className='edge-label nodrag nopan'
-          style={{
-            transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY}px)`,
-          }}
-        >
-          <span>{data?.label || '连接'}</span>
-          <button
-            type='button'
-            onClick={() => data?.onDelete(id)}
-            aria-label={`删除连接 ${data?.label || id}`}
+      {selected ? (
+        <EdgeLabelRenderer>
+          <div
+            className='edge-label nodrag nopan'
+            style={{
+              transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY}px)`,
+            }}
           >
-            <X size={12} />
-          </button>
-        </div>
-      </EdgeLabelRenderer>
+            <button
+              type='button'
+              onClick={() => data?.onDelete(id)}
+              aria-label={`删除连接 ${data?.label || id}`}
+            >
+              <X size={12} />
+            </button>
+          </div>
+        </EdgeLabelRenderer>
+      ) : null}
     </>
   )
 }

@@ -2,6 +2,7 @@ import type {
   ImageApiClient,
   ImageGenerationPayload,
   ImageGenerationResult,
+  ManagedNewApiLoginResult,
   ModelOption,
 } from './types'
 
@@ -30,6 +31,19 @@ async function parseJsonResponse<T>(response: Response, prefix: string) {
   }
 
   return body as T
+}
+
+function assertApiSuccess<T>(
+  body: { success?: boolean; message?: string; data?: T },
+  fallback: string
+): T {
+  if (!body?.success) {
+    throw new Error(body?.message || fallback)
+  }
+  if (body.data === undefined) {
+    throw new Error(fallback)
+  }
+  return body.data
 }
 
 async function urlToDataUrl(url: string) {
@@ -77,6 +91,20 @@ async function parseImageResult(
 export const bridge: ImageApiClient = {
   async openExternal(url) {
     window.open(url, '_blank', 'noopener,noreferrer')
+  },
+
+  async loginNewApi(payload) {
+    const response = await fetch('/api/newapi/login-key', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    })
+    const body = await parseJsonResponse<{
+      success: boolean
+      message?: string
+      data?: ManagedNewApiLoginResult
+    }>(response, 'New API login failed')
+    return assertApiSuccess(body, '中转站登录失败')
   },
 
   async listModels(args) {

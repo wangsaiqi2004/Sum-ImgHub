@@ -28,6 +28,7 @@ import {
   ExternalLink,
   KeyRound,
   Layers,
+  LogIn,
   Loader2,
   Monitor,
   Moon,
@@ -327,6 +328,10 @@ export function App() {
   const [baseUrl, setBaseUrl] = useState(DEFAULT_BASE_URL)
   const [apiKey, setApiKey] = useState('')
   const [persistApiKey, setPersistApiKey] = useState(false)
+  const [isLoginDialogOpen, setIsLoginDialogOpen] = useState(false)
+  const [loginUsername, setLoginUsername] = useState('')
+  const [loginPassword, setLoginPassword] = useState('')
+  const [isNewApiLoggingIn, setIsNewApiLoggingIn] = useState(false)
   const [themeMode, setThemeMode] = useState<ThemeMode>('dark')
   const [resolvedTheme, setResolvedTheme] = useState<'light' | 'dark'>('dark')
   const [models, setModels] = useState<ModelOption[]>([])
@@ -649,6 +654,49 @@ export function App() {
       setStatus('获取模型失败')
     } finally {
       setIsLoadingModels(false)
+    }
+  }
+
+  async function handleNewApiLogin() {
+    if (!loginUsername.trim() || !loginPassword) {
+      setError('请输入中转站账号和密码')
+      return
+    }
+
+    setError('')
+    setStatus('正在登录中转站...')
+    setIsNewApiLoggingIn(true)
+
+    try {
+      const result = await bridge.loginNewApi({
+        baseUrl: DEFAULT_BASE_URL,
+        username: loginUsername,
+        password: loginPassword,
+      })
+
+      setBaseUrl(result.baseUrl)
+      setApiKey(result.apiKey)
+      setPersistApiKey(true)
+      setModel(result.model || DEFAULT_MODEL)
+      await saveSettings({
+        baseUrl: result.baseUrl,
+        persistApiKey: true,
+        apiKey: result.apiKey,
+        themeMode,
+      })
+      setLoginPassword('')
+      setIsLoginDialogOpen(false)
+      setStatus(
+        result.created
+          ? `已创建并启用 ${result.group} 分组秘钥`
+          : `已启用 ${result.group} 分组已有秘钥`
+      )
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      setError(message)
+      setStatus('中转站登录失败')
+    } finally {
+      setIsNewApiLoggingIn(false)
     }
   }
 
@@ -1248,6 +1296,16 @@ export function App() {
             <span>将 API Key 保存到当前浏览器</span>
           </label>
           <div className='button-grid'>
+            <button
+              className='secondary login-button'
+              onClick={() => {
+                setError('')
+                setIsLoginDialogOpen(true)
+              }}
+            >
+              <LogIn size={16} />
+              登录
+            </button>
             <button className='secondary' onClick={handleSaveSettings}>
               <Save size={16} />
               保存设置
@@ -1347,9 +1405,94 @@ export function App() {
         </section>
       </aside>
 
+      {isLoginDialogOpen ? (
+        <div
+          className='modal-overlay'
+          role='dialog'
+          aria-modal='true'
+          aria-label='登录中转站'
+          onMouseDown={(event) => {
+            if (!isNewApiLoggingIn && event.target === event.currentTarget) {
+              setIsLoginDialogOpen(false)
+            }
+          }}
+        >
+          <form
+            className='login-dialog'
+            onSubmit={(event) => {
+              event.preventDefault()
+              void handleNewApiLogin()
+            }}
+          >
+            <div className='dialog-header'>
+              <div>
+                <strong>登录中转站</strong>
+                <span>自动获取 gpt-image-2 生图低价分组秘钥</span>
+              </div>
+              <button
+                type='button'
+                className='icon-button'
+                onClick={() => setIsLoginDialogOpen(false)}
+                disabled={isNewApiLoggingIn}
+                aria-label='关闭登录窗口'
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <label className='field'>
+              <span>中转站</span>
+              <input value={DEFAULT_BASE_URL} disabled />
+            </label>
+            <label className='field'>
+              <span>账号</span>
+              <input
+                value={loginUsername}
+                onChange={(event) => setLoginUsername(event.target.value)}
+                autoComplete='username'
+                disabled={isNewApiLoggingIn}
+                placeholder='用户名或邮箱'
+              />
+            </label>
+            <label className='field'>
+              <span>密码</span>
+              <input
+                value={loginPassword}
+                onChange={(event) => setLoginPassword(event.target.value)}
+                type='password'
+                autoComplete='current-password'
+                disabled={isNewApiLoggingIn}
+                placeholder='中转站密码'
+              />
+            </label>
+            <p>
+              账号密码只用于本次登录中转站；服务端不保存。成功后仅把 API Key 保存到当前浏览器。
+            </p>
+            <div className='dialog-actions'>
+              <button
+                type='button'
+                className='ghost'
+                onClick={() => setIsLoginDialogOpen(false)}
+                disabled={isNewApiLoggingIn}
+              >
+                取消
+              </button>
+              <button
+                type='submit'
+                className='secondary'
+                disabled={isNewApiLoggingIn || !loginUsername.trim() || !loginPassword}
+              >
+                {isNewApiLoggingIn ? <Loader2 className='spin' size={16} /> : <LogIn size={16} />}
+                登录并获取秘钥
+              </button>
+            </div>
+          </form>
+        </div>
+      ) : null}
+
       {previewImage ? (
         <div
-          className='preview-overlay'
+          className='modal-overlay preview-overlay'
           role='dialog'
           aria-modal='true'
           aria-label='图片预览'

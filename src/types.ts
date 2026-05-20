@@ -46,6 +46,21 @@ export type ImageGenerationResult = {
   images: GeneratedImage[]
 }
 
+export type ManagedNewApiLoginPayload = {
+  baseUrl: string
+  username: string
+  password: string
+}
+
+export type ManagedNewApiLoginResult = {
+  baseUrl: string
+  apiKey: string
+  group: string
+  model: string
+  tokenName: string
+  created: boolean
+}
+
 export type LocalImageRecord = {
   id: string
   src: string
@@ -68,6 +83,9 @@ export type BackupFile = {
 
 export type ImageApiClient = {
   listModels: (args: { baseUrl: string; apiKey: string }) => Promise<ModelOption[]>
+  loginNewApi: (
+    payload: ManagedNewApiLoginPayload
+  ) => Promise<ManagedNewApiLoginResult>
   generateImages: (
     payload: ImageGenerationPayload
   ) => Promise<ImageGenerationResult>

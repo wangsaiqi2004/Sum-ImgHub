@@ -1221,6 +1221,10 @@ select:disabled {
   overflow-wrap: anywhere;
 }
 
+.prompt-highlight-layer.editing {
+  color: transparent;
+}
+
 .prompt-highlight-layer mark {
   padding: 1px 3px;
   border-radius: 5px;
@@ -1240,19 +1244,42 @@ select:disabled {
   position: relative;
   z-index: 1;
   min-height: 244px;
-  color: transparent;
+  color: var(--text);
   background: transparent !important;
   caret-color: var(--text);
 }
 
-.prompt-textarea.has-value,
-.prompt-textarea.has-value:focus {
-  color: transparent;
+.prompt-textarea:focus {
+  color: var(--text);
   background: transparent !important;
 }
 
 .prompt-textarea::placeholder {
   color: var(--text-muted);
+}
+
+.prompt-reference-preview {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.prompt-reference-preview mark {
+  padding: 2px 5px;
+  color: #061014;
+  background: var(--green);
+  border-radius: 6px;
+  font-weight: 850;
+}
+
+.prompt-reference-preview .prompt-mention-missing {
+  color: var(--danger);
+  background: var(--danger-bg);
+  border: 1px solid var(--danger-border);
 }
 
 .prompt-mention-menu {

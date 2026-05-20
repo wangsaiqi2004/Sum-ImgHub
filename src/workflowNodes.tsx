@@ -289,6 +289,7 @@ export function PromptNode({ id, data }: NodeProps<PromptFlowNode>) {
   const textareaRef = useRef<HTMLTextAreaElement | null>(null)
   const [mentionState, setMentionState] = useState<MentionState>(null)
   const [activeMentionIndex, setActiveMentionIndex] = useState(0)
+  const [isPromptFocused, setIsPromptFocused] = useState(false)
   const referenceTitles = useMemo(
     () =>
       data.referenceImages
@@ -415,12 +416,15 @@ export function PromptNode({ id, data }: NodeProps<PromptFlowNode>) {
         </select>
       </label>
       <div className='prompt-editor nodrag'>
-        <div className='prompt-highlight-layer' aria-hidden='true'>
+        <div
+          className={`prompt-highlight-layer ${isPromptFocused ? 'editing' : ''}`}
+          aria-hidden='true'
+        >
           {data.prompt ? highlightedPrompt : null}
         </div>
         <textarea
           ref={textareaRef}
-          className={`node-textarea prompt-textarea ${data.prompt ? 'has-value' : ''}`}
+          className='node-textarea prompt-textarea'
           value={data.prompt}
           onChange={(event) => {
             data.setPrompt(event.target.value)
@@ -429,13 +433,24 @@ export function PromptNode({ id, data }: NodeProps<PromptFlowNode>) {
           onKeyDown={handlePromptKeyDown}
           onKeyUp={(event) => syncMentionState(event.currentTarget)}
           onClick={(event) => syncMentionState(event.currentTarget)}
-          onBlur={() => window.setTimeout(() => setMentionState(null), 120)}
+          onFocus={() => setIsPromptFocused(true)}
+          onBlur={() =>
+            window.setTimeout(() => {
+              setMentionState(null)
+              setIsPromptFocused(false)
+            }, 120)
+          }
           placeholder={
             data.generationMode === 'image'
               ? '输入图像生成提示词，例如：使用 @商品图 的包装元素，改成科技海报风格'
               : '产品海报、科技感、高级材质、清晰主视觉；需要参考图时输入 @参考图标题'
           }
         />
+        {data.prompt ? (
+          <div className='prompt-reference-preview' aria-hidden='true'>
+            {highlightedPrompt}
+          </div>
+        ) : null}
         {mentionState ? (
           <div className='prompt-mention-menu'>
             {mentionSuggestions.length > 0 ? (

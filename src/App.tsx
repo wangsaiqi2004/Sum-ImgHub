@@ -674,11 +674,15 @@ export function App() {
     )
 
     setReferenceImages((current) => [...current, ...nextImages])
+    setGenerationMode('image')
     if (imageFiles.length > remainingSlots) setStatus('最多添加 4 张参考图')
   }
 
   function removeReferenceImage(id: string) {
+    const willRemoveLastReference =
+      referenceImages.length <= 1 && referenceImages.some((image) => image.id === id)
     setReferenceImages((current) => current.filter((image) => image.id !== id))
+    if (willRemoveLastReference) setGenerationMode('text')
   }
 
   async function handleFetchModels() {
@@ -965,8 +969,6 @@ export function App() {
     if (type === 'asset') {
       return {
         onDeleteNode: deleteWorkflowNode,
-        generationMode,
-        setGenerationMode,
         referenceImages,
         addReferenceFiles,
         removeReferenceImage,

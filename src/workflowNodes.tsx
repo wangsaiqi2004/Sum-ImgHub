@@ -13,10 +13,8 @@ import {
 import {
   Download,
   Image as ImageIcon,
-  Images,
   Loader2,
   Play,
-  Sparkles,
   Trash2,
   Upload,
   WandSparkles,
@@ -35,8 +33,6 @@ type BaseNodeData = {
 } & Record<string, unknown>
 
 export type AssetNodeData = {
-  generationMode: GenerationMode
-  setGenerationMode: Dispatch<SetStateAction<GenerationMode>>
   referenceImages: ReferenceImage[]
   addReferenceFiles: (files: FileList | File[]) => void
   removeReferenceImage: (id: string) => void
@@ -162,7 +158,6 @@ export function AssetNode({ id, data }: NodeProps<AssetFlowNode>) {
         onDragOver={(event) => event.preventDefault()}
         onDrop={(event) => {
           event.preventDefault()
-          data.setGenerationMode('image')
           data.addReferenceFiles(event.dataTransfer.files)
         }}
       >
@@ -170,7 +165,7 @@ export function AssetNode({ id, data }: NodeProps<AssetFlowNode>) {
           <>
             <ImageIcon size={34} />
             <strong>拖入图片 / 选择参考图</strong>
-            <span>点击或拖入图片后自动切到图片引导</span>
+            <span>添加后作为生成参考输入</span>
           </>
         ) : (
           <div className='asset-preview-grid'>
@@ -198,31 +193,12 @@ export function AssetNode({ id, data }: NodeProps<AssetFlowNode>) {
             multiple
             onChange={(event) => {
               if (event.target.files) {
-                data.setGenerationMode('image')
                 data.addReferenceFiles(event.target.files)
               }
               event.currentTarget.value = ''
             }}
           />
         </label>
-      </div>
-      <div className='node-toggle nodrag' aria-label='生成模式'>
-        <button
-          type='button'
-          className={data.generationMode === 'text' ? 'active' : ''}
-          onClick={() => data.setGenerationMode('text')}
-        >
-          <Sparkles size={14} />
-          文生图
-        </button>
-        <button
-          type='button'
-          className={data.generationMode === 'image' ? 'active' : ''}
-          onClick={() => data.setGenerationMode('image')}
-        >
-          <Images size={14} />
-          图片引导
-        </button>
       </div>
     </NodeShell>
   )

@@ -1094,37 +1094,6 @@ select:disabled {
   background: rgb(255 255 255 / 8%);
 }
 
-.node-toggle {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 4px;
-  margin-top: 12px;
-  padding: 4px;
-  background: var(--field);
-  border: 1px solid var(--border);
-  border-radius: 9px;
-}
-
-.node-toggle button {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 7px;
-  min-height: 32px;
-  color: var(--text-muted);
-  background: transparent;
-  border: 1px solid transparent;
-  border-radius: 7px;
-  font-size: 13px;
-  font-weight: 750;
-}
-
-.node-toggle button.active {
-  color: var(--text);
-  background: var(--panel);
-  border-color: var(--border-strong);
-}
-
 .node-textarea {
   min-height: 244px;
   padding: 14px;

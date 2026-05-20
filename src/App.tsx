@@ -1,22 +1,27 @@
 import { useEffect, useMemo, useState } from 'react'
 import {
+  Background,
+  Controls,
+  ReactFlow,
+  type ReactFlowInstance,
+  type Edge,
+  type Node,
+} from '@xyflow/react'
+import {
   Download,
   ExternalLink,
-  Image as ImageIcon,
-  Images,
   KeyRound,
   Loader2,
   Monitor,
   Moon,
   RefreshCw,
   Save,
-  Search,
   ShoppingBag,
   Sparkles,
   Sun,
+  Trash2,
   Upload,
   X,
-  Trash2,
 } from 'lucide-react'
 import {
   clearImages,
@@ -29,6 +34,14 @@ import {
   saveImages,
 } from './storage'
 import { bridge } from './bridge'
+import {
+  GalleryStrip,
+  nodeTypes,
+  type AssetNodeData,
+  type GenerateNodeData,
+  type OutputNodeData,
+  type PromptNodeData,
+} from './workflowNodes'
 import type { LocalImageRecord, ModelOption, ReferenceImage, ThemeMode } from './types'
 
 const DEFAULT_BASE_URL = 'https://cc.api-corp.top'
@@ -44,6 +57,10 @@ const themeOptions: Array<{ value: ThemeMode; label: string; icon: typeof Sun }>
   { value: 'dark', label: '暗色', icon: Moon },
   { value: 'system', label: '跟随系统', icon: Monitor },
 ]
+
+type WorkflowNode = Node<
+  AssetNodeData | PromptNodeData | GenerateNodeData | OutputNodeData
+>
 
 function imageModelScore(model: ModelOption) {
   const id = model.id.toLowerCase()
@@ -134,8 +151,8 @@ export function App() {
   const [baseUrl, setBaseUrl] = useState(DEFAULT_BASE_URL)
   const [apiKey, setApiKey] = useState('')
   const [persistApiKey, setPersistApiKey] = useState(false)
-  const [themeMode, setThemeMode] = useState<ThemeMode>('system')
-  const [resolvedTheme, setResolvedTheme] = useState<'light' | 'dark'>('light')
+  const [themeMode, setThemeMode] = useState<ThemeMode>('dark')
+  const [resolvedTheme, setResolvedTheme] = useState<'light' | 'dark'>('dark')
   const [models, setModels] = useState<ModelOption[]>([])
   const [model, setModel] = useState(DEFAULT_MODEL)
   const [generationMode, setGenerationMode] = useState<'text' | 'image'>('text')
@@ -143,9 +160,7 @@ export function App() {
   const [size, setSize] = useState('1024x1024')
   const [quality, setQuality] = useState('auto')
   const [count, setCount] = useState(1)
-  const [responseFormat, setResponseFormat] = useState<'url' | 'b64_json'>(
-    'url'
-  )
+  const [responseFormat, setResponseFormat] = useState<'url' | 'b64_json'>('url')
   const [inputFidelity, setInputFidelity] = useState<'low' | 'high'>('high')
   const [referenceImages, setReferenceImages] = useState<ReferenceImage[]>([])
   const [isLoadingModels, setIsLoadingModels] = useState(false)
@@ -157,6 +172,10 @@ export function App() {
   const [previewImage, setPreviewImage] = useState<LocalImageRecord | null>(null)
   const [status, setStatus] = useState('未连接')
   const [error, setError] = useState('')
+  const [flowInstance, setFlowInstance] =
+    useState<ReactFlowInstance<WorkflowNode, Edge> | null>(null)
+
+  const latestImage = images[0] || null
 
   const sortedModels = useMemo(
     () =>
@@ -188,9 +207,7 @@ export function App() {
       setBaseUrl(settings.baseUrl || DEFAULT_BASE_URL)
       setPersistApiKey(Boolean(settings.persistApiKey))
       setThemeMode(settings.themeMode || 'system')
-      if (settings.persistApiKey && settings.apiKey) {
-        setApiKey(settings.apiKey)
-      }
+      if (settings.persistApiKey && settings.apiKey) setApiKey(settings.apiKey)
     })
     void refreshImages()
   }, [])
@@ -214,9 +231,7 @@ export function App() {
     if (!previewImage) return
 
     function closeOnEscape(event: KeyboardEvent) {
-      if (event.key === 'Escape') {
-        setPreviewImage(null)
-      }
+      if (event.key === 'Escape') setPreviewImage(null)
     }
 
     window.addEventListener('keydown', closeOnEscape)
@@ -237,17 +252,34 @@ export function App() {
     return () => window.clearInterval(timer)
   }, [estimatedGenerationMs, generationStartedAt, isGenerating])
 
+  useEffect(() => {
+    if (!flowInstance) return
+
+    let resizeTimer = 0
+    const refit = () => {
+      window.clearTimeout(resizeTimer)
+      resizeTimer = window.setTimeout(() => {
+        flowInstance.fitView({
+          padding: window.innerWidth > 1500 ? 0.18 : 0.1,
+          duration: 260,
+        })
+      }, 120)
+    }
+
+    refit()
+    window.addEventListener('resize', refit)
+    return () => {
+      window.clearTimeout(resizeTimer)
+      window.removeEventListener('resize', refit)
+    }
+  }, [flowInstance, resolvedTheme])
+
   async function refreshImages() {
     setImages(await listImages())
   }
 
   async function handleSaveSettings() {
-    await saveSettings({
-      baseUrl,
-      persistApiKey,
-      apiKey,
-      themeMode,
-    })
+    await saveSettings({ baseUrl, persistApiKey, apiKey, themeMode })
     setStatus(persistApiKey ? '设置已保存' : '设置已保存，API Key 未落盘')
   }
 
@@ -307,9 +339,7 @@ export function App() {
     )
 
     setReferenceImages((current) => [...current, ...nextImages])
-    if (imageFiles.length > remainingSlots) {
-      setStatus('最多添加 4 张参考图')
-    }
+    if (imageFiles.length > remainingSlots) setStatus('最多添加 4 张参考图')
   }
 
   function removeReferenceImage(id: string) {
@@ -414,25 +444,180 @@ export function App() {
     await refreshImages()
   }
 
-  return (
-    <div className='app-shell' data-theme={resolvedTheme}>
-      <aside className='sidebar'>
-        <div className='brand'>
-          <div className='brand-mark'>
-            <Sparkles size={22} />
-          </div>
-          <div>
-            <h1>GPT Image Tools</h1>
-            <p>Web 本地生图工具</p>
-          </div>
-        </div>
+  function handleDownloadImage(image: LocalImageRecord, index = 0) {
+    downloadDataUrl(image.src, `gpt-image-${index + 1}.png`)
+  }
 
-        <section className='panel'>
+  const canGenerate = !isGenerating && Boolean(apiKey && baseUrl && model && prompt.trim())
+
+  const workflowNodes = useMemo<WorkflowNode[]>(
+    () => [
+      {
+        id: 'asset',
+        type: 'asset',
+        position: { x: -520, y: -130 },
+        data: {
+          generationMode,
+          setGenerationMode,
+          referenceImages,
+          addReferenceFiles,
+          removeReferenceImage,
+        },
+      },
+      {
+        id: 'prompt',
+        type: 'prompt',
+        position: { x: -520, y: 255 },
+        data: {
+          prompt,
+          setPrompt,
+          generationMode,
+        },
+      },
+      {
+        id: 'generate',
+        type: 'generate',
+        position: { x: 25, y: 45 },
+        data: {
+          model,
+          sortedModels,
+          setModel,
+          size,
+          sizes,
+          setSize,
+          quality,
+          qualities,
+          setQuality,
+          count,
+          counts,
+          setCount,
+          responseFormat,
+          setResponseFormat,
+          inputFidelity,
+          inputFidelities,
+          setInputFidelity,
+          generationMode,
+          isGenerating,
+          canGenerate,
+          onGenerate: handleGenerate,
+          progressLabel: progressStage(generationProgress, generationMode),
+          progressDetail: `已等待 ${formatDuration(generationElapsedSeconds)} · 预计还需 ${formatDuration(remainingSeconds)}`,
+          generationProgress,
+        },
+      },
+      {
+        id: 'output',
+        type: 'output',
+        position: { x: 120, y: -300 },
+        data: {
+          image: latestImage,
+          isGenerating,
+          onPreview: setPreviewImage,
+          onDownload: handleDownloadImage,
+        },
+      },
+    ],
+    [
+      generationMode,
+      referenceImages,
+      prompt,
+      model,
+      sortedModels,
+      size,
+      quality,
+      count,
+      responseFormat,
+      inputFidelity,
+      isGenerating,
+      canGenerate,
+      generationProgress,
+      generationElapsedSeconds,
+      remainingSeconds,
+      latestImage,
+    ]
+  )
+
+  const workflowEdges = useMemo<Edge[]>(
+    () => [
+      {
+        id: 'asset-generate',
+        source: 'asset',
+        target: 'generate',
+        targetHandle: 'image',
+        animated: generationMode === 'image',
+        className: 'edge-blue',
+      },
+      {
+        id: 'prompt-generate',
+        source: 'prompt',
+        target: 'generate',
+        targetHandle: 'prompt',
+        animated: true,
+        className: 'edge-violet',
+      },
+      {
+        id: 'generate-output',
+        source: 'generate',
+        target: 'output',
+        animated: isGenerating,
+        className: 'edge-pink',
+      },
+    ],
+    [generationMode, isGenerating]
+  )
+
+  return (
+    <div className='app-shell flow-shell' data-theme={resolvedTheme}>
+      <main className='workflow-stage'>
+        <ReactFlow
+          nodes={workflowNodes}
+          edges={workflowEdges}
+          nodeTypes={nodeTypes}
+          fitView
+          minZoom={0.45}
+          maxZoom={1.35}
+          defaultViewport={{ x: 120, y: 80, zoom: 0.76 }}
+          nodesDraggable
+          nodesConnectable={false}
+          elementsSelectable
+          onInit={setFlowInstance}
+        >
+          <Background color='rgba(255,255,255,0.08)' gap={32} size={1} />
+          <Controls showInteractive={false} />
+        </ReactFlow>
+
+        <header className='floating-header'>
+          <div className='brand'>
+            <div className='brand-mark'>
+              <Sparkles size={21} />
+            </div>
+            <div>
+              <h1>GPT Image Tools</h1>
+              <p>本地优先 · 节点式生图工作流</p>
+            </div>
+          </div>
+          <div className='status-pill'>
+            <span>{status}</span>
+          </div>
+        </header>
+
+        {error ? (
+          <div className='error-toast'>
+            <strong>执行失败</strong>
+            <span>{error}</span>
+            <button type='button' onClick={() => setError('')} aria-label='关闭错误提示'>
+              <X size={15} />
+            </button>
+          </div>
+        ) : null}
+      </main>
+
+      <aside className='control-dock'>
+        <section className='dock-panel'>
           <div className='section-title'>
             <KeyRound size={16} />
             <span>连接配置</span>
           </div>
-
           <label className='field'>
             <span>Base URL</span>
             <input
@@ -442,7 +627,6 @@ export function App() {
               spellCheck={false}
             />
           </label>
-
           <label className='field'>
             <span>API Key</span>
             <input
@@ -453,7 +637,6 @@ export function App() {
               spellCheck={false}
             />
           </label>
-
           <label className='checkbox-row'>
             <input
               type='checkbox'
@@ -462,7 +645,6 @@ export function App() {
             />
             <span>将 API Key 保存到当前浏览器</span>
           </label>
-
           <div className='button-grid'>
             <button className='secondary' onClick={handleSaveSettings}>
               <Save size={16} />
@@ -483,313 +665,90 @@ export function App() {
           </div>
         </section>
 
-        <section className='panel'>
+        <section className='dock-panel compact-panel'>
           <div className='section-title'>
-            <Search size={16} />
-            <span>生图参数</span>
+            <Sun size={16} />
+            <span>界面</span>
           </div>
-
-          <label className='field'>
-            <span>模型</span>
-            <select value={model} onChange={(event) => setModel(event.target.value)}>
-              {sortedModels.length === 0 ? (
-                <option value={model}>{model}</option>
-              ) : (
-                sortedModels.map((item) => (
-                  <option key={item.id} value={item.id}>
-                    {item.id}
-                  </option>
-                ))
-              )}
-            </select>
-          </label>
-
-          <div className='field-row'>
-            <label className='field'>
-              <span>尺寸</span>
-              <select value={size} onChange={(event) => setSize(event.target.value)}>
-                {sizes.map((item) => (
-                  <option key={item} value={item}>
-                    {item}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className='field'>
-              <span>数量</span>
-              <select
-                value={count}
-                onChange={(event) => setCount(Number(event.target.value))}
-              >
-                {counts.map((item) => (
-                  <option key={item} value={item}>
-                    {item}
-                  </option>
-                ))}
-              </select>
-            </label>
-          </div>
-
-          <div className='field-row'>
-            <label className='field'>
-              <span>质量</span>
-              <select
-                value={quality}
-                onChange={(event) => setQuality(event.target.value)}
-              >
-                {qualities.map((item) => (
-                  <option key={item} value={item}>
-                    {item}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className='field'>
-              <span>返回</span>
-              <select
-                value={responseFormat}
-                onChange={(event) =>
-                  setResponseFormat(event.target.value as 'url' | 'b64_json')
-                }
-              >
-                <option value='url'>url</option>
-                <option value='b64_json'>b64_json</option>
-              </select>
-            </label>
+          <div className='theme-switcher' aria-label='主题切换'>
+            {themeOptions.map((option) => {
+              const Icon = option.icon
+              return (
+                <button
+                  key={option.value}
+                  type='button'
+                  className={themeMode === option.value ? 'active' : ''}
+                  onClick={() => void handleThemeChange(option.value)}
+                  aria-pressed={themeMode === option.value}
+                  title={option.label}
+                >
+                  <Icon size={15} />
+                  <span>{option.label}</span>
+                </button>
+              )
+            })}
           </div>
         </section>
 
-        <div className='status-bar'>
-          <span>{status}</span>
-          <small>设置和图库保存在当前浏览器本地</small>
-        </div>
-      </aside>
-
-      <main className='workspace'>
-        <header className='topbar'>
-          <div>
-            <h2>生成工作台</h2>
-            <p>连接上游 API、生成图片并管理浏览器本地图库。</p>
-          </div>
-          <div className='topbar-actions'>
-            <div className='theme-switcher' aria-label='主题切换'>
-              {themeOptions.map((option) => {
-                const Icon = option.icon
-                return (
-                  <button
-                    key={option.value}
-                    type='button'
-                    className={themeMode === option.value ? 'active' : ''}
-                    onClick={() => void handleThemeChange(option.value)}
-                    aria-pressed={themeMode === option.value}
-                    title={option.label}
-                  >
-                    <Icon size={15} />
-                    <span>{option.label}</span>
-                  </button>
-                )
-              })}
-            </div>
-            <button className='shop-link' onClick={() => void handleOpenShop()}>
-              <ShoppingBag size={16} />
-              小店入口
-              <ExternalLink size={14} />
-            </button>
-          </div>
-        </header>
-
-        <section className='prompt-panel'>
-          <div>
-            <h2>生成图片</h2>
-            <p>支持文生图和图片引导，结果只保存到当前浏览器本地图库。</p>
-          </div>
-
-          <div className='mode-tabs' aria-label='生成模式'>
-            <button
-              className={generationMode === 'text' ? 'active' : ''}
-              onClick={() => setGenerationMode('text')}
-              type='button'
-            >
-              <Sparkles size={16} />
-              文生图
-            </button>
-            <button
-              className={generationMode === 'image' ? 'active' : ''}
-              onClick={() => setGenerationMode('image')}
-              type='button'
-            >
-              <Images size={16} />
-              图片引导
-            </button>
-          </div>
-
-          {generationMode === 'image' ? (
-            <section
-              className='reference-panel'
-              onDragOver={(event) => event.preventDefault()}
-              onDrop={(event) => {
-                event.preventDefault()
-                void addReferenceFiles(event.dataTransfer.files)
-              }}
-            >
-              <div>
-                <strong>参考图</strong>
-                <span>最多 4 张，参考图会发送到你配置的上游 API 用于生成。</span>
-              </div>
-              <label className='upload-box'>
-                <ImageIcon size={18} />
-                <span>选择图片</span>
-                <input
-                  type='file'
-                  accept='image/*'
-                  multiple
-                  onChange={(event) => {
-                    if (event.target.files) {
-                      void addReferenceFiles(event.target.files)
-                    }
-                    event.currentTarget.value = ''
-                  }}
-                />
-              </label>
-              {referenceImages.length > 0 ? (
-                <div className='reference-grid'>
-                  {referenceImages.map((image) => (
-                    <article key={image.id} className='reference-card'>
-                      <img src={image.dataUrl} alt={image.name} />
-                      <span title={image.name}>{image.name}</span>
-                      <button
-                        className='icon-button'
-                        onClick={() => removeReferenceImage(image.id)}
-                        aria-label={`移除 ${image.name}`}
-                        type='button'
-                      >
-                        <X size={15} />
-                      </button>
-                    </article>
-                  ))}
-                </div>
-              ) : null}
-            </section>
-          ) : null}
-
-          <textarea
-            value={prompt}
-            onChange={(event) => setPrompt(event.target.value)}
-            placeholder={
-              generationMode === 'image'
-                ? '例如：保留主体姿态和构图，改成现代科技海报风格，柔和光线，高清摄影质感'
-                : '例如：一张现代科技风的产品海报，干净背景，柔和光线，高清摄影质感'
-            }
-          />
-          <div className='actions-row'>
-            <button
-              className='primary'
-              onClick={handleGenerate}
-              disabled={isGenerating || !apiKey || !baseUrl || !model}
-            >
-              {isGenerating ? <Loader2 className='spin' size={17} /> : <Sparkles size={17} />}
-              开始生成
-            </button>
-            <button className='ghost' onClick={() => setPrompt('')}>
-              清空提示词
-            </button>
-          </div>
-          {generationMode === 'image' ? (
-            <label className='field compact-field'>
-              <span>参考图保真度</span>
-              <select
-                value={inputFidelity}
-                onChange={(event) =>
-                  setInputFidelity(event.target.value as 'low' | 'high')
-                }
-              >
-                {inputFidelities.map((item) => (
-                  <option key={item} value={item}>
-                    {item}
-                  </option>
-                ))}
-              </select>
-            </label>
-          ) : null}
-          {error ? <div className='error-box'>{error}</div> : null}
-        </section>
-
-        <section className='gallery-header'>
-          <div>
-            <h2>本地图库</h2>
-            <p>{images.length} 张图片，保存在当前浏览器 IndexedDB。</p>
-          </div>
-          <button className='secondary' onClick={() => void handleExportBackup()}>
+        <section className='dock-panel compact-panel'>
+          <div className='section-title'>
             <Download size={16} />
-            导出备份
-          </button>
-          <label className='secondary file-action'>
-            <Upload size={16} />
-            导入备份
-            <input
-              type='file'
-              accept='application/json,.json'
-              onChange={(event) => {
-                const file = event.target.files?.[0]
-                if (file) void handleImportBackup(file)
-                event.currentTarget.value = ''
-              }}
-            />
-          </label>
-          <button className='ghost danger' onClick={handleClearImages} disabled={images.length === 0}>
+            <span>本地数据</span>
+          </div>
+          <div className='button-grid'>
+            <button className='secondary' onClick={() => void handleExportBackup()}>
+              <Download size={16} />
+              导出备份
+            </button>
+            <label className='secondary file-action'>
+              <Upload size={16} />
+              导入备份
+              <input
+                type='file'
+                accept='application/json,.json'
+                onChange={(event) => {
+                  const file = event.target.files?.[0]
+                  if (file) void handleImportBackup(file)
+                  event.currentTarget.value = ''
+                }}
+              />
+            </label>
+          </div>
+          <button
+            className='ghost danger'
+            onClick={() => void handleClearImages()}
+            disabled={images.length === 0}
+          >
             <Trash2 size={16} />
             清空图库
           </button>
+          <p>图片和设置保存在当前浏览器 IndexedDB。备份文件不包含 API Key。</p>
         </section>
 
-        {images.length === 0 ? (
-          <section className='empty-state'>
-            <ImageIcon size={42} />
-            <h3>还没有生成图片</h3>
-            <p>填写 API Key，获取模型后就可以用 gpt-image-2 生图。</p>
-          </section>
-        ) : (
-          <section className='gallery-grid'>
-            {images.map((image, index) => (
-              <article className='image-card' key={image.id}>
-                <button
-                  className='image-frame'
-                  onClick={() => setPreviewImage(image)}
-                  aria-label='打开 1:1 图片预览'
-                >
-                  <img src={image.src} alt={image.revisedPrompt || image.prompt} />
-                </button>
-                <div className='image-meta'>
-                  <strong>{image.model}</strong>
-                  <span>
-                    {image.mode === 'image' ? '图片引导' : '文生图'} · {image.size} · {image.quality} ·{' '}
-                    {new Date(image.createdAt).toLocaleString()}
-                  </span>
-                  <p>{image.revisedPrompt || image.prompt}</p>
-                </div>
-                <div className='card-actions'>
-                  <button
-                    className='secondary'
-                    onClick={() =>
-                      downloadDataUrl(image.src, `gpt-image-${index + 1}.png`)
-                    }
-                  >
-                    <Download size={15} />
-                    下载
-                  </button>
-                  <button
-                    className='ghost danger'
-                    onClick={() => void handleDeleteImage(image.id)}
-                  >
-                    <Trash2 size={15} />
-                    删除
-                  </button>
-                </div>
-              </article>
-            ))}
-          </section>
-        )}
-      </main>
+        <section className='dock-panel gallery-dock'>
+          <div className='gallery-dock-header'>
+            <div>
+              <h2>本地图库</h2>
+              <p>{images.length} 张图片</p>
+            </div>
+            <button className='shop-link' onClick={() => void handleOpenShop()}>
+              <ShoppingBag size={16} />
+              小店
+              <ExternalLink size={14} />
+            </button>
+          </div>
+          {images.length === 0 ? (
+            <div className='gallery-empty'>生成结果会出现在这里</div>
+          ) : (
+            <GalleryStrip
+              images={images}
+              onPreview={setPreviewImage}
+              onDownload={handleDownloadImage}
+              onDelete={(id) => void handleDeleteImage(id)}
+            />
+          )}
+        </section>
+      </aside>
 
       {previewImage ? (
         <div
@@ -798,9 +757,7 @@ export function App() {
           aria-modal='true'
           aria-label='图片预览'
           onMouseDown={(event) => {
-            if (event.target === event.currentTarget) {
-              setPreviewImage(null)
-            }
+            if (event.target === event.currentTarget) setPreviewImage(null)
           }}
         >
           <div className='preview-dialog'>
@@ -829,36 +786,6 @@ export function App() {
             <p>{previewImage.revisedPrompt || previewImage.prompt}</p>
           </div>
         </div>
-      ) : null}
-
-      {isGenerating ? (
-        <section className='generation-progress-floating' aria-live='polite'>
-          <div className='generation-progress'>
-            <div className='progress-copy'>
-              <div>
-                <strong>{progressStage(generationProgress, generationMode)}</strong>
-                <span>
-                  已等待 {formatDuration(generationElapsedSeconds)} · 预计还需{' '}
-                  {formatDuration(remainingSeconds)}
-                </span>
-              </div>
-              <b>{generationProgress}%</b>
-            </div>
-            <div
-              className='progress-track'
-              role='progressbar'
-              aria-valuemin={0}
-              aria-valuemax={100}
-              aria-valuenow={generationProgress}
-              aria-label='图片生成进度'
-            >
-              <span style={{ width: `${generationProgress}%` }} />
-            </div>
-            <p>
-              当前接口不会返回真实生成百分比，这里按请求类型、数量和质量估算；图片返回后会自动保存到浏览器本地图库。
-            </p>
-          </div>
-        </section>
       ) : null}
     </div>
   )

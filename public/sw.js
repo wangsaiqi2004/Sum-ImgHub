@@ -1,4 +1,4 @@
-const CACHE_NAME = 'gpt-image-tools-shell-v1'
+const CACHE_NAME = 'gpt-image-tools-shell-v2'
 const APP_SHELL = ['./', './index.html', './manifest.webmanifest', './app-icon.svg']
 
 self.addEventListener('install', (event) => {

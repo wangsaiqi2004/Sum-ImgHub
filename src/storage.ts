@@ -15,7 +15,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   baseUrl: 'https://cc.api-corp.top',
   persistApiKey: false,
   apiKey: '',
-  themeMode: 'system',
+  themeMode: 'dark',
 }
 
 function openDb(): Promise<IDBDatabase> {
@@ -79,7 +79,7 @@ function normalizeSettings(settings: Partial<AppSettings> | undefined): AppSetti
     ...settings,
     persistApiKey: Boolean(settings?.persistApiKey),
     apiKey: settings?.persistApiKey ? settings.apiKey || '' : '',
-    themeMode: settings?.themeMode || 'system',
+    themeMode: settings?.themeMode || 'dark',
   }
 }
 

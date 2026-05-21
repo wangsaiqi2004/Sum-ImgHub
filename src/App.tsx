@@ -868,8 +868,6 @@ export function App() {
   const generationMode = activeCanvas?.generationMode || 'text'
   const referenceImages = getCanvasReferenceImages(activeCanvas)
   const activeCanvasGenerating = activeCanvas ? isCanvasGenerating(activeCanvas) : false
-  const latestImage =
-    images.find((image) => image.id === activeCanvas?.latestImageId) || null
   const referenceImageBlobs = useMemo(
     () => extractReferenceImageBlobs(canvases),
     [canvases]
@@ -1910,9 +1908,7 @@ export function App() {
         isGenerating: activeCanvasGenerating,
         canGenerate,
         onGenerate: () => void handleGenerate(node.id),
-        image:
-          images.find((image) => image.id === getWorkflowNodeLatestImageId(node)) ||
-          (nodes.filter((item) => item.type === 'generate').length <= 1 ? latestImage : null),
+        image: images.find((image) => image.id === getWorkflowNodeLatestImageId(node)) || null,
         onPreview: setPreviewImage,
         onDownload: handleDownloadImage,
       }
@@ -1949,7 +1945,6 @@ export function App() {
       inputFidelity,
       activeCanvasGenerating,
       canGenerate,
-      latestImage,
       deleteWorkflowNode,
       setPromptOptimizationPreset,
     ]

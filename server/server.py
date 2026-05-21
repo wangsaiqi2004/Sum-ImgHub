@@ -25,6 +25,16 @@ from pathlib import Path
 from typing import Any
 
 
+def env_int(name: str, default: int) -> int:
+    raw = os.environ.get(name)
+    if raw is None:
+        return default
+    try:
+        return int(raw)
+    except ValueError:
+        return default
+
+
 DEFAULT_BASE_URL = "https://cc.api-corp.top"
 ALLOWED_NEW_API_HOST = "cc.api-corp.top"
 IMAGE_GROUP = "gpt-image-2 生图低价"
@@ -36,11 +46,11 @@ CODEX_TOKEN_NAME = "GPT Image Tools - codex"
 MAX_JSON_BODY = 16 * 1024
 MAX_IMAGE_BODY = 32 * 1024 * 1024
 MAX_PROXY_BODY = 96 * 1024 * 1024
-REQUEST_TIMEOUT = 25
-IMAGE_REQUEST_TIMEOUT = 180
-CACHE_MAX_BYTES = int(os.environ.get("IMAGE_TOOLS_CACHE_MAX_BYTES", str(1024 * 1024 * 1024)))
-LOG_MAX_ROWS = int(os.environ.get("IMAGE_TOOLS_LOG_MAX_ROWS", "5000"))
-DB_MAX_BYTES = int(os.environ.get("IMAGE_TOOLS_DB_MAX_BYTES", str(64 * 1024 * 1024)))
+REQUEST_TIMEOUT = env_int("IMAGE_TOOLS_REQUEST_TIMEOUT", 25)
+IMAGE_REQUEST_TIMEOUT = env_int("IMAGE_TOOLS_IMAGE_REQUEST_TIMEOUT", 600)
+CACHE_MAX_BYTES = env_int("IMAGE_TOOLS_CACHE_MAX_BYTES", 1024 * 1024 * 1024)
+LOG_MAX_ROWS = env_int("IMAGE_TOOLS_LOG_MAX_ROWS", 5000)
+DB_MAX_BYTES = env_int("IMAGE_TOOLS_DB_MAX_BYTES", 64 * 1024 * 1024)
 TASK_POLL_SECONDS = 1.5
 OPENAI_IMAGE_PROXY_PATHS = {
     "/api/openai/v1/images/generations": "/v1/images/generations",
@@ -836,8 +846,21 @@ def run_generation_task(
             {"cache_bytes": cache_bytes},
         )
         evict_cache_if_needed(skip_task_id=task_id)
+    except (TimeoutError, socket.timeout):
+        message = (
+            f"上游生图请求超过 {IMAGE_REQUEST_TIMEOUT} 秒仍未返回，"
+            "请稍后重试或调大 IMAGE_TOOLS_IMAGE_REQUEST_TIMEOUT"
+        )
+        update_task_status(task_id, "failed", error=message, completed=True)
+        write_log("ERROR", "task_failed", message, task_id)
     except urllib.error.URLError as exc:
-        message = f"无法连接中转站：{exc.reason}"
+        if isinstance(exc.reason, (TimeoutError, socket.timeout)):
+            message = (
+                f"上游生图请求超过 {IMAGE_REQUEST_TIMEOUT} 秒仍未返回，"
+                "请稍后重试或调大 IMAGE_TOOLS_IMAGE_REQUEST_TIMEOUT"
+            )
+        else:
+            message = f"无法连接中转站：{exc.reason}"
         update_task_status(task_id, "failed", error=message, completed=True)
         write_log("ERROR", "task_failed", message, task_id)
     except Exception as exc:

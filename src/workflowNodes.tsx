@@ -85,9 +85,6 @@ export type GenerateNodeData = {
   isGenerating: boolean
   canGenerate: boolean
   onGenerate: () => void
-  progressLabel: string
-  progressDetail: string
-  generationProgress: number
   image: LocalImageRecord | null
   onPreview: (image: LocalImageRecord) => void
   onDownload: (image: LocalImageRecord) => void
@@ -627,12 +624,12 @@ export function GenerateNode({ id, data }: NodeProps<GenerateFlowNode>) {
       </div>
       <div className='node-action-bar nodrag'>
         <div>
-          <strong>{data.isGenerating ? data.progressLabel : '等待执行'}</strong>
-          <span>{data.isGenerating ? data.progressDetail : '输入提示词后立即生成'}</span>
+          <strong>{data.isGenerating ? '等待生成结果' : '等待执行'}</strong>
+          <span>{data.isGenerating ? '服务器后台生成中' : '输入提示词后立即生成'}</span>
         </div>
         <button type='button' onClick={data.onGenerate} disabled={!data.canGenerate}>
           {data.isGenerating ? <Loader2 className='spin' size={16} /> : <Play size={16} />}
-          立即生成
+          {data.isGenerating ? '等待结果' : '立即生成'}
         </button>
       </div>
       {data.image ? (
@@ -644,11 +641,6 @@ export function GenerateNode({ id, data }: NodeProps<GenerateFlowNode>) {
           <button type='button' onClick={() => data.onPreview(data.image!)}>
             打开预览
           </button>
-        </div>
-      ) : null}
-      {data.isGenerating ? (
-        <div className='node-progress' aria-label='图片生成进度'>
-          <span style={{ width: `${data.generationProgress}%` }} />
         </div>
       ) : null}
     </NodeShell>
@@ -720,24 +712,26 @@ export function BlueprintEdge({
   return (
     <>
       <BaseEdge id={id} path={edgePath} markerEnd={markerEnd} />
-      {selected ? (
-        <EdgeLabelRenderer>
-          <div
-            className='edge-label nodrag nopan'
-            style={{
-              transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY}px)`,
+      <EdgeLabelRenderer>
+        <div
+          className={`edge-label nodrag nopan ${selected ? 'edge-label-selected' : ''}`}
+          style={{
+            transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY}px)`,
+          }}
+        >
+          <button
+            type='button'
+            onClick={(event) => {
+              event.stopPropagation()
+              data?.onDelete(id)
             }}
+            title='断开连接'
+            aria-label={`删除连接 ${data?.label || id}`}
           >
-            <button
-              type='button'
-              onClick={() => data?.onDelete(id)}
-              aria-label={`删除连接 ${data?.label || id}`}
-            >
-              <X size={12} />
-            </button>
-          </div>
-        </EdgeLabelRenderer>
-      ) : null}
+            <X size={12} />
+          </button>
+        </div>
+      </EdgeLabelRenderer>
     </>
   )
 }

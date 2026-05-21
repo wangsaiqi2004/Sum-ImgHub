@@ -6,6 +6,8 @@ tmp-responsive-check/
 .playwright-mcp/
 .edge-github-profile/
 *.tsbuildinfo
+__pycache__/
+*.pyc
 .env
 .env.*
 image-tools-data/

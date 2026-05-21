@@ -691,48 +691,6 @@ function fileToDataUrl(file: File) {
   })
 }
 
-function estimateGenerationDurationMs(
-  mode: 'text' | 'image',
-  quality: string,
-  count: number,
-  referenceCount: number
-) {
-  const qualityExtra: Record<string, number> = {
-    low: -10000,
-    standard: 0,
-    medium: 12000,
-    high: 26000,
-    hd: 30000,
-    auto: 8000,
-  }
-  const base = mode === 'image' ? 72000 : 52000
-  const countExtra = Math.max(0, count - 1) * 18000
-  const referenceExtra = mode === 'image' ? Math.max(1, referenceCount) * 5000 : 0
-
-  return Math.max(30000, base + (qualityExtra[quality] ?? 8000) + countExtra + referenceExtra)
-}
-
-function estimateProgress(elapsedMs: number, estimatedMs: number) {
-  const ratio = Math.min(elapsedMs / estimatedMs, 1)
-  const easedRatio = 1 - Math.pow(1 - ratio, 2.25)
-  return Math.max(3, Math.min(96, Math.round(easedRatio * 96)))
-}
-
-function formatDuration(totalSeconds: number) {
-  const minutes = Math.floor(totalSeconds / 60)
-  const seconds = totalSeconds % 60
-  if (minutes === 0) return `${seconds}s`
-  return `${minutes}m ${seconds.toString().padStart(2, '0')}s`
-}
-
-function progressStage(progress: number, mode: 'text' | 'image') {
-  if (progress < 12) return '提交生成请求'
-  if (mode === 'image' && progress < 28) return '上传参考图'
-  if (progress < 72) return mode === 'image' ? '根据参考图生成' : '模型生成中'
-  if (progress < 96) return '等待结果返回'
-  return '即将完成'
-}
-
 function taskStatusLabel(status: ImageGenerationTask['status']) {
   if (status === 'queued') return '任务已提交服务器后台'
   if (status === 'running') return '服务器正在生成，结果会暂存在缓存区'
@@ -788,9 +746,6 @@ export function App() {
   const [isLoadingModels, setIsLoadingModels] = useState(false)
   const [isGenerating, setIsGenerating] = useState(false)
   const [isOptimizingPrompt, setIsOptimizingPrompt] = useState(false)
-  const [generationStartedAt, setGenerationStartedAt] = useState<number | null>(null)
-  const [generationProgress, setGenerationProgress] = useState(0)
-  const [generationElapsedSeconds, setGenerationElapsedSeconds] = useState(0)
   const [images, setImages] = useState<LocalImageRecord[]>([])
   const [previewImage, setPreviewImage] = useState<LocalImageRecord | null>(null)
   const [status, setStatus] = useState('未连接')
@@ -925,22 +880,6 @@ export function App() {
     [models]
   )
 
-  const estimatedGenerationMs = useMemo(
-    () =>
-      estimateGenerationDurationMs(
-        generationMode,
-        quality,
-        count,
-        referenceImages.length
-      ),
-    [count, generationMode, quality, referenceImages.length]
-  )
-
-  const remainingSeconds = Math.max(
-    0,
-    Math.ceil((estimatedGenerationMs - generationElapsedSeconds * 1000) / 1000)
-  )
-
   useEffect(() => {
     void getSettings().then((settings) => {
       setBaseUrl(settings.baseUrl || DEFAULT_BASE_URL)
@@ -1036,20 +975,6 @@ export function App() {
     window.addEventListener('keydown', closeOnEscape)
     return () => window.removeEventListener('keydown', closeOnEscape)
   }, [previewImage])
-
-  useEffect(() => {
-    if (!isGenerating || !generationStartedAt) return
-
-    const updateProgress = () => {
-      const elapsedMs = Date.now() - generationStartedAt
-      setGenerationElapsedSeconds(Math.floor(elapsedMs / 1000))
-      setGenerationProgress(estimateProgress(elapsedMs, estimatedGenerationMs))
-    }
-
-    updateProgress()
-    const timer = window.setInterval(updateProgress, 500)
-    return () => window.clearInterval(timer)
-  }, [estimatedGenerationMs, generationStartedAt, isGenerating])
 
   useEffect(() => {
     if (!flowInstance) return
@@ -1239,9 +1164,6 @@ export function App() {
 
       try {
         setIsGenerating(true)
-        setGenerationStartedAt(task.createdAt)
-        setGenerationElapsedSeconds(0)
-        setGenerationProgress(8)
         setStatus(taskStatusLabel('queued'))
         setCanvasGenerationTask(task.canvasId, {
           taskId: task.taskId,
@@ -1253,7 +1175,6 @@ export function App() {
         let currentTask = await readGenerationTask(task.taskId)
         while (currentTask.status === 'queued' || currentTask.status === 'running') {
           setStatus(taskStatusLabel(currentTask.status))
-          setGenerationProgress(currentTask.status === 'running' ? 68 : 24)
           setCanvasGenerationTask(task.canvasId, currentTask)
           await new Promise((resolve) => window.setTimeout(resolve, currentTask.pollAfterMs || 1500))
           currentTask = await readGenerationTask(task.taskId)
@@ -1276,7 +1197,6 @@ export function App() {
 
         const generatedImages = await taskResultToGeneratedImages(currentTask.result)
         await persistCompletedTaskResult(task.taskId, generatedImages, task)
-        setGenerationProgress(100)
         setStatus('服务器缓存结果已恢复到本地图库')
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err)
@@ -1287,7 +1207,6 @@ export function App() {
       } finally {
         generationTaskIdsRef.current.delete(task.taskId)
         setIsGenerating(false)
-        setGenerationStartedAt(null)
       }
     }
   }
@@ -1534,9 +1453,6 @@ export function App() {
         ? `正在根据 ${resolvedReferences.images.length} 张 @参考图提交后台任务...`
         : '正在提交后台生图任务...'
     )
-    setGenerationStartedAt(Date.now())
-    setGenerationElapsedSeconds(0)
-    setGenerationProgress(5)
     setIsGenerating(true)
 
     let currentTaskId = ''
@@ -1567,10 +1483,6 @@ export function App() {
             }
           }
           setStatus(taskStatusLabel(task.status))
-          if (task.status === 'queued') setGenerationProgress(18)
-          if (task.status === 'running') setGenerationProgress(66)
-          if (task.status === 'completed') setGenerationProgress(94)
-          if (task.status === 'failed' || task.status === 'expired') setGenerationProgress(0)
         },
       })
 
@@ -1583,7 +1495,6 @@ export function App() {
         result.images,
         generationContext
       )
-      setGenerationProgress(100)
       setStatus(`已生成 ${records.length} 张图片，服务器缓存已同步到本地`)
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
@@ -1594,7 +1505,6 @@ export function App() {
     } finally {
       if (currentTaskId) generationTaskIdsRef.current.delete(currentTaskId)
       setIsGenerating(false)
-      setGenerationStartedAt(null)
     }
   }
 
@@ -1757,9 +1667,6 @@ export function App() {
         isGenerating: activeCanvasGenerating,
         canGenerate,
         onGenerate: handleGenerate,
-        progressLabel: progressStage(generationProgress, generationMode),
-        progressDetail: `已等待 ${formatDuration(generationElapsedSeconds)} · 预计还需 ${formatDuration(remainingSeconds)}`,
-        generationProgress,
         image: latestImage,
         onPreview: setPreviewImage,
         onDownload: handleDownloadImage,
@@ -1793,9 +1700,6 @@ export function App() {
       inputFidelity,
       activeCanvasGenerating,
       canGenerate,
-      generationProgress,
-      generationElapsedSeconds,
-      remainingSeconds,
       latestImage,
       deleteWorkflowNode,
       setPromptOptimizationPreset,

@@ -506,14 +506,27 @@ function getCanvasReferenceImages(canvas?: Pick<WorkflowCanvas, 'nodes'> | null)
   return images
 }
 
-function getCanvasGeneratedReferenceImages(
-  canvas: Pick<WorkflowCanvas, 'nodes'> | null | undefined,
+function getPromptGeneratedReferenceImages(
+  promptNodeId: string,
+  canvas: Pick<WorkflowCanvas, 'nodes' | 'edges'> | null | undefined,
   images: LocalImageRecord[]
 ) {
   if (!canvas) return []
 
+  const connectedGenerateNodeIds = new Set(
+    canvas.edges
+      .filter(
+        (edge) =>
+          edge.target === promptNodeId &&
+          edge.sourceHandle === 'generated-image' &&
+          (edge.targetHandle === 'reference' || edge.targetHandle?.startsWith('reference-')) &&
+          canvas.nodes.find((node) => node.id === edge.source)?.type === 'generate'
+      )
+      .map((edge) => edge.source)
+  )
+
   return canvas.nodes
-    .filter((node) => node.type === 'generate')
+    .filter((node) => node.type === 'generate' && connectedGenerateNodeIds.has(node.id))
     .map((node) => {
       const title = getWorkflowNodeOutputTitle(node)
       const latestImage = images.find((image) => image.id === getWorkflowNodeLatestImageId(node))
@@ -525,6 +538,17 @@ function getCanvasGeneratedReferenceImages(
         dataUrl: latestImage?.src || '',
       }
     })
+}
+
+function getPromptMentionReferenceImages(
+  promptNodeId: string,
+  canvas: Pick<WorkflowCanvas, 'nodes' | 'edges'> | null | undefined,
+  images: LocalImageRecord[]
+) {
+  return [
+    ...getCanvasReferenceImages(canvas),
+    ...getPromptGeneratedReferenceImages(promptNodeId, canvas, images),
+  ]
 }
 
 function getCanvasSelectedStyleIds(canvas?: Pick<WorkflowCanvas, 'nodes' | 'edges'> | null) {
@@ -1002,13 +1026,6 @@ export function App() {
     activeCanvas?.promptOptimizationPreset || DEFAULT_PROMPT_OPTIMIZATION_PRESET
   const generationMode = activeCanvas?.generationMode || 'text'
   const referenceImages = useMemo(() => getCanvasReferenceImages(activeCanvas), [activeCanvas])
-  const mentionReferenceImages = useMemo(
-    () => [
-      ...referenceImages,
-      ...getCanvasGeneratedReferenceImages(activeCanvas, images),
-    ],
-    [activeCanvas, images, referenceImages]
-  )
   const activeCanvasGenerating = activeCanvas ? isCanvasGenerating(activeCanvas) : false
   const referenceImageBlobs = useMemo(
     () => extractReferenceImageBlobs(canvases),
@@ -1709,7 +1726,7 @@ export function App() {
     }
   }
 
-  async function handleOptimizePrompt() {
+  async function handleOptimizePrompt(promptNodeId?: string) {
     const currentPrompt = prompt.trim()
     if (!currentPrompt) {
       setError('请先输入需要优化的提示词')
@@ -1734,7 +1751,10 @@ export function App() {
         mode: generationMode,
         optimizationPreset: promptOptimizationPreset,
       })
-      setPrompt(normalizeOptimizedPromptMentions(optimizedPrompt, mentionReferenceImages))
+      const promptReferenceImages = promptNodeId
+        ? getPromptMentionReferenceImages(promptNodeId, activeCanvas, images)
+        : referenceImages
+      setPrompt(normalizeOptimizedPromptMentions(optimizedPrompt, promptReferenceImages))
       setStatus('提示词已优化')
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
@@ -2073,18 +2093,20 @@ export function App() {
     }
 
     if (type === 'prompt') {
+      const promptReferenceImages = getPromptMentionReferenceImages(node.id, activeCanvas, images)
+
       return {
         onDeleteNode: deleteWorkflowNode,
         prompt,
         setPrompt,
-        referenceImages: mentionReferenceImages,
+        referenceImages: promptReferenceImages,
         optimizationPreset: promptOptimizationPreset,
         optimizationPresets: promptOptimizationPresets,
         setOptimizationPreset: setPromptOptimizationPreset,
         generationMode,
         isOptimizingPrompt,
         canOptimizePrompt: Boolean(prompt.trim()) && Boolean(codexApiKey) && !isOptimizingPrompt,
-        onOptimizePrompt: handleOptimizePrompt,
+        onOptimizePrompt: () => void handleOptimizePrompt(node.id),
       }
     }
 
@@ -2149,7 +2171,6 @@ export function App() {
       nodes,
       generationMode,
       referenceImages,
-      mentionReferenceImages,
       prompt,
       promptOptimizationPreset,
       codexApiKey,

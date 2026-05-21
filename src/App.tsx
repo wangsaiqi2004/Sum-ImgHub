@@ -2472,10 +2472,25 @@ export function App() {
             x: event.clientX - (bounds?.left || 0),
             y: event.clientY - (bounds?.top || 0),
           }
+      const menuGap = 6
+      const menuWidth = 190
+      const menuHeight = 210
+      const viewportWidth = typeof window === 'undefined' ? 0 : window.innerWidth
+      const viewportHeight = typeof window === 'undefined' ? 0 : window.innerHeight
+      let menuX = event.clientX + menuGap
+      let menuY = event.clientY
+
+      if (viewportWidth && menuX + menuWidth > viewportWidth - menuGap) {
+        menuX = Math.max(menuGap, event.clientX - menuWidth - menuGap)
+      }
+
+      if (viewportHeight && menuY + menuHeight > viewportHeight - menuGap) {
+        menuY = Math.max(menuGap, viewportHeight - menuHeight - menuGap)
+      }
 
       setPaneMenu({
-        x: event.clientX - (bounds?.left || 0),
-        y: event.clientY - (bounds?.top || 0),
+        x: menuX,
+        y: menuY,
         position,
       })
     },

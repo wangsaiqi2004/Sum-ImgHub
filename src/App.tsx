@@ -28,6 +28,8 @@ import {
   Edit3,
   ExternalLink,
   Github,
+  Home,
+  Image as ImageIcon,
   KeyRound,
   Layers,
   LogIn,
@@ -43,6 +45,7 @@ import {
   Terminal,
   Trash2,
   Upload,
+  Workflow,
   X,
 } from 'lucide-react'
 import {
@@ -118,6 +121,8 @@ type PaneMenu = {
   y: number
   position: { x: number; y: number }
 } | null
+
+type AppView = 'home' | 'console' | 'simple' | 'workflow'
 
 type WorkflowCanvas = {
   id: string
@@ -1083,6 +1088,7 @@ async function readGenerationTask(taskId: string) {
 }
 
 export function App() {
+  const [currentView, setCurrentView] = useState<AppView>('home')
   const [baseUrl, setBaseUrl] = useState(DEFAULT_BASE_URL)
   const [apiKey, setApiKey] = useState('')
   const [codexApiKey, setCodexApiKey] = useState('')
@@ -1104,6 +1110,8 @@ export function App() {
   const [count, setCount] = useState(1)
   const [responseFormat, setResponseFormat] = useState<'url' | 'b64_json'>('b64_json')
   const [inputFidelity, setInputFidelity] = useState<'low' | 'high'>('high')
+  const [simplePrompt, setSimplePrompt] = useState('')
+  const [simpleGeneratedImageIds, setSimpleGeneratedImageIds] = useState<string[]>([])
   const [canvases, setCanvases] = useState<WorkflowCanvas[]>(loadWorkflowCanvases)
   const [activeCanvasId, setActiveCanvasId] = useState(loadActiveCanvasId)
   const [isLoadingModels, setIsLoadingModels] = useState(false)
@@ -1137,6 +1145,14 @@ export function App() {
   const referenceImageBlobSignature = useMemo(
     () => referenceImageBlobs.map((blob) => `${blob.id}:${blob.dataUrl}`).join('|'),
     [referenceImageBlobs]
+  )
+  const isConfigured = Boolean(baseUrl.trim() && apiKey.trim() && model.trim())
+  const simpleGeneratedImages = useMemo(
+    () =>
+      simpleGeneratedImageIds
+        .map((id) => images.find((image) => image.id === id))
+        .filter((image): image is LocalImageRecord => Boolean(image)),
+    [images, simpleGeneratedImageIds]
   )
 
   const updateActiveCanvas = useCallback(
@@ -2082,6 +2098,66 @@ export function App() {
     }
   }
 
+  function enterConfiguredView(view: AppView) {
+    if ((view === 'simple' || view === 'workflow') && !isConfigured) {
+      setCurrentView('console')
+      setStatus('请先在控制台完成连接配置')
+      return
+    }
+    setError('')
+    setCurrentView(view)
+  }
+
+  async function handleSimpleGenerate() {
+    const prompt = simplePrompt.trim()
+    if (!isConfigured) {
+      setCurrentView('console')
+      setStatus('请先在控制台完成连接配置')
+      setError('缺少 Base URL、生图 API Key 或模型名称')
+      return
+    }
+    if (!prompt) {
+      setError('请先输入图片描述')
+      return
+    }
+
+    setError('')
+    setIsGenerating(true)
+    setStatus('正在生成图片...')
+
+    try {
+      const result = await bridge.generateImages({
+        baseUrl,
+        apiKey,
+        mode: 'text',
+        model,
+        prompt,
+        size,
+        quality,
+        count,
+        responseFormat,
+        onTaskUpdate: (task) => setStatus(taskStatusLabel(task.status)),
+      })
+      const records = buildLocalImageRecords(result.images, {
+        prompt,
+        model,
+        size,
+        quality,
+        mode: 'text',
+      })
+      await saveImages(records)
+      await refreshImages()
+      setSimpleGeneratedImageIds(records.map((record) => record.id))
+      setStatus(`已生成 ${records.length} 张图片`)
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      setError(message)
+      setStatus('生成失败')
+    } finally {
+      setIsGenerating(false)
+    }
+  }
+
   async function handleDeleteImage(id: string) {
     await deleteImage(id)
     await refreshImages()
@@ -2528,8 +2604,13 @@ export function App() {
   }
 
   return (
-    <div className='app-shell flow-shell' data-theme={resolvedTheme}>
-      <aside className='canvas-drawer' aria-label='画布列表'>
+    <div
+      className={`app-shell ${currentView === 'workflow' ? 'flow-shell workflow-only' : 'portal-shell'}`}
+      data-theme={resolvedTheme}
+    >
+      {currentView === 'workflow' ? (
+        <>
+          <aside className='canvas-drawer' aria-label='画布列表'>
         <div className='canvas-drawer-header'>
           <div className='section-title'>
             <Layers size={16} />
@@ -2618,9 +2699,9 @@ export function App() {
           <span>Open Source</span>
           <ExternalLink size={13} />
         </a>
-      </aside>
+          </aside>
 
-      <main className='workflow-stage'>
+          <main className='workflow-stage'>
         <ReactFlow
           key={activeCanvas?.id}
           nodes={workflowNodes}
@@ -2680,6 +2761,16 @@ export function App() {
               <p>右键创建节点 · 拖动端口连线</p>
             </div>
           </div>
+          <div className='workflow-nav'>
+            <button type='button' className='top-link' onClick={() => enterConfiguredView('home')}>
+              <Home size={15} />
+              入口
+            </button>
+            <button type='button' className='top-link' onClick={() => enterConfiguredView('console')}>
+              <Terminal size={15} />
+              控制台
+            </button>
+          </div>
           <div className='status-pill'>
             <span>{status}</span>
           </div>
@@ -2709,218 +2800,445 @@ export function App() {
           </div>
         ) : null}
 
-      </main>
-
-      <aside className='control-dock'>
-        <div className='dock-action-bar'>
-          <button className='top-link console-link' onClick={() => void handleOpenConsole()}>
-            <Terminal size={16} />
-            控制台
-            <ExternalLink size={14} />
-          </button>
-          <button className='top-link shop-link' onClick={() => void handleOpenShop()}>
-            <ShoppingBag size={16} />
-            小店
-            <ExternalLink size={14} />
-          </button>
-        </div>
-
-        <section className='dock-panel'>
-          <div className='section-title'>
-            <KeyRound size={16} />
-            <span>连接配置</span>
-          </div>
-          <label className='field'>
-            <span>Base URL</span>
-            <input
-              value={baseUrl}
-              onChange={(event) => setBaseUrl(event.target.value)}
-              placeholder='https://cc.api-corp.top'
-              spellCheck={false}
-            />
-          </label>
-
-          <div className='connection-config-block'>
-            <div className='connection-config-title'>
-              <Sparkles size={14} />
-              <span>文本模型</span>
-              <small>用于优化提示词</small>
-            </div>
-            <label className='field'>
-              <span>文本模型名称</span>
-              <input
-                value={textModel}
-                onChange={(event) => setTextModel(event.target.value)}
-                placeholder='gpt-5.5'
-                spellCheck={false}
-              />
-            </label>
-            <label className='field'>
-              <span>文本模型 API Key</span>
-              <input
-                value={codexApiKey}
-                onChange={(event) => setCodexApiKey(event.target.value)}
-                type='password'
-                placeholder='sk-...'
-                spellCheck={false}
-              />
-            </label>
-          </div>
-
-          <div className='connection-config-block'>
-            <div className='connection-config-title'>
-              <Sparkles size={14} />
-              <span>生图模型</span>
-            </div>
-            <label className='field'>
-              <span>生图模型名称</span>
-              <select value={model} onChange={(event) => setModel(event.target.value)}>
-                {sortedModels.length === 0 ? (
-                  <option value={model}>{model}</option>
-                ) : (
-                  <>
-                    {sortedModels.some((item) => item.id === model) ? null : (
-                      <option value={model}>{model}</option>
-                    )}
-                    {sortedModels.map((item) => (
-                      <option key={item.id} value={item.id}>
-                        {item.id}
-                      </option>
-                    ))}
-                  </>
-                )}
-              </select>
-            </label>
-            <label className='field'>
-              <span>生图模型 API Key</span>
-              <input
-                value={apiKey}
-                onChange={(event) => setApiKey(event.target.value)}
-                type='password'
-                placeholder='sk-...'
-                spellCheck={false}
-              />
-            </label>
-          </div>
-          <label className='checkbox-row'>
-            <input
-              type='checkbox'
-              checked={persistApiKey}
-              onChange={(event) => setPersistApiKey(event.target.checked)}
-            />
-            <span>将两个 API Key 保存到当前浏览器</span>
-          </label>
-          <div className='button-grid'>
-            <button
-              className='secondary login-button'
-              onClick={() => {
-                setError('')
-                setIsLoginDialogOpen(true)
-              }}
-            >
-              <LogIn size={16} />
-              登录
+          </main>
+        </>
+      ) : (
+        <main className='portal-stage'>
+          <header className='portal-topbar'>
+            <button type='button' className='brand portal-brand' onClick={() => enterConfiguredView('home')}>
+              <span className='brand-mark'>
+                <Sparkles size={21} />
+              </span>
+              <span>
+                <strong>GPT Image Tools</strong>
+                <small>{isConfigured ? `已配置 ${model}` : '先完成控制台配置'}</small>
+              </span>
             </button>
-            <button className='secondary' onClick={handleSaveSettings}>
-              <Save size={16} />
-              保存设置
-            </button>
-            <button
-              className='secondary'
-              onClick={handleFetchModels}
-              disabled={isLoadingModels || !baseUrl || !apiKey}
-            >
-              {isLoadingModels ? (
-                <Loader2 className='spin' size={16} />
-              ) : (
-                <RefreshCw size={16} />
-              )}
-              获取模型
-            </button>
-          </div>
-        </section>
+            <nav className='portal-nav' aria-label='主导航'>
+              <button
+                type='button'
+                className={currentView === 'home' ? 'active' : ''}
+                onClick={() => enterConfiguredView('home')}
+              >
+                <Home size={16} />
+                入口
+              </button>
+              <button
+                type='button'
+                className={currentView === 'console' ? 'active' : ''}
+                onClick={() => enterConfiguredView('console')}
+              >
+                <Terminal size={16} />
+                控制台
+              </button>
+              <button
+                type='button'
+                className={currentView === 'simple' ? 'active' : ''}
+                onClick={() => enterConfiguredView('simple')}
+              >
+                <ImageIcon size={16} />
+                文生图
+              </button>
+              <button
+                type='button'
+                onClick={() => enterConfiguredView('workflow')}
+              >
+                <Workflow size={16} />
+                工作流
+              </button>
+            </nav>
+          </header>
 
-        <section className='dock-panel compact-panel'>
-          <div className='section-title'>
-            <Sun size={16} />
-            <span>界面</span>
-          </div>
-          <div className='theme-switcher' aria-label='主题切换'>
-            {themeOptions.map((option) => {
-              const Icon = option.icon
-              return (
+          {currentView === 'home' ? (
+            <section className='launchpad'>
+              <div className='launchpad-copy'>
+                <span className={`setup-state ${isConfigured ? 'ready' : ''}`}>
+                  {isConfigured ? '配置已就绪' : '需要先配置连接'}
+                </span>
+                <h1>选择你的创作方式</h1>
+                <p>新手可以直接从简单文生图开始；熟悉节点逻辑的用户仍然可以进入完整工作流画布。</p>
+              </div>
+              <div className='launchpad-grid'>
                 <button
-                  key={option.value}
                   type='button'
-                  className={themeMode === option.value ? 'active' : ''}
-                  onClick={() => void handleThemeChange(option.value)}
-                  aria-pressed={themeMode === option.value}
-                  title={option.label}
+                  className='launch-card primary'
+                  onClick={() => enterConfiguredView(isConfigured ? 'simple' : 'console')}
                 >
-                  <Icon size={15} />
-                  <span>{option.label}</span>
+                  <ImageIcon size={24} />
+                  <strong>简单文生图</strong>
+                  <span>输入描述、选择基础参数，然后直接生成图片。</span>
                 </button>
-              )
-            })}
-          </div>
-        </section>
+                <button
+                  type='button'
+                  className='launch-card'
+                  onClick={() => enterConfiguredView(isConfigured ? 'workflow' : 'console')}
+                >
+                  <Workflow size={24} />
+                  <strong>高级工作流</strong>
+                  <span>使用节点、连线、参考图和风格节点搭建生成流程。</span>
+                </button>
+                <button type='button' className='launch-card' onClick={() => enterConfiguredView('console')}>
+                  <KeyRound size={24} />
+                  <strong>控制台配置</strong>
+                  <span>登录中转站、保存模型和 API Key、管理本地数据。</span>
+                </button>
+              </div>
+              <section className='portal-panel recent-panel'>
+                <div className='gallery-dock-header'>
+                  <div>
+                    <h2>最近图库</h2>
+                    <p>{images.length} 张图片</p>
+                  </div>
+                </div>
+                {images.length === 0 ? (
+                  <div className='gallery-empty'>生成结果会出现在这里</div>
+                ) : (
+                  <GalleryStrip
+                    images={images}
+                    onPreview={setPreviewImage}
+                    onDownload={handleDownloadImage}
+                    onDelete={(id) => void handleDeleteImage(id)}
+                  />
+                )}
+              </section>
+            </section>
+          ) : null}
 
-        <section className='dock-panel compact-panel'>
-          <div className='section-title'>
-            <Download size={16} />
-            <span>本地数据</span>
-          </div>
-          <div className='button-grid'>
-            <button className='secondary' onClick={() => void handleExportBackup()}>
-              <Download size={16} />
-              导出备份
-            </button>
-            <label className='secondary file-action'>
-              <Upload size={16} />
-              导入备份
-              <input
-                type='file'
-                accept='application/json,.json'
-                onChange={(event) => {
-                  const file = event.target.files?.[0]
-                  if (file) void handleImportBackup(file)
-                  event.currentTarget.value = ''
-                }}
-              />
-            </label>
-          </div>
-          <button
-            className='ghost danger'
-            onClick={() => void handleClearImages()}
-            disabled={images.length === 0}
-          >
-            <Trash2 size={16} />
-            清空图库
-          </button>
-          <p>
-            图片和设置保存在当前浏览器 IndexedDB。生成任务先提交到服务器后台，结果会短暂缓存在服务器再同步到本地图库；备份文件不包含 API Key。
-          </p>
-        </section>
+          {currentView === 'console' ? (
+            <section className='console-page'>
+              <div className='page-heading'>
+                <h1>控制台</h1>
+                <p>先完成连接配置，再进入文生图或工作流。</p>
+              </div>
+              <div className='console-layout'>
+                <section className='portal-panel'>
+                  <div className='section-title'>
+                    <KeyRound size={16} />
+                    <span>连接配置</span>
+                  </div>
+                  <label className='field'>
+                    <span>Base URL</span>
+                    <input
+                      value={baseUrl}
+                      onChange={(event) => setBaseUrl(event.target.value)}
+                      placeholder='https://cc.api-corp.top'
+                      spellCheck={false}
+                    />
+                  </label>
 
-        <section className='dock-panel gallery-dock'>
-          <div className='gallery-dock-header'>
-            <div>
-              <h2>本地图库</h2>
-              <p>{images.length} 张图片</p>
+                  <div className='connection-config-block'>
+                    <div className='connection-config-title'>
+                      <Sparkles size={14} />
+                      <span>文本模型</span>
+                      <small>用于优化提示词</small>
+                    </div>
+                    <label className='field'>
+                      <span>文本模型名称</span>
+                      <input
+                        value={textModel}
+                        onChange={(event) => setTextModel(event.target.value)}
+                        placeholder='gpt-5.5'
+                        spellCheck={false}
+                      />
+                    </label>
+                    <label className='field'>
+                      <span>文本模型 API Key</span>
+                      <input
+                        value={codexApiKey}
+                        onChange={(event) => setCodexApiKey(event.target.value)}
+                        type='password'
+                        placeholder='sk-...'
+                        spellCheck={false}
+                      />
+                    </label>
+                  </div>
+
+                  <div className='connection-config-block'>
+                    <div className='connection-config-title'>
+                      <Sparkles size={14} />
+                      <span>生图模型</span>
+                    </div>
+                    <label className='field'>
+                      <span>生图模型名称</span>
+                      <select value={model} onChange={(event) => setModel(event.target.value)}>
+                        {sortedModels.length === 0 ? (
+                          <option value={model}>{model}</option>
+                        ) : (
+                          <>
+                            {sortedModels.some((item) => item.id === model) ? null : (
+                              <option value={model}>{model}</option>
+                            )}
+                            {sortedModels.map((item) => (
+                              <option key={item.id} value={item.id}>
+                                {item.id}
+                              </option>
+                            ))}
+                          </>
+                        )}
+                      </select>
+                    </label>
+                    <label className='field'>
+                      <span>生图模型 API Key</span>
+                      <input
+                        value={apiKey}
+                        onChange={(event) => setApiKey(event.target.value)}
+                        type='password'
+                        placeholder='sk-...'
+                        spellCheck={false}
+                      />
+                    </label>
+                  </div>
+                  <label className='checkbox-row'>
+                    <input
+                      type='checkbox'
+                      checked={persistApiKey}
+                      onChange={(event) => setPersistApiKey(event.target.checked)}
+                    />
+                    <span>将两个 API Key 保存到当前浏览器</span>
+                  </label>
+                  <div className='button-grid'>
+                    <button
+                      className='secondary login-button'
+                      onClick={() => {
+                        setError('')
+                        setIsLoginDialogOpen(true)
+                      }}
+                    >
+                      <LogIn size={16} />
+                      登录
+                    </button>
+                    <button className='secondary' onClick={handleSaveSettings}>
+                      <Save size={16} />
+                      保存设置
+                    </button>
+                    <button
+                      className='secondary'
+                      onClick={handleFetchModels}
+                      disabled={isLoadingModels || !baseUrl || !apiKey}
+                    >
+                      {isLoadingModels ? (
+                        <Loader2 className='spin' size={16} />
+                      ) : (
+                        <RefreshCw size={16} />
+                      )}
+                      获取模型
+                    </button>
+                  </div>
+                </section>
+
+                <section className='portal-panel compact-panel'>
+                  <div className='section-title'>
+                    <Sun size={16} />
+                    <span>界面</span>
+                  </div>
+                  <div className='theme-switcher' aria-label='主题切换'>
+                    {themeOptions.map((option) => {
+                      const Icon = option.icon
+                      return (
+                        <button
+                          key={option.value}
+                          type='button'
+                          className={themeMode === option.value ? 'active' : ''}
+                          onClick={() => void handleThemeChange(option.value)}
+                          aria-pressed={themeMode === option.value}
+                          title={option.label}
+                        >
+                          <Icon size={15} />
+                          <span>{option.label}</span>
+                        </button>
+                      )
+                    })}
+                  </div>
+                  <div className='dock-action-bar'>
+                    <button className='top-link' onClick={() => void handleOpenConsole()}>
+                      <Terminal size={16} />
+                      中转站
+                      <ExternalLink size={14} />
+                    </button>
+                    <button className='top-link shop-link' onClick={() => void handleOpenShop()}>
+                      <ShoppingBag size={16} />
+                      小店
+                      <ExternalLink size={14} />
+                    </button>
+                  </div>
+                </section>
+
+                <section className='portal-panel compact-panel'>
+                  <div className='section-title'>
+                    <Download size={16} />
+                    <span>本地数据</span>
+                  </div>
+                  <div className='button-grid'>
+                    <button className='secondary' onClick={() => void handleExportBackup()}>
+                      <Download size={16} />
+                      导出备份
+                    </button>
+                    <label className='secondary file-action'>
+                      <Upload size={16} />
+                      导入备份
+                      <input
+                        type='file'
+                        accept='application/json,.json'
+                        onChange={(event) => {
+                          const file = event.target.files?.[0]
+                          if (file) void handleImportBackup(file)
+                          event.currentTarget.value = ''
+                        }}
+                      />
+                    </label>
+                  </div>
+                  <button
+                    className='ghost danger'
+                    onClick={() => void handleClearImages()}
+                    disabled={images.length === 0}
+                  >
+                    <Trash2 size={16} />
+                    清空图库
+                  </button>
+                  <p>
+                    图片和设置保存在当前浏览器 IndexedDB。生成任务先提交到服务器后台，结果会短暂缓存在服务器再同步到本地图库；备份文件不包含 API Key。
+                  </p>
+                </section>
+
+                <section className='portal-panel gallery-dock'>
+                  <div className='gallery-dock-header'>
+                    <div>
+                      <h2>本地图库</h2>
+                      <p>{images.length} 张图片</p>
+                    </div>
+                  </div>
+                  {images.length === 0 ? (
+                    <div className='gallery-empty'>生成结果会出现在这里</div>
+                  ) : (
+                    <GalleryStrip
+                      images={images}
+                      onPreview={setPreviewImage}
+                      onDownload={handleDownloadImage}
+                      onDelete={(id) => void handleDeleteImage(id)}
+                    />
+                  )}
+                </section>
+              </div>
+            </section>
+          ) : null}
+
+          {currentView === 'simple' ? (
+            <section className='simple-page'>
+              <div className='page-heading'>
+                <h1>简单文生图</h1>
+                <p>不需要搭建节点，输入描述后直接生成图片。</p>
+              </div>
+              <div className='simple-layout'>
+                <section className='portal-panel simple-composer'>
+                  <label className='field'>
+                    <span>图片描述</span>
+                    <textarea
+                      className='simple-prompt'
+                      value={simplePrompt}
+                      onChange={(event) => setSimplePrompt(event.target.value)}
+                      placeholder='例如：一张高级科技产品海报，干净背景，清晰主视觉，真实材质，高级棚拍光线'
+                    />
+                  </label>
+                  <div className='simple-param-grid'>
+                    <label className='field'>
+                      <span>模型</span>
+                      <select value={model} onChange={(event) => setModel(event.target.value)}>
+                        {sortedModels.length === 0 ? (
+                          <option value={model}>{model}</option>
+                        ) : (
+                          sortedModels.map((item) => (
+                            <option key={item.id} value={item.id}>
+                              {item.id}
+                            </option>
+                          ))
+                        )}
+                      </select>
+                    </label>
+                    <label className='field'>
+                      <span>尺寸</span>
+                      <select value={size} onChange={(event) => setSize(event.target.value)}>
+                        {sizes.map((item) => (
+                          <option key={item} value={item}>
+                            {item}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <label className='field'>
+                      <span>质量</span>
+                      <select value={quality} onChange={(event) => setQuality(event.target.value)}>
+                        {qualities.map((item) => (
+                          <option key={item} value={item}>
+                            {item}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <label className='field'>
+                      <span>数量</span>
+                      <select value={count} onChange={(event) => setCount(Number(event.target.value))}>
+                        {counts.map((item) => (
+                          <option key={item} value={item}>
+                            {item}x
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  </div>
+                  <div className='simple-actions'>
+                    <button
+                      type='button'
+                      className='secondary'
+                      onClick={() => enterConfiguredView('console')}
+                    >
+                      <KeyRound size={16} />
+                      检查配置
+                    </button>
+                    <button
+                      type='button'
+                      className='primary-action'
+                      onClick={() => void handleSimpleGenerate()}
+                      disabled={isGenerating || !isConfigured || !simplePrompt.trim()}
+                    >
+                      {isGenerating ? <Loader2 className='spin' size={16} /> : <Sparkles size={16} />}
+                      {isGenerating ? '生成中' : '立即生成'}
+                    </button>
+                  </div>
+                </section>
+
+                <section className='portal-panel simple-results'>
+                  <div className='gallery-dock-header'>
+                    <div>
+                      <h2>生成结果</h2>
+                      <p>{simpleGeneratedImages.length || images.length} 张图片</p>
+                    </div>
+                  </div>
+                  {(simpleGeneratedImages.length > 0 ? simpleGeneratedImages : images).length === 0 ? (
+                    <div className='gallery-empty'>生成结果会出现在这里</div>
+                  ) : (
+                    <GalleryStrip
+                      images={simpleGeneratedImages.length > 0 ? simpleGeneratedImages : images}
+                      onPreview={setPreviewImage}
+                      onDownload={handleDownloadImage}
+                      onDelete={(id) => void handleDeleteImage(id)}
+                    />
+                  )}
+                </section>
+              </div>
+            </section>
+          ) : null}
+
+          {error ? (
+            <div className='error-toast portal-error'>
+              <strong>执行失败</strong>
+              <span>{error}</span>
+              <button type='button' onClick={() => setError('')} aria-label='关闭错误提示'>
+                <X size={15} />
+              </button>
             </div>
-          </div>
-          {images.length === 0 ? (
-            <div className='gallery-empty'>生成结果会出现在这里</div>
-          ) : (
-            <GalleryStrip
-              images={images}
-              onPreview={setPreviewImage}
-              onDownload={handleDownloadImage}
-              onDelete={(id) => void handleDeleteImage(id)}
-            />
-          )}
-        </section>
-      </aside>
+          ) : null}
+        </main>
+      )}
 
       {isLoginDialogOpen ? (
         <div

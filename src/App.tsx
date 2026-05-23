@@ -2805,7 +2805,7 @@ export function App() {
       ) : (
         <main className='portal-stage'>
           <header className='portal-topbar'>
-            <button type='button' className='brand portal-brand' onClick={() => enterConfiguredView('home')}>
+            <button type='button' className='portal-brand' onClick={() => enterConfiguredView('home')}>
               <span className='brand-mark'>
                 <Sparkles size={21} />
               </span>
@@ -2864,23 +2864,35 @@ export function App() {
                   className='launch-card primary'
                   onClick={() => enterConfiguredView(isConfigured ? 'simple' : 'console')}
                 >
-                  <ImageIcon size={24} />
-                  <strong>简单文生图</strong>
-                  <span>输入描述、选择基础参数，然后直接生成图片。</span>
+                  <span className='launch-card-icon'>
+                    <ImageIcon size={22} />
+                  </span>
+                  <span className='launch-card-copy'>
+                    <strong>简单文生图</strong>
+                    <span>输入描述、选择基础参数，然后直接生成图片。</span>
+                  </span>
                 </button>
                 <button
                   type='button'
                   className='launch-card'
                   onClick={() => enterConfiguredView(isConfigured ? 'workflow' : 'console')}
                 >
-                  <Workflow size={24} />
-                  <strong>高级工作流</strong>
-                  <span>使用节点、连线、参考图和风格节点搭建生成流程。</span>
+                  <span className='launch-card-icon'>
+                    <Workflow size={22} />
+                  </span>
+                  <span className='launch-card-copy'>
+                    <strong>高级工作流</strong>
+                    <span>使用节点、连线、参考图和风格节点搭建生成流程。</span>
+                  </span>
                 </button>
                 <button type='button' className='launch-card' onClick={() => enterConfiguredView('console')}>
-                  <KeyRound size={24} />
-                  <strong>控制台配置</strong>
-                  <span>登录中转站、保存模型和 API Key、管理本地数据。</span>
+                  <span className='launch-card-icon'>
+                    <KeyRound size={22} />
+                  </span>
+                  <span className='launch-card-copy'>
+                    <strong>控制台配置</strong>
+                    <span>登录中转站、保存模型和 API Key、管理本地数据。</span>
+                  </span>
                 </button>
               </div>
               <section className='portal-panel recent-panel'>
@@ -3026,98 +3038,100 @@ export function App() {
                   </div>
                 </section>
 
-                <section className='portal-panel compact-panel'>
-                  <div className='section-title'>
-                    <Sun size={16} />
-                    <span>界面</span>
-                  </div>
-                  <div className='theme-switcher' aria-label='主题切换'>
-                    {themeOptions.map((option) => {
-                      const Icon = option.icon
-                      return (
-                        <button
-                          key={option.value}
-                          type='button'
-                          className={themeMode === option.value ? 'active' : ''}
-                          onClick={() => void handleThemeChange(option.value)}
-                          aria-pressed={themeMode === option.value}
-                          title={option.label}
-                        >
-                          <Icon size={15} />
-                          <span>{option.label}</span>
-                        </button>
-                      )
-                    })}
-                  </div>
-                  <div className='dock-action-bar'>
-                    <button className='top-link' onClick={() => void handleOpenConsole()}>
-                      <Terminal size={16} />
-                      中转站
-                      <ExternalLink size={14} />
-                    </button>
-                    <button className='top-link shop-link' onClick={() => void handleOpenShop()}>
-                      <ShoppingBag size={16} />
-                      小店
-                      <ExternalLink size={14} />
-                    </button>
-                  </div>
-                </section>
-
-                <section className='portal-panel compact-panel'>
-                  <div className='section-title'>
-                    <Download size={16} />
-                    <span>本地数据</span>
-                  </div>
-                  <div className='button-grid'>
-                    <button className='secondary' onClick={() => void handleExportBackup()}>
-                      <Download size={16} />
-                      导出备份
-                    </button>
-                    <label className='secondary file-action'>
-                      <Upload size={16} />
-                      导入备份
-                      <input
-                        type='file'
-                        accept='application/json,.json'
-                        onChange={(event) => {
-                          const file = event.target.files?.[0]
-                          if (file) void handleImportBackup(file)
-                          event.currentTarget.value = ''
-                        }}
-                      />
-                    </label>
-                  </div>
-                  <button
-                    className='ghost danger'
-                    onClick={() => void handleClearImages()}
-                    disabled={images.length === 0}
-                  >
-                    <Trash2 size={16} />
-                    清空图库
-                  </button>
-                  <p>
-                    图片和设置保存在当前浏览器 IndexedDB。生成任务先提交到服务器后台，结果会短暂缓存在服务器再同步到本地图库；备份文件不包含 API Key。
-                  </p>
-                </section>
-
-                <section className='portal-panel gallery-dock'>
-                  <div className='gallery-dock-header'>
-                    <div>
-                      <h2>本地图库</h2>
-                      <p>{images.length} 张图片</p>
+                <div className='console-side'>
+                  <section className='portal-panel compact-panel'>
+                    <div className='section-title'>
+                      <Sun size={16} />
+                      <span>界面</span>
                     </div>
-                  </div>
-                  {images.length === 0 ? (
-                    <div className='gallery-empty'>生成结果会出现在这里</div>
-                  ) : (
-                    <GalleryStrip
-                      images={images}
-                      onPreview={setPreviewImage}
-                      onDownload={handleDownloadImage}
-                      onDelete={(id) => void handleDeleteImage(id)}
-                    />
-                  )}
-                </section>
+                    <div className='theme-switcher' aria-label='主题切换'>
+                      {themeOptions.map((option) => {
+                        const Icon = option.icon
+                        return (
+                          <button
+                            key={option.value}
+                            type='button'
+                            className={themeMode === option.value ? 'active' : ''}
+                            onClick={() => void handleThemeChange(option.value)}
+                            aria-pressed={themeMode === option.value}
+                            title={option.label}
+                          >
+                            <Icon size={15} />
+                            <span>{option.label}</span>
+                          </button>
+                        )
+                      })}
+                    </div>
+                    <div className='dock-action-bar'>
+                      <button className='top-link' onClick={() => void handleOpenConsole()}>
+                        <Terminal size={16} />
+                        中转站
+                        <ExternalLink size={14} />
+                      </button>
+                      <button className='top-link shop-link' onClick={() => void handleOpenShop()}>
+                        <ShoppingBag size={16} />
+                        小店
+                        <ExternalLink size={14} />
+                      </button>
+                    </div>
+                  </section>
+
+                  <section className='portal-panel compact-panel'>
+                    <div className='section-title'>
+                      <Download size={16} />
+                      <span>本地数据</span>
+                    </div>
+                    <div className='button-grid'>
+                      <button className='secondary' onClick={() => void handleExportBackup()}>
+                        <Download size={16} />
+                        导出备份
+                      </button>
+                      <label className='secondary file-action'>
+                        <Upload size={16} />
+                        导入备份
+                        <input
+                          type='file'
+                          accept='application/json,.json'
+                          onChange={(event) => {
+                            const file = event.target.files?.[0]
+                            if (file) void handleImportBackup(file)
+                            event.currentTarget.value = ''
+                          }}
+                        />
+                      </label>
+                    </div>
+                    <button
+                      className='ghost danger'
+                      onClick={() => void handleClearImages()}
+                      disabled={images.length === 0}
+                    >
+                      <Trash2 size={16} />
+                      清空图库
+                    </button>
+                    <p>
+                      图片和设置保存在当前浏览器 IndexedDB。生成任务先提交到服务器后台，结果会短暂缓存在服务器再同步到本地图库；备份文件不包含 API Key。
+                    </p>
+                  </section>
+
+                  <section className='portal-panel gallery-dock'>
+                    <div className='gallery-dock-header'>
+                      <div>
+                        <h2>本地图库</h2>
+                        <p>{images.length} 张图片</p>
+                      </div>
+                    </div>
+                    {images.length === 0 ? (
+                      <div className='gallery-empty'>生成结果会出现在这里</div>
+                    ) : (
+                      <GalleryStrip
+                        images={images}
+                        onPreview={setPreviewImage}
+                        onDownload={handleDownloadImage}
+                        onDelete={(id) => void handleDeleteImage(id)}
+                      />
+                    )}
+                  </section>
+                </div>
               </div>
             </section>
           ) : null}

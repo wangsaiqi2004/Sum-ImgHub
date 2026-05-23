@@ -639,7 +639,8 @@ select:disabled {
   position: relative;
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
-  gap: 20px;
+  align-content: start;
+  gap: 24px;
   width: 100%;
   height: 100%;
   min-width: 0;
@@ -652,12 +653,14 @@ select:disabled {
   position: sticky;
   top: 0;
   z-index: 12;
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(240px, 1fr) auto;
   align-items: center;
-  justify-content: space-between;
   gap: 16px;
   min-width: 0;
-  padding: 10px;
+  width: min(1180px, 100%);
+  margin: 0 auto;
+  padding: 8px;
   background: rgb(10 12 18 / 72%);
   border: 1px solid var(--border);
   border-radius: 12px;
@@ -670,15 +673,32 @@ select:disabled {
 }
 
 .portal-brand {
+  display: inline-grid;
+  grid-template-columns: 42px minmax(0, 1fr);
+  align-items: center;
+  gap: 12px;
+  justify-self: start;
+  max-width: 100%;
   min-height: 48px;
-  padding: 0;
+  padding: 4px 10px 4px 4px;
   color: var(--text);
+  background: transparent;
+  border: 0;
   text-align: left;
+}
+
+.portal-brand .brand-mark {
+  width: 42px;
+  height: 42px;
 }
 
 .portal-brand strong,
 .portal-brand small {
   display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .portal-brand strong {
@@ -697,6 +717,7 @@ select:disabled {
   display: inline-flex;
   align-items: center;
   gap: 6px;
+  justify-self: end;
   min-width: 0;
   padding: 4px;
   background: var(--field);
@@ -717,6 +738,7 @@ select:disabled {
   border-radius: 8px;
   font-size: 13px;
   font-weight: 800;
+  white-space: nowrap;
 }
 
 .portal-nav button:hover,
@@ -787,13 +809,16 @@ select:disabled {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 14px;
+  align-items: stretch;
 }
 
 .launch-card {
   display: grid;
-  align-content: start;
-  gap: 12px;
-  min-height: 190px;
+  grid-template-columns: 42px minmax(0, 1fr);
+  align-content: stretch;
+  align-items: start;
+  gap: 14px;
+  min-height: 154px;
   padding: 18px;
   color: var(--text);
   background: linear-gradient(180deg, rgb(255 255 255 / 6%), rgb(255 255 255 / 2%)),
@@ -813,8 +838,25 @@ select:disabled {
   border-color: rgb(65 211 155 / 48%);
 }
 
-.launch-card svg {
-  color: var(--green);
+.launch-card-icon {
+  display: grid;
+  place-items: center;
+  width: 42px;
+  height: 42px;
+  color: #061014;
+  background: linear-gradient(135deg, var(--green), var(--blue));
+  border-radius: 8px;
+}
+
+.launch-card-icon svg {
+  color: #061014;
+}
+
+.launch-card-copy {
+  display: grid;
+  align-content: start;
+  gap: 8px;
+  min-width: 0;
 }
 
 .launch-card strong {
@@ -822,7 +864,7 @@ select:disabled {
   line-height: 1.2;
 }
 
-.launch-card span {
+.launch-card-copy span {
   color: var(--text-muted);
   font-size: 13px;
   line-height: 1.55;
@@ -841,24 +883,25 @@ select:disabled {
 }
 
 .recent-panel {
-  max-width: 760px;
+  max-width: none;
 }
 
 .console-layout {
   display: grid;
-  grid-template-columns: minmax(0, 1.35fr) minmax(280px, 0.8fr);
+  grid-template-columns: minmax(0, 1fr) 380px;
   gap: 14px;
   align-items: start;
 }
 
-.console-layout .portal-panel:first-child,
-.console-layout .gallery-dock {
-  grid-row: span 3;
+.console-side {
+  display: grid;
+  gap: 14px;
+  min-width: 0;
 }
 
 .simple-layout {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(320px, 420px);
+  grid-template-columns: minmax(0, 1fr) 380px;
   gap: 14px;
   align-items: start;
 }
@@ -2238,8 +2281,9 @@ select:disabled {
   }
 
   .portal-topbar {
+    display: grid;
+    grid-template-columns: 1fr;
     align-items: stretch;
-    flex-direction: column;
   }
 
   .portal-nav {

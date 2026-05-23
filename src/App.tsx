@@ -122,7 +122,7 @@ type PaneMenu = {
   position: { x: number; y: number }
 } | null
 
-type AppView = 'home' | 'console' | 'simple' | 'workflow'
+type AppView = 'home' | 'console' | 'simple' | 'gallery' | 'workflow'
 
 type WorkflowCanvas = {
   id: string
@@ -2851,6 +2851,12 @@ export function App() {
                 <small>{isConfigured ? `已配置 ${model}` : '先完成控制台配置'}</small>
               </span>
             </button>
+            <div className='top-status-bar' aria-label='连接状态'>
+              <span className={baseUrl.trim() ? 'ready' : ''}>Base URL</span>
+              <span className={apiKey.trim() ? 'ready' : ''}>生图 Key</span>
+              <span className={model.trim() ? 'ready' : ''}>模型</span>
+              <span className={codexApiKey.trim() ? 'ready' : ''}>提示词优化</span>
+            </div>
             <nav className='portal-nav' aria-label='主导航'>
               <button
                 type='button'
@@ -2878,6 +2884,14 @@ export function App() {
               </button>
               <button
                 type='button'
+                className={currentView === 'gallery' ? 'active' : ''}
+                onClick={() => enterConfiguredView('gallery')}
+              >
+                <Layers size={16} />
+                图库
+              </button>
+              <button
+                type='button'
                 onClick={() => enterConfiguredView('workflow')}
               >
                 <Workflow size={16} />
@@ -2894,7 +2908,7 @@ export function App() {
                     {isConfigured ? '配置已就绪' : '需要先配置连接'}
                   </span>
                   <h1>图像生成工作台</h1>
-                  <p>提示词、参数、连接状态和最近结果同步可见。</p>
+                  <p>提示词、参数和连接状态同步可见，生成结果集中进入图库管理。</p>
                 </div>
                 <div className='workbench-actions'>
                   <button
@@ -2904,6 +2918,14 @@ export function App() {
                   >
                     <KeyRound size={16} />
                     配置
+                  </button>
+                  <button
+                    type='button'
+                    className='secondary'
+                    onClick={() => enterConfiguredView('gallery')}
+                  >
+                    <Layers size={16} />
+                    图库
                   </button>
                   <button
                     type='button'
@@ -2998,50 +3020,6 @@ export function App() {
                   </div>
                 </section>
 
-                <aside className='workbench-rail'>
-                  <section className='portal-panel compact-panel setup-panel'>
-                    <div className='section-title'>
-                      <KeyRound size={16} />
-                      <span>连接状态</span>
-                    </div>
-                    <div className='setup-check-list'>
-                      <span className={baseUrl.trim() ? 'ready' : ''}>Base URL</span>
-                      <span className={apiKey.trim() ? 'ready' : ''}>生图 Key</span>
-                      <span className={model.trim() ? 'ready' : ''}>模型</span>
-                      <span className={codexApiKey.trim() ? 'ready' : ''}>提示词优化</span>
-                    </div>
-                    <div className='dock-action-bar'>
-                      <button type='button' className='top-link' onClick={() => enterConfiguredView('console')}>
-                        <Terminal size={16} />
-                        控制台
-                      </button>
-                      <button type='button' className='top-link shop-link' onClick={() => void handleOpenShop()}>
-                        <ShoppingBag size={16} />
-                        小店
-                        <ExternalLink size={14} />
-                      </button>
-                    </div>
-                  </section>
-
-                  <section className='portal-panel gallery-dock'>
-                    <div className='gallery-dock-header'>
-                      <div>
-                        <h2>最近图库</h2>
-                        <p>{images.length} 张图片</p>
-                      </div>
-                    </div>
-                    {images.length === 0 ? (
-                      <div className='gallery-empty'>生成结果会出现在这里</div>
-                    ) : (
-                      <GalleryStrip
-                        images={images}
-                        onPreview={setPreviewImage}
-                        onDownload={handleDownloadImage}
-                        onDelete={(id) => void handleDeleteImage(id)}
-                      />
-                    )}
-                  </section>
-                </aside>
               </div>
 
               <section className='workflow-strip'>
@@ -3057,6 +3035,65 @@ export function App() {
                   <Workflow size={16} />
                   打开工作流
                 </button>
+              </section>
+            </section>
+          ) : null}
+
+          {currentView === 'gallery' ? (
+            <section className='gallery-page'>
+              <div className='page-heading gallery-page-heading'>
+                <div>
+                  <h1>图库</h1>
+                  <p>集中管理本地生成结果，预览、下载和删除都在这里完成。</p>
+                </div>
+                <div className='workbench-actions'>
+                  <button
+                    type='button'
+                    className='secondary'
+                    onClick={() => enterConfiguredView('simple')}
+                  >
+                    <ImageIcon size={16} />
+                    继续生成
+                  </button>
+                  <button
+                    type='button'
+                    className='secondary'
+                    onClick={() => enterConfiguredView('workflow')}
+                  >
+                    <Workflow size={16} />
+                    工作流
+                  </button>
+                </div>
+              </div>
+
+              <section className='portal-panel gallery-page-panel'>
+                <div className='gallery-dock-header'>
+                  <div>
+                    <h2>本地图库</h2>
+                    <p>{images.length} 张图片</p>
+                  </div>
+                </div>
+                {images.length === 0 ? (
+                  <div className='gallery-empty gallery-page-empty'>
+                    <span>生成结果会出现在这里</span>
+                    <button
+                      type='button'
+                      className='secondary'
+                      onClick={() => enterConfiguredView('simple')}
+                    >
+                      <ImageIcon size={16} />
+                      去生成图片
+                    </button>
+                  </div>
+                ) : (
+                  <GalleryStrip
+                    images={images}
+                    limit={images.length}
+                    onPreview={setPreviewImage}
+                    onDownload={handleDownloadImage}
+                    onDelete={(id) => void handleDeleteImage(id)}
+                  />
+                )}
               </section>
             </section>
           ) : null}

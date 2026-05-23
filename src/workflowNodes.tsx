@@ -890,18 +890,20 @@ export function BlueprintEdge({
 
 export function GalleryStrip({
   images,
+  limit = 8,
   onPreview,
   onDownload,
   onDelete,
 }: {
   images: LocalImageRecord[]
+  limit?: number
   onPreview: (image: LocalImageRecord) => void
   onDownload: (image: LocalImageRecord, index: number) => void
   onDelete: (id: string) => void
 }) {
   return (
     <div className='gallery-strip'>
-      {images.slice(0, 8).map((image, index) => (
+      {images.slice(0, limit).map((image, index) => (
         <article key={image.id}>
           <button type='button' onClick={() => onPreview(image)} aria-label='打开图片预览'>
             <img src={image.src} alt={image.revisedPrompt || image.prompt} />

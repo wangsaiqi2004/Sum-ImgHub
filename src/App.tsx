@@ -2573,8 +2573,7 @@ export function App() {
     [flowInstance]
   )
 
-  function addWorkflowNode(type: WorkflowNodeType) {
-    if (!paneMenu) return
+  function addWorkflowNodeAt(type: WorkflowNodeType, position: { x: number; y: number }) {
     const id = `${type}-${Date.now()}`
     setNodes((currentNodes) => {
       const data =
@@ -2594,13 +2593,33 @@ export function App() {
         {
           id,
           type,
-          position: paneMenu.position,
+          position,
           data,
         },
       ]
     })
     setPaneMenu(null)
     setStatus('已创建节点，拖动端口可连线')
+  }
+
+  function getWorkflowViewportCenter() {
+    const viewportWidth = typeof window === 'undefined' ? 1280 : window.innerWidth
+    const viewportHeight = typeof window === 'undefined' ? 720 : window.innerHeight
+    return flowInstance
+      ? flowInstance.screenToFlowPosition({
+          x: viewportWidth / 2,
+          y: viewportHeight / 2,
+        })
+      : { x: 0, y: 0 }
+  }
+
+  function addWorkflowNode(type: WorkflowNodeType) {
+    if (!paneMenu) return
+    addWorkflowNodeAt(type, paneMenu.position)
+  }
+
+  function addWorkflowNodeFromToolbar(type: WorkflowNodeType) {
+    addWorkflowNodeAt(type, getWorkflowViewportCenter())
   }
 
   return (
@@ -2761,10 +2780,28 @@ export function App() {
               <p>右键创建节点 · 拖动端口连线</p>
             </div>
           </div>
+          <div className='workflow-quick-add' aria-label='快速添加节点'>
+            <button type='button' onClick={() => addWorkflowNodeFromToolbar('asset')}>
+              <ImageIcon size={15} />
+              参考
+            </button>
+            <button type='button' onClick={() => addWorkflowNodeFromToolbar('prompt')}>
+              <Edit3 size={15} />
+              描述
+            </button>
+            <button type='button' onClick={() => addWorkflowNodeFromToolbar('style')}>
+              <Sparkles size={15} />
+              风格
+            </button>
+            <button type='button' onClick={() => addWorkflowNodeFromToolbar('generate')}>
+              <Workflow size={15} />
+              生成
+            </button>
+          </div>
           <div className='workflow-nav'>
             <button type='button' className='top-link' onClick={() => enterConfiguredView('home')}>
               <Home size={15} />
-              入口
+              工作台
             </button>
             <button type='button' className='top-link' onClick={() => enterConfiguredView('console')}>
               <Terminal size={15} />
@@ -2821,7 +2858,7 @@ export function App() {
                 onClick={() => enterConfiguredView('home')}
               >
                 <Home size={16} />
-                入口
+                工作台
               </button>
               <button
                 type='button'
@@ -2851,67 +2888,175 @@ export function App() {
 
           {currentView === 'home' ? (
             <section className='launchpad'>
-              <div className='launchpad-copy'>
-                <span className={`setup-state ${isConfigured ? 'ready' : ''}`}>
-                  {isConfigured ? '配置已就绪' : '需要先配置连接'}
-                </span>
-                <h1>选择你的创作方式</h1>
-                <p>新手可以直接从简单文生图开始；熟悉节点逻辑的用户仍然可以进入完整工作流画布。</p>
-              </div>
-              <div className='launchpad-grid'>
-                <button
-                  type='button'
-                  className='launch-card primary'
-                  onClick={() => enterConfiguredView(isConfigured ? 'simple' : 'console')}
-                >
-                  <span className='launch-card-icon'>
-                    <ImageIcon size={22} />
+              <div className='workbench-head'>
+                <div>
+                  <span className={`setup-state ${isConfigured ? 'ready' : ''}`}>
+                    {isConfigured ? '配置已就绪' : '需要先配置连接'}
                   </span>
-                  <span className='launch-card-copy'>
-                    <strong>简单文生图</strong>
-                    <span>输入描述、选择基础参数，然后直接生成图片。</span>
-                  </span>
-                </button>
-                <button
-                  type='button'
-                  className='launch-card'
-                  onClick={() => enterConfiguredView(isConfigured ? 'workflow' : 'console')}
-                >
-                  <span className='launch-card-icon'>
-                    <Workflow size={22} />
-                  </span>
-                  <span className='launch-card-copy'>
-                    <strong>高级工作流</strong>
-                    <span>使用节点、连线、参考图和风格节点搭建生成流程。</span>
-                  </span>
-                </button>
-                <button type='button' className='launch-card' onClick={() => enterConfiguredView('console')}>
-                  <span className='launch-card-icon'>
-                    <KeyRound size={22} />
-                  </span>
-                  <span className='launch-card-copy'>
-                    <strong>控制台配置</strong>
-                    <span>登录中转站、保存模型和 API Key、管理本地数据。</span>
-                  </span>
-                </button>
-              </div>
-              <section className='portal-panel recent-panel'>
-                <div className='gallery-dock-header'>
-                  <div>
-                    <h2>最近图库</h2>
-                    <p>{images.length} 张图片</p>
-                  </div>
+                  <h1>图像生成工作台</h1>
+                  <p>提示词、参数、连接状态和最近结果同步可见。</p>
                 </div>
-                {images.length === 0 ? (
-                  <div className='gallery-empty'>生成结果会出现在这里</div>
-                ) : (
-                  <GalleryStrip
-                    images={images}
-                    onPreview={setPreviewImage}
-                    onDownload={handleDownloadImage}
-                    onDelete={(id) => void handleDeleteImage(id)}
-                  />
-                )}
+                <div className='workbench-actions'>
+                  <button
+                    type='button'
+                    className='secondary'
+                    onClick={() => enterConfiguredView('console')}
+                  >
+                    <KeyRound size={16} />
+                    配置
+                  </button>
+                  <button
+                    type='button'
+                    className='secondary'
+                    onClick={() => enterConfiguredView('workflow')}
+                  >
+                    <Workflow size={16} />
+                    工作流
+                  </button>
+                </div>
+              </div>
+
+              <div className='workbench-grid'>
+                <section className='portal-panel workbench-composer'>
+                  <div className='section-title'>
+                    <ImageIcon size={16} />
+                    <span>快速生成</span>
+                  </div>
+                  <label className='field'>
+                    <span>图片描述</span>
+                    <textarea
+                      className='simple-prompt'
+                      value={simplePrompt}
+                      onChange={(event) => setSimplePrompt(event.target.value)}
+                      placeholder='例如：一张高级科技产品海报，干净背景，清晰主视觉，真实材质，高级棚拍光线'
+                    />
+                  </label>
+                  <div className='simple-param-grid'>
+                    <label className='field'>
+                      <span>模型</span>
+                      <select value={model} onChange={(event) => setModel(event.target.value)}>
+                        {sortedModels.length === 0 ? (
+                          <option value={model}>{model}</option>
+                        ) : (
+                          sortedModels.map((item) => (
+                            <option key={item.id} value={item.id}>
+                              {item.id}
+                            </option>
+                          ))
+                        )}
+                      </select>
+                    </label>
+                    <label className='field'>
+                      <span>尺寸</span>
+                      <select value={size} onChange={(event) => setSize(event.target.value)}>
+                        {sizes.map((item) => (
+                          <option key={item} value={item}>
+                            {item}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <label className='field'>
+                      <span>质量</span>
+                      <select value={quality} onChange={(event) => setQuality(event.target.value)}>
+                        {qualities.map((item) => (
+                          <option key={item} value={item}>
+                            {item}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <label className='field'>
+                      <span>数量</span>
+                      <select value={count} onChange={(event) => setCount(Number(event.target.value))}>
+                        {counts.map((item) => (
+                          <option key={item} value={item}>
+                            {item}x
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  </div>
+                  <div className='simple-actions'>
+                    <button
+                      type='button'
+                      className='secondary'
+                      onClick={() => enterConfiguredView('simple')}
+                    >
+                      <ImageIcon size={16} />
+                      专注模式
+                    </button>
+                    <button
+                      type='button'
+                      className='primary-action'
+                      onClick={() => void handleSimpleGenerate()}
+                      disabled={isGenerating || !isConfigured || !simplePrompt.trim()}
+                    >
+                      {isGenerating ? <Loader2 className='spin' size={16} /> : <Sparkles size={16} />}
+                      {isConfigured ? (isGenerating ? '生成中' : '立即生成') : '先完成配置'}
+                    </button>
+                  </div>
+                </section>
+
+                <aside className='workbench-rail'>
+                  <section className='portal-panel compact-panel setup-panel'>
+                    <div className='section-title'>
+                      <KeyRound size={16} />
+                      <span>连接状态</span>
+                    </div>
+                    <div className='setup-check-list'>
+                      <span className={baseUrl.trim() ? 'ready' : ''}>Base URL</span>
+                      <span className={apiKey.trim() ? 'ready' : ''}>生图 Key</span>
+                      <span className={model.trim() ? 'ready' : ''}>模型</span>
+                      <span className={codexApiKey.trim() ? 'ready' : ''}>提示词优化</span>
+                    </div>
+                    <div className='dock-action-bar'>
+                      <button type='button' className='top-link' onClick={() => enterConfiguredView('console')}>
+                        <Terminal size={16} />
+                        控制台
+                      </button>
+                      <button type='button' className='top-link shop-link' onClick={() => void handleOpenShop()}>
+                        <ShoppingBag size={16} />
+                        小店
+                        <ExternalLink size={14} />
+                      </button>
+                    </div>
+                  </section>
+
+                  <section className='portal-panel gallery-dock'>
+                    <div className='gallery-dock-header'>
+                      <div>
+                        <h2>最近图库</h2>
+                        <p>{images.length} 张图片</p>
+                      </div>
+                    </div>
+                    {images.length === 0 ? (
+                      <div className='gallery-empty'>生成结果会出现在这里</div>
+                    ) : (
+                      <GalleryStrip
+                        images={images}
+                        onPreview={setPreviewImage}
+                        onDownload={handleDownloadImage}
+                        onDelete={(id) => void handleDeleteImage(id)}
+                      />
+                    )}
+                  </section>
+                </aside>
+              </div>
+
+              <section className='workflow-strip'>
+                <div>
+                  <strong>需要参考图、风格节点或多步骤创作？</strong>
+                  <span>进入工作流后可用顶部快捷按钮添加节点，不必记住右键菜单。</span>
+                </div>
+                <button
+                  type='button'
+                  className='secondary'
+                  onClick={() => enterConfiguredView('workflow')}
+                >
+                  <Workflow size={16} />
+                  打开工作流
+                </button>
               </section>
             </section>
           ) : null}

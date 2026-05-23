@@ -106,9 +106,13 @@ select:disabled {
   min-height: 0;
   overflow: hidden;
   background:
-    radial-gradient(circle at 18% 22%, rgb(78 167 255 / 18%), transparent 22%),
-    radial-gradient(circle at 72% 36%, rgb(255 74 162 / 14%), transparent 23%),
+    linear-gradient(90deg, rgb(255 255 255 / 3%) 1px, transparent 1px),
+    linear-gradient(rgb(255 255 255 / 3%) 1px, transparent 1px),
     linear-gradient(135deg, #06080d, var(--canvas));
+  background-size:
+    56px 56px,
+    56px 56px,
+    auto;
 }
 
 .workflow-only {
@@ -117,9 +121,13 @@ select:disabled {
 
 :root[data-theme='light'] .flow-shell {
   background:
-    radial-gradient(circle at 18% 22%, rgb(29 117 208 / 14%), transparent 22%),
-    radial-gradient(circle at 72% 36%, rgb(213 44 130 / 10%), transparent 23%),
+    linear-gradient(90deg, rgb(16 24 40 / 5%) 1px, transparent 1px),
+    linear-gradient(rgb(16 24 40 / 5%) 1px, transparent 1px),
     linear-gradient(135deg, #eef2f7, var(--canvas));
+  background-size:
+    56px 56px,
+    56px 56px,
+    auto;
 }
 
 .canvas-drawer {
@@ -616,6 +624,47 @@ select:disabled {
   pointer-events: auto;
 }
 
+.workflow-quick-add {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px;
+  background: rgb(15 18 26 / 78%);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 14px 38px var(--shadow);
+  backdrop-filter: blur(18px);
+  pointer-events: auto;
+}
+
+:root[data-theme='light'] .workflow-quick-add {
+  background: rgb(255 255 255 / 82%);
+}
+
+.workflow-quick-add button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 32px;
+  padding: 0 10px;
+  color: var(--text-muted);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  font-size: 12px;
+  font-weight: 850;
+  white-space: nowrap;
+}
+
+.workflow-quick-add button:hover,
+.workflow-quick-add button:focus-visible {
+  color: var(--text);
+  background: var(--field-hover);
+  border-color: var(--border-strong);
+  outline: none;
+}
+
 .portal-shell {
   width: 100vw;
   height: 100vh;
@@ -623,16 +672,24 @@ select:disabled {
   min-height: 0;
   overflow: hidden;
   background:
-    radial-gradient(circle at 16% 18%, rgb(78 167 255 / 16%), transparent 24%),
-    radial-gradient(circle at 78% 30%, rgb(65 211 155 / 11%), transparent 24%),
+    linear-gradient(90deg, rgb(255 255 255 / 3%) 1px, transparent 1px),
+    linear-gradient(rgb(255 255 255 / 3%) 1px, transparent 1px),
     linear-gradient(135deg, #06080d, var(--canvas));
+  background-size:
+    56px 56px,
+    56px 56px,
+    auto;
 }
 
 :root[data-theme='light'] .portal-shell {
   background:
-    radial-gradient(circle at 16% 18%, rgb(29 117 208 / 12%), transparent 24%),
-    radial-gradient(circle at 78% 30%, rgb(15 148 107 / 9%), transparent 24%),
+    linear-gradient(90deg, rgb(16 24 40 / 5%) 1px, transparent 1px),
+    linear-gradient(rgb(16 24 40 / 5%) 1px, transparent 1px),
     linear-gradient(135deg, #eef2f7, var(--canvas));
+  background-size:
+    56px 56px,
+    56px 56px,
+    auto;
 }
 
 .portal-stage {
@@ -759,11 +816,25 @@ select:disabled {
 }
 
 .launchpad-copy,
+.workbench-head,
 .page-heading {
   display: grid;
   gap: 10px;
   min-width: 0;
   padding-top: 8px;
+}
+
+.workbench-head {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 18px;
+}
+
+.workbench-actions {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
 }
 
 .setup-state {
@@ -784,25 +855,123 @@ select:disabled {
 }
 
 .launchpad h1,
+.workbench-head h1,
 .page-heading h1 {
   margin: 0;
   color: var(--text);
-  font-size: clamp(30px, 5vw, 56px);
-  line-height: 1.05;
+  font-size: clamp(28px, 4vw, 42px);
+  line-height: 1.08;
   letter-spacing: 0;
 }
 
 .page-heading h1 {
-  font-size: clamp(28px, 4vw, 42px);
+  font-size: clamp(24px, 3vw, 34px);
 }
 
 .launchpad p,
+.workbench-head p,
 .page-heading p {
   max-width: 720px;
   margin: 0;
   color: var(--text-muted);
   font-size: 15px;
   line-height: 1.6;
+}
+
+.workbench-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 390px;
+  gap: 14px;
+  align-items: start;
+}
+
+.workbench-composer {
+  gap: 16px;
+}
+
+.workbench-composer .simple-prompt {
+  min-height: 300px;
+}
+
+.workbench-rail {
+  display: grid;
+  gap: 14px;
+  min-width: 0;
+}
+
+.setup-panel {
+  align-content: start;
+}
+
+.setup-check-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.setup-check-list span {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 34px;
+  padding: 0 10px;
+  color: var(--text-muted);
+  background: var(--field);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.setup-check-list span::before {
+  width: 8px;
+  height: 8px;
+  background: var(--amber);
+  border-radius: 999px;
+  content: "";
+}
+
+.setup-check-list span.ready {
+  color: var(--text);
+  border-color: rgb(65 211 155 / 34%);
+}
+
+.setup-check-list span.ready::before {
+  background: var(--green);
+}
+
+.workflow-strip {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 14px;
+  min-width: 0;
+  padding: 14px 16px;
+  color: var(--text);
+  background: var(--panel-soft);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+
+.workflow-strip div {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.workflow-strip strong,
+.workflow-strip span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.workflow-strip strong {
+  font-size: 14px;
+}
+
+.workflow-strip span {
+  color: var(--text-muted);
+  font-size: 12px;
 }
 
 .launchpad-grid {
@@ -2194,6 +2363,7 @@ select:disabled {
 
   .launchpad-grid,
   .console-layout,
+  .workbench-grid,
   .simple-layout {
     grid-template-columns: 1fr;
   }
@@ -2256,6 +2426,15 @@ select:disabled {
     flex-direction: column;
   }
 
+  .workflow-quick-add {
+    width: calc(100vw - 36px);
+    overflow-x: auto;
+  }
+
+  .workflow-quick-add button {
+    flex: 1 0 auto;
+  }
+
   .canvas-title-bar {
     top: 116px;
     left: 18px;
@@ -2294,6 +2473,17 @@ select:disabled {
 
   .portal-nav button {
     padding: 0 6px;
+  }
+
+  .workbench-head,
+  .workflow-strip {
+    grid-template-columns: 1fr;
+    align-items: stretch;
+  }
+
+  .workbench-actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .workflow-nav {
@@ -2340,6 +2530,8 @@ select:disabled {
   .launchpad-grid,
   .simple-param-grid,
   .simple-actions,
+  .setup-check-list,
+  .workbench-actions,
   .dock-action-bar {
     grid-template-columns: 1fr;
   }

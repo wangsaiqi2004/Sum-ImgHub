@@ -525,7 +525,6 @@ class NewApiSession:
             urllib.request.HTTPCookieProcessor(self.cookie_jar)
         )
         self.user_id: int | None = None
-        self.available_groups: set[str] | None = None
 
     def request(
         self,
@@ -583,31 +582,6 @@ class NewApiSession:
         if not isinstance(user_id, int):
             raise NewApiError("登录成功但没有返回用户 ID")
         self.user_id = user_id
-
-    def list_available_groups(self) -> set[str]:
-        if self.available_groups is not None:
-            return self.available_groups
-
-        response = self.request("GET", "/api/group/")
-        if not response.get("success"):
-            raise NewApiError(str(response.get("message") or "获取账号可用分组失败"))
-
-        groups = response.get("data") or []
-        if not isinstance(groups, list):
-            return set()
-        self.available_groups = {group for group in groups if isinstance(group, str) and group}
-        return self.available_groups
-
-    def ensure_group_available(self, group: str) -> None:
-        groups = self.list_available_groups()
-        if group in groups:
-            return
-
-        visible_groups = "、".join(sorted(groups)[:8]) if groups else "无"
-        raise NewApiError(
-            f"当前账号没有“{group}”分组权限，请先在中转站后台给该用户开通该分组后再登录。"
-            f"当前可用分组：{visible_groups}"
-        )
 
     def list_tokens(self) -> list[dict[str, Any]]:
         response = self.request("GET", f"/api/token/?p=1&size={TOKEN_LIST_PAGE_SIZE}")
@@ -716,7 +690,6 @@ class NewApiSession:
         return key
 
     def obtain_token_key(self, name: str, group: str, model: str) -> dict[str, Any]:
-        self.ensure_group_available(group)
         token = self.find_target_token(group, model)
         created = False
         if token is None:

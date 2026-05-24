@@ -3490,20 +3490,6 @@ export function App() {
 
               </div>
 
-              <section className='workflow-strip'>
-                <div>
-                  <strong>需要参考图、风格节点或多步骤创作？</strong>
-                  <span>进入工作流后可用顶部快捷按钮添加节点，不必记住右键菜单。</span>
-                </div>
-                <button
-                  type='button'
-                  className='secondary'
-                  onClick={() => enterConfiguredView('workflow')}
-                >
-                  <Workflow size={16} />
-                  打开工作流
-                </button>
-              </section>
             </section>
           ) : null}
 
@@ -3587,20 +3573,6 @@ export function App() {
                 </div>
               </section>
 
-              <section className='workflow-strip'>
-                <div>
-                  <strong>不需要手写复杂提示词</strong>
-                  <span>你只提供商品、参考风格和简单诉求，系统会在后台补齐主图生成提示词。</span>
-                </div>
-                <button
-                  type='button'
-                  className='secondary'
-                  onClick={() => enterConfiguredView('gallery')}
-                >
-                  <Layers size={16} />
-                  查看图库
-                </button>
-              </section>
             </section>
           ) : null}
 

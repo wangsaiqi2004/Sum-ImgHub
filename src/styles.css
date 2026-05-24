@@ -1152,8 +1152,7 @@ select:disabled {
 
 .portal-brand:focus-visible,
 .portal-nav button:focus-visible,
-.workbench-actions button:focus-visible,
-.workflow-strip button:focus-visible {
+.workbench-actions button:focus-visible {
   border-color: var(--blue);
   box-shadow: 0 0 0 3px var(--focus);
   outline: none;
@@ -1499,40 +1498,6 @@ select:disabled {
 .gallery-page-empty {
   gap: 12px;
   min-height: 220px;
-}
-
-.workflow-strip {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 14px;
-  min-width: 0;
-  padding: 14px 16px;
-  color: var(--text);
-  background: var(--panel-soft);
-  border: 1px solid var(--border);
-  border-radius: 10px;
-}
-
-.workflow-strip div {
-  display: grid;
-  gap: 4px;
-  min-width: 0;
-}
-
-.workflow-strip strong,
-.workflow-strip span {
-  min-width: 0;
-  overflow-wrap: anywhere;
-}
-
-.workflow-strip strong {
-  font-size: 14px;
-}
-
-.workflow-strip span {
-  color: var(--text-muted);
-  font-size: 12px;
 }
 
 .launchpad-grid {
@@ -3282,8 +3247,7 @@ select:disabled {
   }
 
   .workbench-head,
-  .gallery-page-heading,
-  .workflow-strip {
+  .gallery-page-heading {
     grid-template-columns: 1fr;
     align-items: stretch;
   }

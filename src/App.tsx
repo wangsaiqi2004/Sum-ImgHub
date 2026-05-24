@@ -188,6 +188,7 @@ type StateUpdater<T> = T | ((current: T) => T)
 const WORKFLOW_CANVASES_STORAGE_KEY = 'gpt-image-tools.workflow-canvases.v1'
 const ACTIVE_CANVAS_STORAGE_KEY = 'gpt-image-tools.active-canvas.v1'
 const PENDING_GENERATION_TASKS_STORAGE_KEY = 'gpt-image-tools.pending-generation-tasks.v1'
+const CANVAS_DRAWER_AUTO_OPEN_QUERY = '(min-width: 1120px)'
 
 const initialWorkflowNodes: WorkflowNode[] = [
   { id: 'asset-1', type: 'asset', position: { x: -520, y: -130 }, data: {} },
@@ -1157,11 +1158,14 @@ export function App() {
   const [notice, setNotice] = useState<{ id: number; message: string } | null>(null)
   const [paneMenu, setPaneMenu] = useState<PaneMenu>(null)
   const [isSidebarDrawerOpen, setIsSidebarDrawerOpen] = useState(false)
-  const [isCanvasDrawerOpen, setIsCanvasDrawerOpen] = useState(true)
+  const [isCanvasDrawerOpen, setIsCanvasDrawerOpen] = useState(() =>
+    typeof window === 'undefined' ? true : window.matchMedia(CANVAS_DRAWER_AUTO_OPEN_QUERY).matches
+  )
   const [flowInstance, setFlowInstance] =
     useState<ReactFlowInstance<WorkflowNode, WorkflowEdge> | null>(null)
   const generationTaskIdsRef = useRef(new Set<string>())
   const lastSavedReferenceImageBlobSignatureRef = useRef('')
+  const hasManuallyToggledCanvasDrawerRef = useRef(false)
 
   const activeCanvas = useMemo(
     () => canvases.find((canvas) => canvas.id === activeCanvasId) || canvases[0],
@@ -1352,6 +1356,19 @@ export function App() {
   useEffect(() => {
     if (isConfigured) setNotice(null)
   }, [isConfigured])
+
+  useEffect(() => {
+    const mediaQuery = window.matchMedia(CANVAS_DRAWER_AUTO_OPEN_QUERY)
+    setIsCanvasDrawerOpen(mediaQuery.matches)
+
+    function syncCanvasDrawerState(event: MediaQueryListEvent) {
+      if (hasManuallyToggledCanvasDrawerRef.current) return
+      setIsCanvasDrawerOpen(event.matches)
+    }
+
+    mediaQuery.addEventListener('change', syncCanvasDrawerState)
+    return () => mediaQuery.removeEventListener('change', syncCanvasDrawerState)
+  }, [])
 
   useEffect(() => {
     if (!isSidebarDrawerOpen) return
@@ -2894,7 +2911,10 @@ export function App() {
             <button
               type='button'
               className='workflow-canvas-drawer-toggle'
-              onClick={() => setIsCanvasDrawerOpen((current) => !current)}
+              onClick={() => {
+                hasManuallyToggledCanvasDrawerRef.current = true
+                setIsCanvasDrawerOpen((current) => !current)
+              }}
               aria-expanded={isCanvasDrawerOpen}
               title={isCanvasDrawerOpen ? '收起画布' : '展开画布'}
             >

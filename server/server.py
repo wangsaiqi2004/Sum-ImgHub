@@ -55,6 +55,9 @@ IMAGE_REQUEST_TIMEOUT = env_int("IMAGE_TOOLS_IMAGE_REQUEST_TIMEOUT", 600)
 CACHE_MAX_BYTES = env_int("IMAGE_TOOLS_CACHE_MAX_BYTES", 1024 * 1024 * 1024)
 LOG_MAX_ROWS = env_int("IMAGE_TOOLS_LOG_MAX_ROWS", 5000)
 DB_MAX_BYTES = env_int("IMAGE_TOOLS_DB_MAX_BYTES", 64 * 1024 * 1024)
+DEFAULT_LOCAL_PROXY = "http://127.0.0.1:7897"
+DEFAULT_LOCAL_PROXY_HOST = "127.0.0.1"
+DEFAULT_LOCAL_PROXY_PORT = 7897
 TASK_POLL_SECONDS = 1.5
 OPENAI_IMAGE_PROXY_PATHS = {
     "/api/openai/v1/images/generations": "/v1/images/generations",
@@ -89,6 +92,44 @@ class OpenAIProxyError(Exception):
 
 class ImageTaskError(Exception):
     pass
+
+
+def local_proxy_is_available() -> bool:
+    try:
+        with socket.create_connection(
+            (DEFAULT_LOCAL_PROXY_HOST, DEFAULT_LOCAL_PROXY_PORT),
+            timeout=0.35,
+        ):
+            return True
+    except OSError:
+        return False
+
+
+def resolve_outbound_proxy() -> str | None:
+    raw = os.environ.get("IMAGE_TOOLS_OUTBOUND_PROXY")
+    if raw is not None:
+        value = raw.strip()
+        if value.lower() in {"", "0", "false", "no", "none", "off", "direct"}:
+            return None
+        return value
+
+    if local_proxy_is_available():
+        return DEFAULT_LOCAL_PROXY
+    return None
+
+
+def build_url_opener(*handlers: urllib.request.BaseHandler) -> urllib.request.OpenerDirector:
+    proxy_url = resolve_outbound_proxy()
+    if proxy_url:
+        return urllib.request.build_opener(
+            urllib.request.ProxyHandler({"http": proxy_url, "https": proxy_url}),
+            *handlers,
+        )
+    return urllib.request.build_opener(*handlers)
+
+
+def open_url(request: urllib.request.Request, timeout: float | None = None):
+    return build_url_opener().open(request, timeout=timeout)
 
 
 def now_ts() -> float:
@@ -421,7 +462,7 @@ def fetch_image_as_data_url(url: str) -> str:
         },
     )
     try:
-        with urllib.request.urlopen(request, timeout=REQUEST_TIMEOUT) as response:
+        with open_url(request, timeout=REQUEST_TIMEOUT) as response:
             content_type = response.headers.get("Content-Type", "image/png").split(";")[0].strip()
             if not content_type.startswith("image/"):
                 raise ImageFetchError("返回内容不是图片")
@@ -459,7 +500,7 @@ def fetch_image_bytes(url: str) -> tuple[bytes, str]:
             "User-Agent": "GPT-Image-Tools/1.0",
         },
     )
-    with urllib.request.urlopen(request, timeout=REQUEST_TIMEOUT) as response:
+    with open_url(request, timeout=REQUEST_TIMEOUT) as response:
         content_type = response.headers.get("Content-Type", "image/png").split(";")[0].strip()
         if not content_type.startswith("image/"):
             raise ImageFetchError("返回内容不是图片")
@@ -521,9 +562,7 @@ class NewApiSession:
     def __init__(self, base_url: str) -> None:
         self.base_url = base_url
         self.cookie_jar = http.cookiejar.CookieJar()
-        self.opener = urllib.request.build_opener(
-            urllib.request.HTTPCookieProcessor(self.cookie_jar)
-        )
+        self.opener = build_url_opener(urllib.request.HTTPCookieProcessor(self.cookie_jar))
         self.user_id: int | None = None
 
     def request(
@@ -871,7 +910,7 @@ def run_generation_task(
 
     try:
         try:
-            with urllib.request.urlopen(request, timeout=IMAGE_REQUEST_TIMEOUT) as response:
+            with open_url(request, timeout=IMAGE_REQUEST_TIMEOUT) as response:
                 response_body = response.read()
                 status = response.status
         except urllib.error.HTTPError as exc:
@@ -1368,6 +1407,11 @@ def main() -> None:
     init_storage()
     recover_incomplete_tasks()
     evict_cache_if_needed()
+    outbound_proxy = resolve_outbound_proxy()
+    if outbound_proxy:
+        LOGGER.info("Using outbound proxy %s", outbound_proxy)
+    else:
+        LOGGER.info("Using direct outbound network")
 
     handler = lambda *args, **kwargs: ImageToolsHandler(  # noqa: E731
         *args,

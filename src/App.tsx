@@ -2778,8 +2778,8 @@ export function App() {
   const activePortalView = currentView === 'workflow' ? 'home' : currentView
   const portalViewMeta: Record<Exclude<AppView, 'workflow'>, { title: string; description: string }> = {
     home: {
-      title: '图像生成工作台',
-      description: '提示词、参数和生成结果集中进入图库管理。',
+      title: '快速生成',
+      description: '用提示词和参数快速完成生图，结果自动进入图库管理。',
     },
     console: {
       title: '控制台',
@@ -2839,14 +2839,15 @@ export function App() {
                 onClick={() => enterSidebarView('home')}
               >
                 <Home size={16} />
-                工作台
+                快速生成
               </button>
               <button
                 type='button'
-                onClick={() => enterSidebarView('console')}
+                className='active'
+                onClick={() => enterSidebarView('workflow')}
               >
-                <Terminal size={16} />
-                控制台
+                <Workflow size={16} />
+                工作流
               </button>
               <button
                 type='button'
@@ -2857,11 +2858,10 @@ export function App() {
               </button>
               <button
                 type='button'
-                className='active'
-                onClick={() => enterSidebarView('workflow')}
+                onClick={() => enterSidebarView('console')}
               >
-                <Workflow size={16} />
-                工作流
+                <Terminal size={16} />
+                控制台
               </button>
             </nav>
             <div className='app-sidebar-footer'>
@@ -3124,15 +3124,14 @@ export function App() {
                 onClick={() => enterSidebarView('home')}
               >
                 <Home size={16} />
-                工作台
+                快速生成
               </button>
               <button
                 type='button'
-                className={currentView === 'console' ? 'active' : ''}
-                onClick={() => enterSidebarView('console')}
+                onClick={() => enterSidebarView('workflow')}
               >
-                <Terminal size={16} />
-                控制台
+                <Workflow size={16} />
+                工作流
               </button>
               <button
                 type='button'
@@ -3144,10 +3143,11 @@ export function App() {
               </button>
               <button
                 type='button'
-                onClick={() => enterSidebarView('workflow')}
+                className={currentView === 'console' ? 'active' : ''}
+                onClick={() => enterSidebarView('console')}
               >
-                <Workflow size={16} />
-                工作流
+                <Terminal size={16} />
+                控制台
               </button>
             </nav>
             <div className='app-sidebar-footer'>
@@ -3211,7 +3211,7 @@ export function App() {
                   {activePortalView === 'gallery' ? (
                     <button type='button' className='secondary' onClick={() => enterConfiguredView('home')}>
                       <Home size={16} />
-                      工作台
+                      快速生成
                     </button>
                   ) : null}
                   <button type='button' className='secondary' onClick={() => enterConfiguredView('workflow')}>
@@ -3326,7 +3326,7 @@ export function App() {
                       onClick={() => enterConfiguredView('home')}
                     >
                       <Home size={16} />
-                      回到工作台
+                      回到快速生成
                     </button>
                   </div>
                 ) : (

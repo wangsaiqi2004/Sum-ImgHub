@@ -630,47 +630,6 @@ select:disabled {
   pointer-events: auto;
 }
 
-.workflow-quick-add {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 5px;
-  background: rgb(15 18 26 / 78%);
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  box-shadow: 0 14px 38px var(--shadow);
-  backdrop-filter: blur(18px);
-  pointer-events: auto;
-}
-
-:root[data-theme='light'] .workflow-quick-add {
-  background: rgb(255 255 255 / 82%);
-}
-
-.workflow-quick-add button {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  min-height: 32px;
-  padding: 0 10px;
-  color: var(--text-muted);
-  background: transparent;
-  border: 1px solid transparent;
-  border-radius: 7px;
-  font-size: 12px;
-  font-weight: 850;
-  white-space: nowrap;
-}
-
-.workflow-quick-add button:hover,
-.workflow-quick-add button:focus-visible {
-  color: var(--text);
-  background: var(--field-hover);
-  border-color: var(--border-strong);
-  outline: none;
-}
-
 .portal-shell {
   width: 100vw;
   height: 100vh;
@@ -2810,15 +2769,6 @@ select:disabled {
   .floating-header {
     align-items: flex-start;
     flex-direction: column;
-  }
-
-  .workflow-quick-add {
-    width: calc(100vw - 36px);
-    overflow-x: auto;
-  }
-
-  .workflow-quick-add button {
-    flex: 1 0 auto;
   }
 
   .canvas-title-bar {

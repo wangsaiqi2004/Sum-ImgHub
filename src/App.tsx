@@ -2752,24 +2752,9 @@ export function App() {
     setStatus('已创建节点，拖动端口可连线')
   }
 
-  function getWorkflowViewportCenter() {
-    const viewportWidth = typeof window === 'undefined' ? 1280 : window.innerWidth
-    const viewportHeight = typeof window === 'undefined' ? 720 : window.innerHeight
-    return flowInstance
-      ? flowInstance.screenToFlowPosition({
-          x: viewportWidth / 2,
-          y: viewportHeight / 2,
-        })
-      : { x: 0, y: 0 }
-  }
-
   function addWorkflowNode(type: WorkflowNodeType) {
     if (!paneMenu) return
     addWorkflowNodeAt(type, paneMenu.position)
-  }
-
-  function addWorkflowNodeFromToolbar(type: WorkflowNodeType) {
-    addWorkflowNodeAt(type, getWorkflowViewportCenter())
   }
 
   const activePortalView = currentView === 'workflow' ? 'home' : currentView
@@ -3049,24 +3034,6 @@ export function App() {
               <h1>GPT Image Tools</h1>
               <p>右键创建节点 · 拖动端口连线</p>
             </div>
-          </div>
-          <div className='workflow-quick-add' aria-label='快速添加节点'>
-            <button type='button' onClick={() => addWorkflowNodeFromToolbar('asset')}>
-              <ImageIcon size={15} />
-              参考
-            </button>
-            <button type='button' onClick={() => addWorkflowNodeFromToolbar('prompt')}>
-              <Edit3 size={15} />
-              描述
-            </button>
-            <button type='button' onClick={() => addWorkflowNodeFromToolbar('style')}>
-              <Sparkles size={15} />
-              风格
-            </button>
-            <button type='button' onClick={() => addWorkflowNodeFromToolbar('generate')}>
-              <Workflow size={15} />
-              生成
-            </button>
           </div>
           <div className='workflow-nav'>
             <button type='button' className='top-link' onClick={() => enterConfiguredView('home')}>

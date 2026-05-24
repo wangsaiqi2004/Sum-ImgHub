@@ -34,6 +34,7 @@ import {
   Layers,
   LogIn,
   Loader2,
+  Menu,
   Monitor,
   Moon,
   Plus,
@@ -1126,6 +1127,7 @@ export function App() {
   const [error, setError] = useState('')
   const [notice, setNotice] = useState<{ id: number; message: string } | null>(null)
   const [paneMenu, setPaneMenu] = useState<PaneMenu>(null)
+  const [isSidebarDrawerOpen, setIsSidebarDrawerOpen] = useState(false)
   const [flowInstance, setFlowInstance] =
     useState<ReactFlowInstance<WorkflowNode, WorkflowEdge> | null>(null)
   const generationTaskIdsRef = useRef(new Set<string>())
@@ -1328,6 +1330,17 @@ export function App() {
   useEffect(() => {
     if (isConfigured) setNotice(null)
   }, [isConfigured])
+
+  useEffect(() => {
+    if (!isSidebarDrawerOpen) return
+
+    function closeOnEscape(event: KeyboardEvent) {
+      if (event.key === 'Escape') setIsSidebarDrawerOpen(false)
+    }
+
+    window.addEventListener('keydown', closeOnEscape)
+    return () => window.removeEventListener('keydown', closeOnEscape)
+  }, [isSidebarDrawerOpen])
 
   useEffect(() => {
     let cancelled = false
@@ -2129,6 +2142,11 @@ export function App() {
     setCurrentView(view)
   }
 
+  function enterSidebarView(view: AppView) {
+    enterConfiguredView(view)
+    setIsSidebarDrawerOpen(false)
+  }
+
   async function handleSimpleGenerate() {
     const prompt = simplePrompt.trim()
     if (!isConfigured) {
@@ -2895,8 +2913,22 @@ export function App() {
         </>
       ) : (
         <main className='portal-stage app-workspace-shell'>
-          <aside className='app-sidebar' aria-label='主工具栏'>
-            <button type='button' className='portal-brand app-sidebar-brand' onClick={() => enterConfiguredView('home')}>
+          <aside
+            className={`app-sidebar ${isSidebarDrawerOpen ? 'drawer-open' : ''}`}
+            aria-label='主工具栏'
+          >
+            <button
+              type='button'
+              className='sidebar-drawer-toggle'
+              onClick={() => setIsSidebarDrawerOpen((current) => !current)}
+              aria-label={isSidebarDrawerOpen ? '收起主工具栏' : '展开主工具栏'}
+              aria-controls='app-sidebar-nav'
+              aria-expanded={isSidebarDrawerOpen}
+              title={isSidebarDrawerOpen ? '收起' : '展开'}
+            >
+              {isSidebarDrawerOpen ? <X size={17} /> : <Menu size={17} />}
+            </button>
+            <button type='button' className='portal-brand app-sidebar-brand' onClick={() => enterSidebarView('home')}>
               <span className='brand-mark'>
                 <Sparkles size={21} />
               </span>
@@ -2905,11 +2937,11 @@ export function App() {
                 <small>{isConfigured ? `已配置 ${model}` : '先完成控制台配置'}</small>
               </span>
             </button>
-            <nav className='portal-nav app-sidebar-nav' aria-label='主导航'>
+            <nav id='app-sidebar-nav' className='portal-nav app-sidebar-nav' aria-label='主导航'>
               <button
                 type='button'
                 className={currentView === 'home' ? 'active' : ''}
-                onClick={() => enterConfiguredView('home')}
+                onClick={() => enterSidebarView('home')}
               >
                 <Home size={16} />
                 工作台
@@ -2917,7 +2949,7 @@ export function App() {
               <button
                 type='button'
                 className={currentView === 'console' ? 'active' : ''}
-                onClick={() => enterConfiguredView('console')}
+                onClick={() => enterSidebarView('console')}
               >
                 <Terminal size={16} />
                 控制台
@@ -2925,7 +2957,7 @@ export function App() {
               <button
                 type='button'
                 className={currentView === 'simple' ? 'active' : ''}
-                onClick={() => enterConfiguredView('simple')}
+                onClick={() => enterSidebarView('simple')}
               >
                 <ImageIcon size={16} />
                 文生图
@@ -2933,14 +2965,14 @@ export function App() {
               <button
                 type='button'
                 className={currentView === 'gallery' ? 'active' : ''}
-                onClick={() => enterConfiguredView('gallery')}
+                onClick={() => enterSidebarView('gallery')}
               >
                 <Layers size={16} />
                 图库
               </button>
               <button
                 type='button'
-                onClick={() => enterConfiguredView('workflow')}
+                onClick={() => enterSidebarView('workflow')}
               >
                 <Workflow size={16} />
                 工作流
@@ -2977,6 +3009,12 @@ export function App() {
               </a>
             </div>
           </aside>
+          <button
+            type='button'
+            className={`sidebar-scrim ${isSidebarDrawerOpen ? 'visible' : ''}`}
+            onClick={() => setIsSidebarDrawerOpen(false)}
+            aria-label='关闭主工具栏'
+          />
 
           <section className='app-workspace'>
             <header className='workspace-topbar'>

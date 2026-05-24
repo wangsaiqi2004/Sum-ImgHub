@@ -1465,7 +1465,7 @@ select:disabled {
 
 .simple-param-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 150px), 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 10px;
 }
 
@@ -3087,6 +3087,10 @@ select:disabled {
 
   .workbench-actions {
     display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .simple-param-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 

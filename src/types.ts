@@ -123,6 +123,7 @@ export type CommerceMainPromptPayload = {
   apiKey: string
   model: string
   description: string
+  categoryPath?: string
   productImages: ReferenceImage[]
   styleImage: ReferenceImage
 }

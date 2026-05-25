@@ -62,6 +62,7 @@ import {
   saveReferenceImageBlobs,
 } from './storage'
 import { bridge } from './bridge'
+import { commerceCategoryTree } from './commerceCategories'
 import {
   GalleryStrip,
   edgeTypes,
@@ -141,10 +142,12 @@ function sizeOptionLabel(option: (typeof sizeOptions)[number]) {
   return `${option.ratio} · ${option.value} · ${option.label}`
 }
 
-function buildCommerceMainPrompt(description: string) {
+function buildCommerceMainPrompt(description: string, categoryPath = '') {
   const trimmedDescription = description.trim() || '用户未填写额外文字描述。'
+  const trimmedCategoryPath = categoryPath.trim() || '用户未选择商品品类。'
   return [
     '你是一名资深电商视觉设计师，请基于参考图生成一张电商商品主图。',
+    `商品品类：${trimmedCategoryPath}。该品类是强约束，如果图像识别结果和用户选择的品类冲突，优先按用户选择的品类理解商品。`,
     '参考图中的商品白底图是商品主体依据，必须保持商品外观、结构、颜色、材质和关键细节真实一致，不要改变商品本身。',
     '目标风格图只用于迁移构图节奏、光线氛围、背景质感、色彩倾向和视觉高级感，不要复制风格图中的商品或品牌元素。',
     '根据目标风格图完成商品替换；如果风格图中有文字，只在用户描述提供明确文案时选择性替换，否则去除或弱化原图文字。',
@@ -154,10 +157,12 @@ function buildCommerceMainPrompt(description: string) {
   ].join('\n')
 }
 
-function buildCommerceDetailPrompt(description: string) {
+function buildCommerceDetailPrompt(description: string, categoryPath = '') {
   const trimmedDescription = description.trim() || '用户未填写额外文字描述。'
+  const trimmedCategoryPath = categoryPath.trim() || '用户未选择商品品类。'
   return [
     '你是一名资深电商详情页视觉设计师，请基于参考图生成一张商品详情图。',
+    `商品品类：${trimmedCategoryPath}。该品类是强约束，如果图像识别结果和用户选择的品类冲突，优先按用户选择的品类理解商品。`,
     '参考图中的商品白底图是商品主体依据，必须保持商品外观、结构、包装、颜色、材质和关键细节真实一致，不要改变商品本身。',
     '目标详情风格图只用于迁移详情页版式、分区节奏、背景质感、光线氛围、色彩倾向、道具关系和文字排版，不要复制风格图中的商品或品牌元素。',
     '画面应像电商详情页中的一屏核心卖点图：有清晰主视觉、短卖点文案、局部细节或场景辅助展示，层级清楚，适合用户继续向下浏览。',
@@ -1319,6 +1324,9 @@ export function App() {
   const [commerceProductImages, setCommerceProductImages] = useState<ReferenceImage[]>([])
   const [commerceStyleImage, setCommerceStyleImage] = useState<ReferenceImage | null>(null)
   const [commerceDescription, setCommerceDescription] = useState('')
+  const [commerceCategoryLevel1, setCommerceCategoryLevel1] = useState('')
+  const [commerceCategoryLevel2, setCommerceCategoryLevel2] = useState('')
+  const [commerceCategoryLevel3, setCommerceCategoryLevel3] = useState('')
   const [canvases, setCanvases] = useState<WorkflowCanvas[]>(loadWorkflowCanvases)
   const [activeCanvasId, setActiveCanvasId] = useState(loadActiveCanvasId)
   const [isLoadingModels, setIsLoadingModels] = useState(false)
@@ -1342,6 +1350,15 @@ export function App() {
   const generationTaskIdsRef = useRef(new Set<string>())
   const lastSavedReferenceImageBlobSignatureRef = useRef('')
   const hasManuallyToggledCanvasDrawerRef = useRef(false)
+  const commerceCategoryLevel1Node = commerceCategoryTree.find((item) => item.name === commerceCategoryLevel1)
+  const commerceCategoryLevel2Options = commerceCategoryLevel1Node?.children || []
+  const commerceCategoryLevel2Node = commerceCategoryLevel2Options.find((item) => item.name === commerceCategoryLevel2)
+  const commerceCategoryLevel3Options = commerceCategoryLevel2Node?.children || []
+  const selectedCommerceCategoryPath = [
+    commerceCategoryLevel1,
+    commerceCategoryLevel2,
+    commerceCategoryLevel3,
+  ].filter(Boolean).join(' / ')
 
   const activeCanvas = useMemo(
     () => canvases.find((canvas) => canvas.id === activeCanvasId) || canvases[0],
@@ -2596,6 +2613,10 @@ export function App() {
       setError('请先上传目标风格图')
       return
     }
+    if (!commerceCategoryLevel3) {
+      setError('请先选择完整的商品品类')
+      return
+    }
     if (!codexApiKey) {
       setError(`请先点击连接配置里的登录，获取用于${isDetail ? '详情图' : '主图'}提示词预热的文本模型秘钥`)
       setStatus('缺少提示词预热秘钥')
@@ -2615,6 +2636,7 @@ export function App() {
           apiKey: codexApiKey,
           model: textModel.trim() || DEFAULT_TEXT_MODEL,
           description,
+          categoryPath: selectedCommerceCategoryPath,
           productImages: commerceProductImages,
           styleImage: commerceStyleImage,
         }
@@ -2626,7 +2648,7 @@ export function App() {
         console.warn('Commerce prompt preparation failed, falling back to local prompt:', promptMessage)
         setStatus('提示词预热失败，正在使用本地结构化提示词继续生成...')
       }
-      const basePrompt = preparedPrompt.trim() || (isDetail ? buildCommerceDetailPrompt(description) : buildCommerceMainPrompt(description))
+      const basePrompt = preparedPrompt.trim() || (isDetail ? buildCommerceDetailPrompt(description, selectedCommerceCategoryPath) : buildCommerceMainPrompt(description, selectedCommerceCategoryPath))
       const prompt = buildCommerceEditPrompt(basePrompt, commerceProductImages.length, kind)
       setStatus(
         commerceProductImages.length > 1
@@ -3190,7 +3212,8 @@ export function App() {
   const commerceCanGenerate =
     isConfigured &&
     commerceProductImages.length > 0 &&
-    Boolean(commerceStyleImage)
+    Boolean(commerceStyleImage) &&
+    Boolean(commerceCategoryLevel3)
   const isCommerceView = currentView === 'commerce-main' || currentView === 'commerce-detail'
   const commerceGenerateKind = currentView === 'commerce-detail' ? 'detail' : 'main'
   const commerceCopy = commerceGenerateKind === 'detail'
@@ -3210,6 +3233,67 @@ export function App() {
         descriptionPlaceholder: '可简单写卖点、文案或替换文字；留空时会根据目标风格图自动生成主图提示词',
         action: '生成主图',
       }
+  const renderCommerceCategoryField = () => (
+    <div className='commerce-category-field' aria-label='商品品类'>
+      <div className='commerce-category-heading'>
+        <strong>商品品类</strong>
+        <span>按真实类目选择，生成时会作为提示词强约束</span>
+      </div>
+      <div className='commerce-category-grid'>
+        <label className='field'>
+          <span>一级类目</span>
+          <select
+            value={commerceCategoryLevel1}
+            onChange={(event) => {
+              setCommerceCategoryLevel1(event.target.value)
+              setCommerceCategoryLevel2('')
+              setCommerceCategoryLevel3('')
+            }}
+          >
+            <option value=''>选择一级类目</option>
+            {commerceCategoryTree.map((category) => (
+              <option key={category.name} value={category.name}>
+                {category.name}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className='field'>
+          <span>二级类目</span>
+          <select
+            value={commerceCategoryLevel2}
+            disabled={!commerceCategoryLevel1}
+            onChange={(event) => {
+              setCommerceCategoryLevel2(event.target.value)
+              setCommerceCategoryLevel3('')
+            }}
+          >
+            <option value=''>选择二级类目</option>
+            {commerceCategoryLevel2Options.map((category) => (
+              <option key={category.name} value={category.name}>
+                {category.name}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className='field'>
+          <span>三级类目</span>
+          <select
+            value={commerceCategoryLevel3}
+            disabled={!commerceCategoryLevel2}
+            onChange={(event) => setCommerceCategoryLevel3(event.target.value)}
+          >
+            <option value=''>选择三级类目</option>
+            {commerceCategoryLevel3Options.map((category) => (
+              <option key={category.name} value={category.name}>
+                {category.name}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
+    </div>
+  )
   const renderCommerceUpload = (
     kind: 'product' | 'style',
     label: string,
@@ -3799,6 +3883,7 @@ export function App() {
                     commerceStyleImage ? [commerceStyleImage] : []
                   )}
                 </div>
+                {renderCommerceCategoryField()}
                 <label className='field'>
                   <span>{commerceCopy.descriptionLabel}</span>
                   <textarea

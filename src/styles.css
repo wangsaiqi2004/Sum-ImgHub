@@ -1423,6 +1423,39 @@ select:disabled {
   border-radius: 7px;
 }
 
+.commerce-category-field {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+  padding: 14px;
+  background: var(--panel-soft);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.commerce-category-heading {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.commerce-category-heading strong {
+  color: var(--text);
+  font-size: 14px;
+}
+
+.commerce-category-heading span {
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.commerce-category-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
 .commerce-file-action {
   justify-self: start;
   cursor: pointer;
@@ -3403,7 +3436,8 @@ select:disabled {
     grid-row: span 2;
   }
 
-  .commerce-upload-grid {
+  .commerce-upload-grid,
+  .commerce-category-grid {
     grid-template-columns: 1fr;
   }
 
@@ -3468,6 +3502,7 @@ select:disabled {
 
   .launchpad-grid,
   .commerce-upload-grid,
+  .commerce-category-grid,
   .simple-param-grid,
   .simple-actions,
   .gallery-page-heading,

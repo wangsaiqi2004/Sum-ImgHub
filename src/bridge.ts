@@ -20,19 +20,69 @@ function headers(apiKey: string) {
   const key = apiKey.trim()
   if (!key) throw new Error('API Key is required')
   return {
+    Accept: 'application/json',
     Authorization: `Bearer ${key}`,
     'Content-Type': 'application/json',
   }
 }
 
+function responseSnippet(text: string) {
+  return (
+    text
+      .replace(/<script[\s\S]*?<\/script>/gi, '')
+      .replace(/<style[\s\S]*?<\/style>/gi, '')
+      .replace(/<[^>]+>/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .slice(0, 240) || '空响应'
+  )
+}
+
+function parseEventStreamBody(text: string) {
+  const dataLines = text
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line.startsWith('data:'))
+
+  if (dataLines.length === 0) return null
+
+  let content = ''
+  let lastBody: any = null
+  for (const line of dataLines) {
+    const payload = line.replace(/^data:\s*/, '')
+    if (!payload || payload === '[DONE]') continue
+    try {
+      const body = JSON.parse(payload)
+      lastBody = body
+      const delta = body?.choices?.[0]?.delta?.content
+      const message = body?.choices?.[0]?.message?.content
+      if (typeof delta === 'string') content += delta
+      if (!content && typeof message === 'string') content = message
+    } catch {
+      return null
+    }
+  }
+
+  if (content.trim()) {
+    return { choices: [{ message: { content: content.trim() } }] }
+  }
+  return lastBody
+}
+
 async function parseJsonResponse<T>(response: Response, prefix: string) {
   const text = await response.text()
+  const contentType = response.headers.get('content-type') || 'unknown content-type'
   let body: any = null
   if (text) {
     try {
       body = JSON.parse(text)
     } catch {
-      throw new Error(`${prefix}: upstream returned invalid JSON`)
+      body = parseEventStreamBody(text)
+      if (!body) {
+        throw new Error(
+          `${prefix}: 上游没有返回 JSON（HTTP ${response.status}，${contentType}）：${responseSnippet(text)}`
+        )
+      }
     }
   }
 
@@ -292,6 +342,7 @@ export const bridge: ImageApiClient = {
         model: payload.model,
         messages: promptOptimizationMessages(payload),
         temperature: 0.6,
+        stream: false,
       }),
     })
     const body = await parseJsonResponse<{

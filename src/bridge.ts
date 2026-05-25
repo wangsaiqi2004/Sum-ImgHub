@@ -167,7 +167,11 @@ async function parsePromptOptimizationResult(body: {
   choices?: Array<{ message?: { content?: string }; text?: string }>
 }) {
   const content = body.choices?.[0]?.message?.content || body.choices?.[0]?.text || ''
-  const optimizedPrompt = content.trim()
+  const optimizedPrompt = content
+    .trim()
+    .replace(/^```(?:[\w-]+)?\s*/i, '')
+    .replace(/\s*```$/i, '')
+    .trim()
   if (!optimizedPrompt) throw new Error('模型没有返回优化后的提示词')
   return optimizedPrompt
 }
@@ -212,11 +216,39 @@ function promptOptimizationMessages(payload: PromptOptimizationPayload) {
     {
       role: 'system',
       content:
-        '你是专业的 AI 图像提示词编辑器。只输出优化后的提示词本身，不要解释，不要加标题，不要使用 Markdown。',
+        '你是专业的 AI 图像提示词编辑器。你的任务是分析用户的需求，根据用户原始提示词进行优化和丰富，让描述更具体、更细腻、更适合高质量图像生成。只输出优化后的提示词正文，不要解释过程，不要添加寒暄。',
     },
     {
       role: 'user',
-      content: `任务类型：${modeLabel}\n优化方向：${magic.label}\n方向魔法：${magic.instruction}\n请把下面的中文图像生成提示词优化得更具体、更适合高质量图像生成。保留用户原意，补足主体、构图、材质、光线、风格、画质要求。不要改变为英文。\n\n原提示词：${payload.prompt}`,
+      content: `任务类型：${modeLabel}
+优化方向：${magic.label}
+方向要求：${magic.instruction}
+
+请把下面的中文图像生成提示词优化得更具体、更适合高质量图像生成。必须保留用户原意，不要改成英文，不要编造与原意冲突的主体、品牌、文字、人物身份或商品信息。
+
+请按以下固定格式输出，可以直接作为生图提示词使用：
+【核心主体】
+描述主体、关键特征、动作或产品卖点。
+
+【画面构图】
+描述视角、景别、主体位置、空间层次和画面节奏。
+
+【环境背景】
+描述场景、背景元素、氛围，但避免喧宾夺主。
+
+【材质细节】
+描述材质、纹理、边缘、高光、真实细节和精修要求。
+
+【光线色彩】
+描述光源、阴影、色彩倾向、对比度和整体调性。
+
+【风格画质】
+描述摄影/插画/海报等风格、镜头语言、渲染质感和清晰度。
+
+【限制要求】
+列出不要出现的内容，例如无水印、无乱码文字、无多余 logo、无畸变、无低清模糊。
+
+原提示词：${payload.prompt}`,
     },
   ]
 }

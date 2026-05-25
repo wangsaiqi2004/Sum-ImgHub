@@ -1163,6 +1163,7 @@ export function App() {
   const [activeCanvasId, setActiveCanvasId] = useState(loadActiveCanvasId)
   const [isLoadingModels, setIsLoadingModels] = useState(false)
   const [isGenerating, setIsGenerating] = useState(false)
+  const [isOptimizingSimplePrompt, setIsOptimizingSimplePrompt] = useState(false)
   const [optimizingPromptNodeIds, setOptimizingPromptNodeIds] = useState<Set<string>>(
     () => new Set()
   )
@@ -1999,6 +2000,43 @@ export function App() {
         next.delete(promptNodeId)
         return next
       })
+    }
+  }
+
+  async function handleOptimizeSimplePrompt() {
+    const currentPrompt = simplePrompt.trim()
+    if (!currentPrompt) {
+      setError('请先输入需要优化的图片描述')
+      return
+    }
+    if (!codexApiKey) {
+      setError('请先点击连接配置里的登录，获取 codex 满血高速 分组秘钥')
+      setStatus('缺少提示词优化秘钥')
+      return
+    }
+    if (isOptimizingSimplePrompt) return
+
+    setError('')
+    setStatus('正在优化提示词...')
+    setIsOptimizingSimplePrompt(true)
+
+    try {
+      const optimizedPrompt = await bridge.optimizePrompt({
+        baseUrl,
+        apiKey: codexApiKey,
+        model: textModel.trim() || DEFAULT_TEXT_MODEL,
+        prompt: currentPrompt,
+        mode: 'text',
+        optimizationPreset: DEFAULT_PROMPT_OPTIMIZATION_PRESET,
+      })
+      setSimplePrompt(optimizedPrompt)
+      setStatus('提示词已优化')
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      setError(message)
+      setStatus('提示词优化失败')
+    } finally {
+      setIsOptimizingSimplePrompt(false)
     }
   }
 
@@ -3476,6 +3514,19 @@ export function App() {
                     </label>
                   </div>
                   <div className='simple-actions'>
+                    <button
+                      type='button'
+                      className='secondary simple-optimize-action'
+                      onClick={() => void handleOptimizeSimplePrompt()}
+                      disabled={isGenerating || isOptimizingSimplePrompt || !simplePrompt.trim()}
+                    >
+                      {isOptimizingSimplePrompt ? (
+                        <Loader2 className='spin' size={16} />
+                      ) : (
+                        <Edit3 size={16} />
+                      )}
+                      {isOptimizingSimplePrompt ? '优化中' : '优化提示词'}
+                    </button>
                     <button
                       type='button'
                       className='primary-action'

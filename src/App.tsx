@@ -155,12 +155,10 @@ function buildCommerceMainPrompt(description: string) {
 }
 
 function buildCommerceEditPrompt(prompt: string, productImageCount: number) {
-  if (productImageCount <= 1) return prompt
   return [
     '【参考图输入说明】',
-    `第一张参考图是同一商品的 ${productImageCount} 个白底角度合成参考板，用于理解商品真实外观、结构、包装文字、材质和细节。`,
-    '第二张参考图是目标风格图，用于迁移构图、背景、光影、色彩和画面氛围。',
-    '生成时不要保留参考板的拼图排版、边框或分隔线，只提取商品主体并替换到目标风格图对应位置。',
+    `唯一参考图是一张合成参考板：左侧/上方为同一商品的 ${productImageCount} 个白底角度，用于理解商品真实外观、结构、包装文字、材质和细节；右侧/下方为目标风格图，用于迁移构图、背景、光影、色彩和画面氛围。`,
+    '生成时不要保留参考板的拼图排版、边框、分隔线或说明文字，只提取商品主体并替换到目标风格图对应位置。',
     '',
     prompt,
   ].join('\n')
@@ -1227,6 +1225,64 @@ async function buildCommerceProductReferenceImage(images: ReferenceImage[]) {
     id: createLocalId('commerce-product-sheet'),
     name: 'commerce-product-reference-sheet.jpg',
     title: `商品多角度参考图（${images.length} 张）`,
+    type: 'image/jpeg',
+    dataUrl: canvas.toDataURL('image/jpeg', COMMERCE_REFERENCE_JPEG_QUALITY),
+  }
+}
+
+async function buildCommerceMainReferenceImage(productImages: ReferenceImage[], styleImage: ReferenceImage) {
+  const productReferenceImage = await buildCommerceProductReferenceImage(productImages)
+  const [productImage, targetStyleImage] = await Promise.all([
+    loadLocalImage(productReferenceImage.dataUrl),
+    loadLocalImage(styleImage.dataUrl),
+  ])
+  const canvas = document.createElement('canvas')
+  canvas.width = COMMERCE_PRODUCT_SHEET_SIZE
+  canvas.height = COMMERCE_PRODUCT_SHEET_SIZE
+
+  const context = canvas.getContext('2d')
+  if (!context) return productReferenceImage
+
+  context.fillStyle = '#ffffff'
+  context.fillRect(0, 0, canvas.width, canvas.height)
+
+  const padding = 40
+  const gap = 28
+  const labelHeight = 52
+  const panelWidth = (canvas.width - padding * 2 - gap) / 2
+  const panelHeight = canvas.height - padding * 2
+  const panels = [
+    { label: `product reference (${productImages.length} angles)`, image: productImage, x: padding },
+    { label: 'target style reference', image: targetStyleImage, x: padding + panelWidth + gap },
+  ]
+
+  context.font = '27px Arial, sans-serif'
+  context.textAlign = 'left'
+  context.textBaseline = 'middle'
+
+  panels.forEach((panel) => {
+    context.fillStyle = '#f7f8fb'
+    context.fillRect(panel.x, padding, panelWidth, panelHeight)
+    context.strokeStyle = '#d7dbe5'
+    context.lineWidth = 2
+    context.strokeRect(panel.x, padding, panelWidth, panelHeight)
+
+    context.fillStyle = '#3d4557'
+    context.fillText(panel.label, panel.x + 18, padding + labelHeight / 2)
+    drawImageContained(
+      context,
+      panel.image,
+      panel.x + 18,
+      padding + labelHeight,
+      panelWidth - 36,
+      panelHeight - labelHeight - 18
+    )
+  })
+
+  return {
+    id: createLocalId('commerce-main-reference-board'),
+    name: 'commerce-main-reference-board.jpg',
+    title: `商品与风格合成参考图（${productImages.length} 张商品图 + 1 张风格图）`,
     type: 'image/jpeg',
     dataUrl: canvas.toDataURL('image/jpeg', COMMERCE_REFERENCE_JPEG_QUALITY),
   }
@@ -2602,13 +2658,9 @@ export function App() {
       })
       const basePrompt = preparedPrompt.trim() || buildCommerceMainPrompt(description)
       const prompt = buildCommerceEditPrompt(basePrompt, commerceProductImages.length)
-      setStatus(
-        commerceProductImages.length > 1
-          ? '提示词预热完成，正在合成商品多角度参考图...'
-          : '提示词预热完成，正在生成电商主图...'
-      )
-      const productReferenceImage = await buildCommerceProductReferenceImage(commerceProductImages)
-      const referenceImages = [productReferenceImage, commerceStyleImage]
+      setStatus('提示词预热完成，正在合成商品与风格参考图...')
+      const referenceImage = await buildCommerceMainReferenceImage(commerceProductImages, commerceStyleImage)
+      const referenceImages = [referenceImage]
       setStatus('正在生成电商主图...')
 
       const result = await bridge.generateImages({

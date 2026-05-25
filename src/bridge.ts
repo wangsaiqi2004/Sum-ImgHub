@@ -69,6 +69,10 @@ function parseEventStreamBody(text: string) {
   return lastBody
 }
 
+function isEmptyPromptOptimizationError(error: unknown) {
+  return error instanceof Error && error.message.includes('模型没有返回优化后的提示词')
+}
+
 async function parseJsonResponse<T>(response: Response, prefix: string) {
   const text = await response.text()
   const contentType = response.headers.get('content-type') || 'unknown content-type'
@@ -332,6 +336,24 @@ const promptPresetMagic: Record<PromptOptimizationPreset, { label: string; instr
   },
 }
 
+function promptOptimizationRequestBody(payload: PromptOptimizationPayload) {
+  return {
+    model: payload.model,
+    messages: promptOptimizationMessages(payload),
+    temperature: 0.6,
+    stream: false,
+  }
+}
+
+function promptOptimizationResponsesRequestBody(payload: PromptOptimizationPayload) {
+  return {
+    model: payload.model,
+    input: promptOptimizationMessages(payload),
+    temperature: 0.6,
+    stream: false,
+  }
+}
+
 function promptOptimizationMessages(payload: PromptOptimizationPayload) {
   const modeLabel = payload.mode === 'image' ? '图像参考生成' : '文生图'
   const magic = promptPresetMagic[payload.optimizationPreset] || promptPresetMagic.general
@@ -418,20 +440,44 @@ export const bridge: ImageApiClient = {
   },
 
   async optimizePrompt(payload) {
-    const response = await fetch(`${normalizeBaseUrl(payload.baseUrl)}/v1/chat/completions`, {
+    const baseUrl = normalizeBaseUrl(payload.baseUrl)
+    const response = await fetch(`${baseUrl}/v1/chat/completions`, {
       method: 'POST',
       headers: headers(payload.apiKey),
-      body: JSON.stringify({
-        model: payload.model,
-        messages: promptOptimizationMessages(payload),
-        temperature: 0.6,
-        stream: false,
-      }),
+      body: JSON.stringify(promptOptimizationRequestBody(payload)),
     })
     const body = await parseJsonResponse<{
       choices?: Array<{ message?: { content?: string }; text?: string }>
     }>(response, 'Prompt optimization failed')
-    return parsePromptOptimizationResult(body)
+    try {
+      return await parsePromptOptimizationResult(body)
+    } catch (error) {
+      if (!isEmptyPromptOptimizationError(error)) throw error
+      const chatErrorMessage = error instanceof Error ? error.message : String(error)
+
+      const fallbackResponse = await fetch(`${baseUrl}/v1/responses`, {
+        method: 'POST',
+        headers: headers(payload.apiKey),
+        body: JSON.stringify(promptOptimizationResponsesRequestBody(payload)),
+      })
+      const fallbackBody = await parseJsonResponse<{
+        choices?: Array<{ message?: { content?: string }; text?: string }>
+        output_text?: unknown
+        output?: unknown
+        content?: unknown
+        text?: unknown
+      }>(fallbackResponse, 'Prompt optimization fallback failed')
+      try {
+        return await parsePromptOptimizationResult(fallbackBody)
+      } catch (fallbackError) {
+        if (isEmptyPromptOptimizationError(fallbackError)) {
+          throw new Error(
+            `${fallbackError instanceof Error ? fallbackError.message : String(fallbackError)}；chat/completions 也返回空结果：${chatErrorMessage}`
+          )
+        }
+        throw fallbackError
+      }
+    }
   },
 
   async listStyles() {

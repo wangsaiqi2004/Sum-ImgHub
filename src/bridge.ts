@@ -648,11 +648,11 @@ export const bridge: ImageApiClient = {
       form.set('quality', payload.quality)
       form.set('n', String(payload.count))
       form.set('response_format', payload.responseFormat)
-      if (payload.inputFidelity) {
+      if (payload.inputFidelity && payload.model.trim().toLowerCase() !== 'gpt-image-2') {
         form.set('input_fidelity', payload.inputFidelity)
       }
       references.forEach((image) => {
-        form.append('image', blobFromDataUrl(image.dataUrl), image.name)
+        form.append('image[]', blobFromDataUrl(image.dataUrl), image.name)
       })
 
       const response = await fetch(openAiImageProxyUrl('edits', payload.baseUrl), {

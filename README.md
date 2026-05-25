@@ -50,6 +50,6 @@ npm run preview
 
 ## 默认参数
 
-- Base URL: `https://cc.api-corp.top`
+- Base URL: `https://hotapi.top`
 - 推荐模型: `gpt-image-2`
 - 默认价格不会在工具内计费，实际扣费由 API 站点处理。

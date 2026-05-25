@@ -38,8 +38,8 @@ def env_int(name: str, default: int) -> int:
         return default
 
 
-DEFAULT_BASE_URL = "https://cc.api-corp.top"
-ALLOWED_NEW_API_HOST = "cc.api-corp.top"
+DEFAULT_BASE_URL = "https://hotapi.top"
+ALLOWED_NEW_API_HOST = "hotapi.top"
 IMAGE_GROUP = "gpt-image-2 生图低价"
 IMAGE_MODEL = "gpt-image-2"
 IMAGE_TOKEN_NAME = "GPT Image Tools - gpt-image-2"
@@ -450,7 +450,7 @@ def normalize_new_api_base_url(value: str) -> str:
     raw = (value or DEFAULT_BASE_URL).strip().rstrip("/")
     parsed = urllib.parse.urlparse(raw)
     if parsed.scheme != "https" or parsed.netloc != ALLOWED_NEW_API_HOST:
-        raise NewApiError("当前只允许登录 https://cc.api-corp.top/")
+        raise NewApiError("当前只允许登录 https://hotapi.top/")
     return f"{parsed.scheme}://{parsed.netloc}"
 
 

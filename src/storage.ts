@@ -13,7 +13,7 @@ const SETTINGS_STORE = 'settings'
 const SETTINGS_ID = 'app'
 
 const DEFAULT_SETTINGS: AppSettings = {
-  baseUrl: 'https://cc.api-corp.top',
+  baseUrl: 'https://hotapi.top',
   persistApiKey: false,
   apiKey: '',
   codexApiKey: '',

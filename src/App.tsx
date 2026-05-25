@@ -83,11 +83,11 @@ import type {
   ThemeMode,
 } from './types'
 
-const DEFAULT_BASE_URL = 'https://cc.api-corp.top'
+const DEFAULT_BASE_URL = 'https://hotapi.top'
 const DEFAULT_MODEL = 'gpt-image-2'
 const DEFAULT_TEXT_MODEL = 'gpt-5.5'
 const DEFAULT_PROMPT_OPTIMIZATION_PRESET: PromptOptimizationPreset = 'ecommerce'
-const CONSOLE_URL = 'https://cc.api-corp.top/'
+const CONSOLE_URL = 'https://hotapi.top/'
 const GITHUB_REPO_URL = 'https://github.com/1093791954/image-tool'
 const MAX_COMMERCE_PRODUCT_IMAGES = 4
 const COMMERCE_REFERENCE_MAX_SIDE = 1600
@@ -3870,7 +3870,7 @@ export function App() {
                     <input
                       value={baseUrl}
                       onChange={(event) => setBaseUrl(event.target.value)}
-                      placeholder='https://cc.api-corp.top'
+                      placeholder='https://hotapi.top'
                       spellCheck={false}
                     />
                   </label>

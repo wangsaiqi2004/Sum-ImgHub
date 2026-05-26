@@ -977,7 +977,6 @@ export const bridge: ImageApiClient = {
         quality: payload.quality,
         n: payload.count,
         response_format: payload.responseFormat,
-        ...(payload.background ? { background: payload.background } : {}),
       }),
     })
     const body = await parseJsonResponse<{

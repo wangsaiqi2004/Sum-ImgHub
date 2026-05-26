@@ -2256,6 +2256,16 @@ select:disabled {
   min-width: 0;
 }
 
+.field-row {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+}
+
+.field-row.two-columns {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
 .field span,
 .checkbox-row,
 .node-param-grid label span,
@@ -3853,6 +3863,7 @@ select:disabled {
 
   .button-grid,
   .theme-switcher,
+  .field-row.two-columns,
   .node-param-grid {
     grid-template-columns: 1fr;
   }

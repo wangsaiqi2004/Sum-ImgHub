@@ -6,10 +6,16 @@ export type AppSettings = {
   apiKey?: string
   codexApiKey?: string
   textModel?: string
+  promptOptimizerUrl?: string
+  promptOptimizerUsername?: string
+  promptOptimizerPassword?: string
   themeMode?: ThemeMode
 }
 
-export type BackupSettings = Omit<AppSettings, 'apiKey' | 'codexApiKey' | 'persistApiKey'> & {
+export type BackupSettings = Omit<
+  AppSettings,
+  'apiKey' | 'codexApiKey' | 'promptOptimizerPassword' | 'persistApiKey'
+> & {
   persistApiKey: false
 }
 

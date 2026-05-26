@@ -417,10 +417,25 @@ function sketchDescriptionSystemInstruction() {
 
 function sketchDescriptionUserText(payload: SketchDescriptionPayload) {
   const prompt = payload.prompt.trim() || '用户未填写文字描述。'
+  const sketchWeightInstructions = {
+    reference:
+      '把草图作为构图参考，提取主体、元素和留白的大致关系；允许最终画面根据用户文字和生成模型审美做自然优化。',
+    strict:
+      '严格遵循草图中的主体位置、元素大小关系、前中后景、留白和镜头方向；只允许做必要的美化，不要改变版式骨架。',
+    layout:
+      '只读取草图的布局信息，包括画面比例、主体框架、元素位置、空间层次和留白；忽略草图里的具体风格、材质、身份、文字和情绪。',
+  } satisfies Record<NonNullable<SketchDescriptionPayload['sketchWeight']>, string>
+  const sketchWeight =
+    payload.sketchWeight && sketchWeightInstructions[payload.sketchWeight]
+      ? payload.sketchWeight
+      : 'reference'
   return `请分析这张用户手绘的分镜/构图草图，并结合用户文字描述，输出适合加入最终生图提示词的“分镜草图约束”。
 
 用户文字描述：
 ${prompt}
+
+草图权重：
+${sketchWeightInstructions[sketchWeight]}
 
 识别要求：
 1. 重点描述画面比例、主体位置、前中后景关系、留白区域、元素大小关系、运动/视线方向、镜头角度和构图节奏。
@@ -962,6 +977,7 @@ export const bridge: ImageApiClient = {
         quality: payload.quality,
         n: payload.count,
         response_format: payload.responseFormat,
+        ...(payload.background ? { background: payload.background } : {}),
       }),
     })
     const body = await parseJsonResponse<{

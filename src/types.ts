@@ -36,6 +36,7 @@ export type ImageGenerationPayload = {
   quality: string
   count: number
   responseFormat: 'url' | 'b64_json'
+  background?: 'auto' | 'opaque' | 'transparent'
   inputFidelity?: 'low' | 'high'
   referenceImages?: ReferenceImage[]
   onTaskUpdate?: (task: ImageGenerationTask) => void
@@ -124,6 +125,7 @@ export type SketchDescriptionPayload = {
   model: string
   prompt: string
   sketchDataUrl: string
+  sketchWeight?: 'reference' | 'strict' | 'layout'
 }
 
 export type CommerceMainPromptPayload = {

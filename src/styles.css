@@ -1338,6 +1338,45 @@ select:disabled {
   min-height: clamp(240px, 32vh, 320px);
 }
 
+.field-label-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-width: 0;
+}
+
+.compact-action {
+  min-height: 30px;
+  padding: 0 10px;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.advanced-negative-prompt {
+  width: 100%;
+  min-width: 0;
+  min-height: 72px;
+  resize: vertical;
+  padding: 10px;
+  color: var(--text);
+  background: var(--field);
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  outline: none;
+  line-height: 1.55;
+  transition:
+    border-color 140ms ease,
+    box-shadow 140ms ease,
+    background 140ms ease;
+}
+
+.advanced-negative-prompt:focus {
+  background: var(--panel);
+  border-color: var(--blue);
+  box-shadow: 0 0 0 3px var(--focus);
+}
+
 .advanced-sketch-board {
   display: grid;
   gap: 10px;

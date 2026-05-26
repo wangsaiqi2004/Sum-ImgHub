@@ -120,6 +120,26 @@ const sizes = sizeOptions.map((item) => item.value)
 const qualities = ['auto', 'standard', 'hd', 'low', 'medium', 'high']
 const counts = [1, 2, 3, 4]
 const inputFidelities = ['low', 'high'] as const
+const backgroundOptions: Array<{ value: AdvancedBackground; label: string }> = [
+  { value: 'auto', label: 'auto' },
+  { value: 'opaque', label: 'opaque' },
+  { value: 'transparent', label: 'transparent' },
+]
+const creativityOptions: Array<{ value: AdvancedCreativity; label: string }> = [
+  { value: 'strict', label: '严格' },
+  { value: 'balanced', label: '平衡' },
+  { value: 'exploratory', label: '发散' },
+]
+const styleWeightOptions: Array<{ value: AdvancedStyleWeight; label: string }> = [
+  { value: 'weak', label: '弱' },
+  { value: 'medium', label: '中' },
+  { value: 'strong', label: '强' },
+]
+const sketchWeightOptions: Array<{ value: AdvancedSketchWeight; label: string }> = [
+  { value: 'reference', label: '参考' },
+  { value: 'strict', label: '严格遵循' },
+  { value: 'layout', label: '只看布局' },
+]
 const themeOptions: Array<{ value: ThemeMode; label: string; icon: typeof Sun }> = [
   { value: 'light', label: '亮色', icon: Sun },
   { value: 'dark', label: '暗色', icon: Moon },
@@ -205,6 +225,10 @@ type PaneMenu = {
 } | null
 
 type AppView = 'home' | 'advanced' | 'commerce' | 'console' | 'gallery' | 'workflow'
+type AdvancedBackground = 'auto' | 'opaque' | 'transparent'
+type AdvancedCreativity = 'strict' | 'balanced' | 'exploratory'
+type AdvancedStyleWeight = 'weak' | 'medium' | 'strong'
+type AdvancedSketchWeight = 'reference' | 'strict' | 'layout'
 
 type WorkflowCanvas = {
   id: string
@@ -243,6 +267,7 @@ const WORKFLOW_CANVASES_STORAGE_KEY = 'gpt-image-tools.workflow-canvases.v1'
 const ACTIVE_CANVAS_STORAGE_KEY = 'gpt-image-tools.active-canvas.v1'
 const PENDING_GENERATION_TASKS_STORAGE_KEY = 'gpt-image-tools.pending-generation-tasks.v1'
 const CANVAS_DRAWER_AUTO_OPEN_QUERY = '(min-width: 1120px)'
+const DEFAULT_NEGATIVE_PROMPT = '文字、水印、低清、畸形、错手、脏背景'
 
 const initialWorkflowNodes: WorkflowNode[] = [
   { id: 'asset-1', type: 'asset', position: { x: -520, y: -130 }, data: {} },
@@ -1264,15 +1289,50 @@ function taskStatusLabel(status: ImageGenerationTask['status']) {
   return '服务器后台生成失败'
 }
 
-function promptWithStyles(prompt: string, selectedStyles: StyleOption[]) {
+function promptWithStyles(
+  prompt: string,
+  selectedStyles: StyleOption[],
+  styleWeight: AdvancedStyleWeight = 'medium'
+) {
   if (selectedStyles.length === 0) return prompt
+  const weightInstructions: Record<AdvancedStyleWeight, string> = {
+    weak: '风格权重：弱。只提取轻量的色彩、光线和质感倾向，优先保留用户原始画面意图。',
+    medium: '风格权重：中。平衡迁移风格协议中的构图节奏、光线氛围、背景质感和色彩倾向。',
+    strong:
+      '风格权重：强。显著应用风格协议的视觉语言、光影、质感和色彩系统，但不要改变用户要求的主体身份和核心内容。',
+  }
   const styleProtocols = selectedStyles
     .map(
       (style, index) =>
         `风格 ${index + 1}：${style.category} / ${style.name}\n${JSON.stringify(style.styleJson, null, 2)}`
     )
     .join('\n\n')
-  return `${prompt}\n\n请按以下风格协议生成图像。风格协议只用于控制视觉效果，不要在画面中渲染 JSON 或参数文字；如果有参考图，请保持参考图主体内容不变，只应用风格转换。\n${styleProtocols}`
+  return `${prompt}\n\n请按以下风格协议生成图像。风格协议只用于控制视觉效果，不要在画面中渲染 JSON 或参数文字；如果有参考图，请保持参考图主体内容不变，只应用风格转换。\n${weightInstructions[styleWeight]}\n${styleProtocols}`
+}
+
+function promptWithNegativePrompt(prompt: string, negativePrompt: string) {
+  const value = negativePrompt.trim()
+  if (!value) return prompt
+  return `${prompt}\n\n【负面提示词】\n避免出现：${value}。`
+}
+
+function promptWithBackground(prompt: string, background: AdvancedBackground) {
+  const instructions: Record<AdvancedBackground, string> = {
+    auto: '背景策略：auto。根据主体和用途自动选择最合适的背景复杂度，背景服务主体，不抢画面重心。',
+    opaque: '背景策略：opaque。生成不透明背景，背景干净完整，有真实光影和空间关系。',
+    transparent: '背景策略：transparent。生成透明背景或适合抠图的干净主体边缘，不要添加不必要的实景背景。',
+  }
+  return `${prompt}\n\n【背景】\n${instructions[background]}`
+}
+
+function promptWithCreativity(prompt: string, creativity: AdvancedCreativity) {
+  const instructions: Record<AdvancedCreativity, string> = {
+    strict: '创意强度：严格。严格遵循用户描述，不自行添加新主体、新道具或复杂背景。',
+    balanced: '创意强度：平衡。在保留用户核心意图的基础上，适度优化构图、光线、质感和完成度。',
+    exploratory:
+      '创意强度：发散。围绕用户主题做更有表现力的视觉演绎，可增强场景、光影和风格，但不要偏离主体诉求。',
+  }
+  return `${prompt}\n\n【创意强度】\n${instructions[creativity]}`
 }
 
 async function readGenerationTask(taskId: string) {
@@ -1325,6 +1385,11 @@ export function App() {
   const [count, setCount] = useState(1)
   const [responseFormat, setResponseFormat] = useState<'url' | 'b64_json'>('b64_json')
   const [inputFidelity, setInputFidelity] = useState<'low' | 'high'>('high')
+  const [advancedNegativePrompt, setAdvancedNegativePrompt] = useState('')
+  const [advancedBackground, setAdvancedBackground] = useState<AdvancedBackground>('auto')
+  const [advancedCreativity, setAdvancedCreativity] = useState<AdvancedCreativity>('balanced')
+  const [advancedStyleWeight, setAdvancedStyleWeight] = useState<AdvancedStyleWeight>('medium')
+  const [advancedSketchWeight, setAdvancedSketchWeight] = useState<AdvancedSketchWeight>('reference')
   const [simplePrompt, setSimplePrompt] = useState('')
   const [simplePromptOptimizationPreset, setSimplePromptOptimizationPreset] =
     useState<PromptOptimizationPreset>(DEFAULT_PROMPT_OPTIMIZATION_PRESET)
@@ -2708,6 +2773,7 @@ export function App() {
         model: textModel.trim() || DEFAULT_TEXT_MODEL,
         prompt,
         sketchDataUrl,
+        sketchWeight: advancedSketchWeight,
       })
       setAdvancedSketchDescription(description)
       return description
@@ -2750,13 +2816,25 @@ ${description}`
     setStatus('正在生成图片...')
 
     try {
+      const includeAdvancedControls = Boolean(
+        options?.includeAdvancedSketch || options?.includeAdvancedStyle
+      )
+      const controlledPrompt = includeAdvancedControls
+        ? promptWithCreativity(
+            promptWithBackground(
+              promptWithNegativePrompt(prompt, advancedNegativePrompt),
+              advancedBackground
+            ),
+            advancedCreativity
+          )
+        : prompt
       const sketchDescription = options?.includeAdvancedSketch
-        ? await describeAdvancedSketch(prompt)
+        ? await describeAdvancedSketch(controlledPrompt)
         : ''
-      const sketchPrompt = promptWithAdvancedSketch(prompt, sketchDescription)
+      const sketchPrompt = promptWithAdvancedSketch(controlledPrompt, sketchDescription)
       const selectedStyles =
         options?.includeAdvancedStyle && advancedSelectedStyle ? [advancedSelectedStyle] : []
-      const finalPrompt = promptWithStyles(sketchPrompt, selectedStyles)
+      const finalPrompt = promptWithStyles(sketchPrompt, selectedStyles, advancedStyleWeight)
       const result = await bridge.generateImages({
         baseUrl,
         apiKey,
@@ -2767,6 +2845,7 @@ ${description}`
         quality,
         count,
         responseFormat,
+        background: includeAdvancedControls ? advancedBackground : undefined,
         onTaskUpdate: (task) => setStatus(taskStatusLabel(task.status)),
       })
       const records = buildLocalImageRecords(result.images, {
@@ -4232,6 +4311,24 @@ ${description}`
                     placeholder='例如：一张高级科技产品海报，干净背景，清晰主视觉，真实材质，高级棚拍光线'
                   />
                 </label>
+                <div className='field advanced-negative-field'>
+                  <div className='field-label-row'>
+                    <span>负面提示词</span>
+                    <button
+                      type='button'
+                      className='secondary compact-action'
+                      onClick={() => setAdvancedNegativePrompt(DEFAULT_NEGATIVE_PROMPT)}
+                    >
+                      一键填默认
+                    </button>
+                  </div>
+                  <textarea
+                    className='advanced-negative-prompt'
+                    value={advancedNegativePrompt}
+                    onChange={(event) => setAdvancedNegativePrompt(event.target.value)}
+                    placeholder='例如：文字、水印、低清、畸形、错手、脏背景'
+                  />
+                </div>
                 <section className='advanced-sketch-board' aria-label='分镜草图画布'>
                   <div className='advanced-sketch-header'>
                     <div>
@@ -4360,6 +4457,19 @@ ${description}`
                     </select>
                   </label>
                   <label className='field'>
+                    <span>背景</span>
+                    <select
+                      value={advancedBackground}
+                      onChange={(event) => setAdvancedBackground(event.target.value as AdvancedBackground)}
+                    >
+                      {backgroundOptions.map((item) => (
+                        <option key={item.value} value={item.value}>
+                          {item.label}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className='field'>
                     <span>数量</span>
                     <select value={count} onChange={(event) => setCount(Number(event.target.value))}>
                       {counts.map((item) => (
@@ -4387,6 +4497,48 @@ ${description}`
                     >
                       <option value='high'>high</option>
                       <option value='low'>low</option>
+                    </select>
+                  </label>
+                  <label className='field'>
+                    <span>创意强度</span>
+                    <select
+                      value={advancedCreativity}
+                      onChange={(event) => setAdvancedCreativity(event.target.value as AdvancedCreativity)}
+                    >
+                      {creativityOptions.map((item) => (
+                        <option key={item.value} value={item.value}>
+                          {item.label}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className='field'>
+                    <span>风格权重</span>
+                    <select
+                      value={advancedStyleWeight}
+                      onChange={(event) => setAdvancedStyleWeight(event.target.value as AdvancedStyleWeight)}
+                    >
+                      {styleWeightOptions.map((item) => (
+                        <option key={item.value} value={item.value}>
+                          {item.label}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className='field'>
+                    <span>草图权重</span>
+                    <select
+                      value={advancedSketchWeight}
+                      onChange={(event) => {
+                        setAdvancedSketchWeight(event.target.value as AdvancedSketchWeight)
+                        setAdvancedSketchDescription('')
+                      }}
+                    >
+                      {sketchWeightOptions.map((item) => (
+                        <option key={item.value} value={item.value}>
+                          {item.label}
+                        </option>
+                      ))}
                     </select>
                   </label>
                   <label className='field'>

@@ -92,8 +92,6 @@ const DEFAULT_TEXT_BASE_URL = DEFAULT_BASE_URL
 const DEFAULT_IMAGE_BASE_URL = DEFAULT_BASE_URL
 const DEFAULT_MODEL = 'gpt-image-2'
 const DEFAULT_TEXT_MODEL = 'gpt-5.5'
-const DEFAULT_PROMPT_OPTIMIZER_URL = ''
-const DEFAULT_PROMPT_OPTIMIZER_USERNAME = ''
 const DEFAULT_PROMPT_OPTIMIZATION_PRESET: PromptOptimizationPreset = 'ecommerce'
 const CONSOLE_URL = 'https://hotapi.top/'
 const GITHUB_REPO_URL = 'https://github.com/1093791954/image-tool'
@@ -1381,11 +1379,6 @@ export function App() {
   const [isLoadingStyles, setIsLoadingStyles] = useState(false)
   const [model, setModel] = useState(DEFAULT_MODEL)
   const [textModel, setTextModel] = useState(DEFAULT_TEXT_MODEL)
-  const [promptOptimizerUrl, setPromptOptimizerUrl] = useState(DEFAULT_PROMPT_OPTIMIZER_URL)
-  const [promptOptimizerUsername, setPromptOptimizerUsername] = useState(
-    DEFAULT_PROMPT_OPTIMIZER_USERNAME
-  )
-  const [promptOptimizerPassword, setPromptOptimizerPassword] = useState('')
   const [size, setSize] = useState('1024x1024')
   const [sizeMode, setSizeMode] = useState<'preset' | 'custom'>('preset')
   const [customSizeWidth, setCustomSizeWidth] = useState('1024')
@@ -1656,15 +1649,8 @@ export function App() {
         setPersistApiKey(Boolean(settings.persistApiKey))
         setThemeMode(settings.themeMode || 'system')
         setTextModel(settings.textModel || DEFAULT_TEXT_MODEL)
-        setPromptOptimizerUrl(settings.promptOptimizerUrl || DEFAULT_PROMPT_OPTIMIZER_URL)
-        setPromptOptimizerUsername(
-          settings.promptOptimizerUsername || DEFAULT_PROMPT_OPTIMIZER_USERNAME
-        )
         if (settings.persistApiKey && settings.apiKey) setApiKey(settings.apiKey)
         if (settings.persistApiKey && settings.codexApiKey) setCodexApiKey(settings.codexApiKey)
-        if (settings.persistApiKey && settings.promptOptimizerPassword) {
-          setPromptOptimizerPassword(settings.promptOptimizerPassword)
-        }
       })
       .finally(() => setHasLoadedSettings(true))
     void refreshImages()
@@ -2101,12 +2087,9 @@ export function App() {
       apiKey,
       codexApiKey,
       textModel,
-      promptOptimizerUrl,
-      promptOptimizerUsername,
-      promptOptimizerPassword,
       themeMode,
     })
-    setStatus(persistApiKey ? '设置已保存' : '设置已保存，API Key 和访问密码未落盘')
+    setStatus(persistApiKey ? '设置已保存' : '设置已保存，API Key 未落盘')
   }
 
   async function handleResetConnectionSettings() {
@@ -2119,9 +2102,6 @@ export function App() {
     setModel(DEFAULT_MODEL)
     setTextModel(DEFAULT_TEXT_MODEL)
     setModels([])
-    setPromptOptimizerUrl(DEFAULT_PROMPT_OPTIMIZER_URL)
-    setPromptOptimizerUsername(DEFAULT_PROMPT_OPTIMIZER_USERNAME)
-    setPromptOptimizerPassword('')
     setLoginPassword('')
     setIsLoginDialogOpen(false)
     await saveSettings({
@@ -2132,12 +2112,9 @@ export function App() {
       apiKey: '',
       codexApiKey: '',
       textModel: DEFAULT_TEXT_MODEL,
-      promptOptimizerUrl: DEFAULT_PROMPT_OPTIMIZER_URL,
-      promptOptimizerUsername: DEFAULT_PROMPT_OPTIMIZER_USERNAME,
-      promptOptimizerPassword: '',
       themeMode,
     })
-    setStatus('连接配置已重设，API Key 和访问密码已清除')
+    setStatus('连接配置已重设，API Key 已清除')
   }
 
   async function handleThemeChange(nextThemeMode: ThemeMode) {
@@ -2150,9 +2127,6 @@ export function App() {
       apiKey,
       codexApiKey,
       textModel,
-      promptOptimizerUrl,
-      promptOptimizerUsername,
-      promptOptimizerPassword,
       themeMode: nextThemeMode,
     })
     setStatus('主题已切换')
@@ -2160,27 +2134,6 @@ export function App() {
 
   async function handleOpenConsole() {
     await bridge.openExternal(CONSOLE_URL)
-  }
-
-  async function handleOpenPromptOptimizer() {
-    const targetUrl = promptOptimizerUrl.trim()
-    if (!targetUrl) {
-      setError('请先填写 Prompt Optimizer 地址')
-      return
-    }
-    await bridge.openExternal(targetUrl)
-  }
-
-  function hasPromptOptimizationProvider() {
-    return Boolean(promptOptimizerUrl.trim() || codexApiKey)
-  }
-
-  function promptOptimizerPayloadFields() {
-    return {
-      promptOptimizerUrl,
-      promptOptimizerUsername,
-      promptOptimizerPassword,
-    }
   }
 
   async function handleExportBackup() {
@@ -2200,11 +2153,6 @@ export function App() {
       setPersistApiKey(Boolean(settings.persistApiKey))
       setThemeMode(settings.themeMode || 'system')
       setTextModel(settings.textModel || DEFAULT_TEXT_MODEL)
-      setPromptOptimizerUrl(settings.promptOptimizerUrl || DEFAULT_PROMPT_OPTIMIZER_URL)
-      setPromptOptimizerUsername(
-        settings.promptOptimizerUsername || DEFAULT_PROMPT_OPTIMIZER_USERNAME
-      )
-      setPromptOptimizerPassword('')
       setApiKey('')
       setCodexApiKey('')
       await refreshImages()
@@ -2351,9 +2299,6 @@ export function App() {
         apiKey: result.apiKey,
         codexApiKey: result.codexApiKey,
         textModel: result.codexModel || DEFAULT_TEXT_MODEL,
-        promptOptimizerUrl,
-        promptOptimizerUsername,
-        promptOptimizerPassword,
         themeMode,
       })
       setLoginPassword('')
@@ -2378,8 +2323,8 @@ export function App() {
       setError('请先输入需要优化的提示词')
       return
     }
-    if (!hasPromptOptimizationProvider()) {
-      setError('请先填写 Prompt Optimizer 地址，或点击连接配置里的登录获取文本模型秘钥')
+    if (!codexApiKey.trim()) {
+      setError('请先在控制台填写文本模型 API Key，或点击连接配置里的登录获取文本模型秘钥')
       setStatus('缺少提示词优化秘钥')
       return
     }
@@ -2398,7 +2343,6 @@ export function App() {
         prompt: currentPrompt,
         mode: generationMode,
         optimizationPreset: promptOptimizationPreset,
-        ...promptOptimizerPayloadFields(),
       })
       const promptReferenceImages = getPromptMentionReferenceImages(
         promptNodeId,
@@ -2429,8 +2373,8 @@ export function App() {
       setError('请先输入需要优化的图片描述')
       return
     }
-    if (!hasPromptOptimizationProvider()) {
-      setError('请先填写 Prompt Optimizer 地址，或点击连接配置里的登录获取文本模型秘钥')
+    if (!codexApiKey.trim()) {
+      setError('请先在控制台填写文本模型 API Key，或点击连接配置里的登录获取文本模型秘钥')
       setStatus('缺少提示词优化秘钥')
       return
     }
@@ -2451,7 +2395,6 @@ export function App() {
           target === 'advanced'
             ? advancedPromptOptimizationPreset
             : simplePromptOptimizationPreset,
-        ...promptOptimizerPayloadFields(),
       })
       if (target === 'advanced') {
         setAdvancedPrompt(optimizedPrompt)
@@ -3379,7 +3322,7 @@ ${description}`
         generationMode,
         isOptimizingPrompt: isPromptOptimizing,
         canOptimizePrompt:
-          Boolean(nodePrompt.trim()) && hasPromptOptimizationProvider() && !isPromptOptimizing,
+          Boolean(nodePrompt.trim()) && Boolean(codexApiKey.trim()) && !isPromptOptimizing,
         onOptimizePrompt: () => void handleOptimizePrompt(node.id),
       }
     }
@@ -5017,53 +4960,6 @@ ${description}`
                   <div className='connection-config-block'>
                     <div className='connection-config-title'>
                       <Sparkles size={14} />
-                      <span>Prompt Optimizer</span>
-                      <small>提示词优化服务</small>
-                    </div>
-                    <label className='field'>
-                      <span>服务地址</span>
-                      <input
-                        value={promptOptimizerUrl}
-                        onChange={(event) => setPromptOptimizerUrl(event.target.value)}
-                        placeholder='https://your-prompt-optimizer.example.com'
-                        spellCheck={false}
-                      />
-                    </label>
-                    <div className='field-row two-columns'>
-                      <label className='field'>
-                        <span>访问用户名</span>
-                        <input
-                          value={promptOptimizerUsername}
-                          onChange={(event) => setPromptOptimizerUsername(event.target.value)}
-                          placeholder='用户名'
-                          spellCheck={false}
-                        />
-                      </label>
-                      <label className='field'>
-                        <span>访问密码</span>
-                        <input
-                          value={promptOptimizerPassword}
-                          onChange={(event) => setPromptOptimizerPassword(event.target.value)}
-                          type='password'
-                          placeholder='Basic Auth 密码'
-                          spellCheck={false}
-                        />
-                      </label>
-                    </div>
-                    <button
-                      className='secondary'
-                      type='button'
-                      onClick={handleOpenPromptOptimizer}
-                      disabled={!promptOptimizerUrl.trim()}
-                    >
-                      <ExternalLink size={16} />
-                      打开站点
-                    </button>
-                  </div>
-
-                  <div className='connection-config-block'>
-                    <div className='connection-config-title'>
-                      <Sparkles size={14} />
                       <span>生图模型</span>
                     </div>
                     <label className='field'>
@@ -5111,7 +5007,7 @@ ${description}`
                       checked={persistApiKey}
                       onChange={(event) => setPersistApiKey(event.target.checked)}
                     />
-                    <span>将 API Key 和访问密码保存到当前浏览器</span>
+                    <span>将 API Key 保存到当前浏览器</span>
                   </label>
                   <div className='button-grid'>
                     <button

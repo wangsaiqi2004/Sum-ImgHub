@@ -8,15 +8,12 @@ export type AppSettings = {
   apiKey?: string
   codexApiKey?: string
   textModel?: string
-  promptOptimizerUrl?: string
-  promptOptimizerUsername?: string
-  promptOptimizerPassword?: string
   themeMode?: ThemeMode
 }
 
 export type BackupSettings = Omit<
   AppSettings,
-  'apiKey' | 'codexApiKey' | 'promptOptimizerPassword' | 'persistApiKey'
+  'apiKey' | 'codexApiKey' | 'persistApiKey'
 > & {
   persistApiKey: false
 }
@@ -125,9 +122,6 @@ export type PromptOptimizationPayload = {
   prompt: string
   mode: 'text' | 'image'
   optimizationPreset: PromptOptimizationPreset
-  promptOptimizerUrl?: string
-  promptOptimizerUsername?: string
-  promptOptimizerPassword?: string
 }
 
 export type NegativePromptOptimizationPayload = {

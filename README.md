@@ -20,11 +20,16 @@
 - 服务端会先接收生成任务并后台处理，结果会短暂写入服务器缓存，再同步到浏览器图库
 - 支持 URL 和 `b64_json` 两种图片返回格式
 
-## Prompt Optimizer 集成边界
+## 内置提示词工程
 
-本项目可以在控制台配置外部 Prompt Optimizer 服务地址，用于提示词优化。
-Prompt Optimizer 作为独立部署的外部服务通过网络接口连接，本仓库不把
-`linshenkx/prompt-optimizer` 作为子模块、依赖源码或内置组件分发。
+本项目内置可复用的图像提示词优化模板，用于快速生成、高级生成、工作流节点
+和电商主题等场景。提示词优化会调用用户在控制台配置的文本模型，不需要额外
+部署 Prompt Optimizer 服务。
+
+部分提示词工程思路和模板结构参考并改写自
+[`linshenkx/prompt-optimizer`](https://github.com/linshenkx/prompt-optimizer)，
+该项目采用 GNU AGPLv3 许可证。本项目保留来源说明并继续以
+`AGPL-3.0-or-later` 开源，详见 [NOTICE](./NOTICE)。
 
 ## 开发运行
 
@@ -75,5 +80,5 @@ npm run preview
 你需要按照 AGPLv3 的要求向这些用户提供对应的完整源代码，并让衍生作品继续
 在兼容的 AGPL 条款下开放。
 
-本项目允许连接用户自行部署的外部服务，例如 Prompt Optimizer；该外部服务的
-源码、部署和协议义务由对应项目自身的许可证约束。
+本项目包含参考并改写自 `linshenkx/prompt-optimizer` 的提示词模板内容，相关
+来源和许可证说明见 [NOTICE](./NOTICE)。

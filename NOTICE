@@ -1,0 +1,11 @@
+GPT Image Tools
+
+This project includes adapted image prompt engineering templates and concepts
+derived from linshenkx/prompt-optimizer.
+
+Source project: https://github.com/linshenkx/prompt-optimizer
+Source license: GNU Affero General Public License v3.0
+Adapted in: src/promptEngineering.ts
+
+The adapted templates are distributed as part of this project under
+AGPL-3.0-or-later. See LICENSE for the full license text.

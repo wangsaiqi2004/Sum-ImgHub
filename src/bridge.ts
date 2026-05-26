@@ -9,10 +9,17 @@ import type {
   ModelOption,
   NegativePromptOptimizationPayload,
   PromptOptimizationPayload,
-  PromptOptimizationPreset,
   SketchDescriptionPayload,
   StyleLibraryResult,
 } from './types'
+import {
+  buildCommerceDetailPromptSystemInstruction,
+  buildCommerceDetailPromptUserText,
+  buildCommerceMainPromptSystemInstruction,
+  buildCommerceMainPromptUserText,
+  buildNegativePromptOptimizationMessages,
+  buildPromptOptimizationMessages,
+} from './promptEngineering'
 
 function normalizeBaseUrl(baseUrl: string) {
   const trimmed = baseUrl.trim().replace(/\/+$/, '')
@@ -160,32 +167,6 @@ async function waitForImageTask(
     throw new Error('服务器后台任务没有返回生成结果')
   }
   return task.result
-}
-
-async function optimizePromptWithPromptOptimizer(payload: PromptOptimizationPayload) {
-  const response = await fetch('/api/prompt-optimizer/optimize', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      serviceUrl: payload.promptOptimizerUrl,
-      username: payload.promptOptimizerUsername,
-      password: payload.promptOptimizerPassword,
-      prompt: payload.prompt,
-      mode: payload.mode,
-      optimizationPreset: payload.optimizationPreset,
-    }),
-  })
-  const body = await parseJsonResponse<{
-    success?: boolean
-    message?: string
-    data?: { prompt?: string }
-  }>(response, 'Prompt Optimizer failed')
-  const result = assertApiSuccess(body, 'Prompt Optimizer 优化失败')
-  const optimizedPrompt = result.prompt?.trim()
-  if (!optimizedPrompt) {
-    throw new Error('Prompt Optimizer 没有返回优化后的提示词')
-  }
-  return optimizedPrompt
 }
 
 async function urlToDataUrl(url: string) {
@@ -349,39 +330,6 @@ async function parsePromptOptimizationResult(body: {
   return optimizedPrompt
 }
 
-const promptPresetMagic: Record<PromptOptimizationPreset, { label: string; instruction: string }> = {
-  general: {
-    label: '通用增强',
-    instruction:
-      '按通用高质量图像生成要求增强：明确主体、画面层次、构图、材质、光线、镜头语言、风格和画质，不额外添加营销话术。',
-  },
-  ecommerce: {
-    label: '电商卖货',
-    instruction:
-      '加入电商转化导向：突出商品主体和核心卖点，强化详情页/主图可用的干净构图、质感、消费场景、利益点氛围、真实材质和高级棚拍光线；避免要求模型生成不可控的长文字。',
-  },
-  product: {
-    label: '产品质感',
-    instruction:
-      '加入产品摄影魔法：强调材质纹理、边缘高光、反射控制、微距细节、干净背景、商业棚拍、真实阴影和高级质感，让主体适合被清楚检视。',
-  },
-  social: {
-    label: '社媒爆款',
-    instruction:
-      '加入社媒传播魔法：强化第一眼吸引力、强对比主视觉、情绪氛围、生活方式场景、封面感构图、节奏感和平台内容审美，但保持画面干净。',
-  },
-  brand: {
-    label: '品牌海报',
-    instruction:
-      '加入品牌视觉魔法：强调品牌调性、主视觉秩序、留白、视觉层级、色彩系统、海报级构图、精致光影和可用于品牌 Campaign 的高级感。',
-  },
-  character: {
-    label: 'IP/角色',
-    instruction:
-      '加入角色/IP 魔法：强化角色辨识度、表情、姿态、服装细节、世界观氛围、动作叙事和一致性；不要改变用户指定的角色核心特征。',
-  },
-}
-
 function promptOptimizationRequestBody(payload: PromptOptimizationPayload) {
   return {
     model: payload.model,
@@ -401,74 +349,20 @@ function promptOptimizationResponsesRequestBody(payload: PromptOptimizationPaylo
 }
 
 function promptOptimizationMessages(payload: PromptOptimizationPayload) {
-  const modeLabel = payload.mode === 'image' ? '图像参考生成' : '文生图'
-  const magic = promptPresetMagic[payload.optimizationPreset] || promptPresetMagic.general
-  return [
-    {
-      role: 'system',
-      content:
-        '你是资深 AI 图像提示词导演和商业视觉修辞编辑。你的任务是先在内部判断用户真正想生成什么，再把原始提示词扩写为稳定、清晰、可执行的中文生图提示词。你必须保留用户原意、主体、场景、指定文字、品牌/产品/人物特征和关键限制；只补足缺失的视觉变量，不做无关发挥。最终只输出优化后的提示词正文，不解释过程，不添加寒暄，不使用代码块。',
-    },
-    {
-      role: 'user',
-      content: `任务类型：${modeLabel}
-优化方向：${magic.label}
-方向要求：${magic.instruction}
-
-请把下面的中文图像生成提示词优化得更具体、更适合高质量图像生成。请在内部完成这些判断，但不要输出分析过程：
-1. 判断用户要生成的主体、用途、画面类型和必须保留的信息。
-2. 补全主体形态、构图、镜头、背景、材质、光线、色彩、风格、画质、负面约束。
-3. 如果用户要求画面中出现某段文字、网址、Logo 或标识，必须在【画面文字】里原样保留，不要把它放进负面约束，也不要改写大小写、符号或引号内内容。
-4. 如果用户没有要求画面出现文字，请在【画面文字】写“无文字、无 Logo、无水印”。
-5. 不要编造用户没提到的品牌、IP、人物身份、国家地区、价格、参数、按钮、二维码或平台界面。
-6. 输出应适合直接复制到图像生成模型，不要出现“可以”“建议”“应该”等说明口吻。
-
-输出固定使用以下 8 个小标题，每个小标题下写 1 到 2 句完整提示词，总体控制在 350 到 800 个中文字符：
-
-【主体与目标】
-明确主体是什么、视觉目标是什么、哪些原始信息必须保持。
-
-【构图镜头】
-明确景别、视角、主体位置、画面层次、焦段/镜头感和空间关系。
-
-【场景背景】
-明确背景、道具、环境氛围和留白，背景服务主体，不喧宾夺主。
-
-【材质细节】
-明确材质、纹理、边缘、高光、反射、精修细节和真实感。
-
-【光线色彩】
-明确主光、辅光、阴影、色彩倾向、对比度、冷暖关系和层次。
-
-【风格画质】
-明确摄影/插画/海报/3D 等风格、渲染质感、清晰度和商业完成度。
-
-【画面文字】
-只描述用户明确要求出现的文字、位置和样式；没有文字要求则写“无文字、无 Logo、无水印”。
-
-【负面约束】
-列出需要避免的问题：低清、模糊、噪点、畸变、比例失衡、过度复杂背景、错误肢体、错误文字、无关水印等；不要否定用户明确要求保留的内容。
-
-原提示词：${payload.prompt}`,
-    },
-  ]
+  return buildPromptOptimizationMessages(payload)
 }
 
 function negativePromptOptimizationSystemInstruction() {
-  return '你是资深 AI 图像生成质量控制专家。你的任务是根据用户的图片描述，生成一段适合放入“负面提示词”输入框的中文负面约束。最终只输出负面提示词正文，不解释过程，不添加标题，不使用代码块。'
+  return buildNegativePromptOptimizationMessages({
+    baseUrl: '',
+    apiKey: '',
+    model: '',
+    prompt: '',
+  })[0].content
 }
 
 function negativePromptOptimizationUserText(payload: NegativePromptOptimizationPayload) {
-  const currentNegativePrompt = payload.currentNegativePrompt?.trim()
-  return `图片描述：
-${payload.prompt.trim()}
-
-${currentNegativePrompt ? `用户已有负面提示词：\n${currentNegativePrompt}\n\n` : ''}请生成适合这张图的负面提示词：
-1. 输出 12 到 28 个中文短词或短语，用中文逗号分隔。
-2. 覆盖通用画质问题、构图/主体错误、材质光影问题、文字水印问题。
-3. 结合图片描述中的主体和场景补充专属风险，例如人物、商品、海报、武器、手部、文字、背景等。
-4. 不要否定用户明确想要的主体、风格、颜色和文字内容。
-5. 不要输出完整句子，不要编号。`
+  return buildNegativePromptOptimizationMessages(payload)[1].content
 }
 
 function negativePromptOptimizationMessages(payload: NegativePromptOptimizationPayload) {
@@ -600,44 +494,11 @@ function sketchDescriptionResponsesRequestBody(payload: SketchDescriptionPayload
 }
 
 function commerceMainPromptSystemInstruction() {
-  return '你是资深电商主图视觉导演、商业修图提示词工程师和多模态图像分析师。你的任务是分析商品白底图和目标风格图，然后输出一段可直接用于图像编辑/图像参考生成模型的中文提示词。最终只输出提示词正文，不解释过程，不写 Markdown，不使用代码块。'
+  return buildCommerceMainPromptSystemInstruction()
 }
 
 function commerceMainPromptUserText(payload: CommerceMainPromptPayload) {
-  const description = payload.description.trim() || '用户未填写额外文字描述。'
-  const categoryPath = payload.categoryPath?.trim() || '用户未选择商品品类。'
-  return `请完成电商主图提示词预处理：
-
-输入说明：
-1. 前 ${Math.max(1, payload.productImages.length)} 张图是【商品白底图】，可能包含同一个商品的多个角度，是必须保留的商品主体依据。
-2. 最后一张图是【目标风格图】，是构图、背景、光线、色彩、文字布局和商业氛围的参考图。
-3. 用户文字描述可能很少，也可能很多；请结合目标风格图进行修剪，只保留适合画面出现或影响视觉表达的信息。
-
-用户文字描述：
-${description}
-
-用户选择的商品品类：
-${categoryPath}
-
-内部分析要求，不要输出分析过程：
-1. 识别目标风格图的构图、主体位置、背景层次、光线方向、材质质感、色彩倾向、摄影/设计风格。
-2. 将用户选择的商品品类作为强约束；如果图像识别和品类冲突，优先尊重用户选择的品类，并按该品类常见卖点、材质、使用场景和展示规范组织提示词。
-3. 识别目标风格图中可见的文字数量、位置、层级、排版方式和大致用途；如果用户文字描述里有适合替换到画面中的文案，则选择性替换目标风格图的文字；如果用户没有给明确可上图文字，则要求去除/弱化风格图文字，不要编造品牌、价格、参数、二维码。
-4. 最终提示词必须明确：综合多张商品白底图理解同一商品的外观、结构和多角度细节，用该商品替换目标风格图里的主商品/主物体，同时保留商品真实外观、结构、颜色、材质、比例和关键细节。
-5. 目标风格图只迁移构图、背景、光线、色彩、视觉层级、文字版式和商业质感，不复制风格图中的商品品牌或无关元素。
-6. 输出提示词应适合图像编辑模型，强调“参考两张图完成商品替换和风格迁移”。
-
-输出结构必须包含这些段落标题：
-【核心任务】
-【商品品类】
-【商品保持】
-【风格迁移】
-【文字处理】
-【构图光线】
-【画质要求】
-【负面约束】
-
-总体控制在 450 到 900 个中文字符。`
+  return buildCommerceMainPromptUserText(payload)
 }
 
 function commerceMainPromptMessages(payload: CommerceMainPromptPayload) {
@@ -704,45 +565,11 @@ function commerceMainPromptResponsesRequestBody(payload: CommerceMainPromptPaylo
 }
 
 function commerceDetailPromptSystemInstruction() {
-  return '你是资深电商详情页视觉导演、商业修图提示词工程师和多模态图像分析师。你的任务是分析商品白底图和目标详情风格图，然后输出一段可直接用于图像编辑/图像参考生成模型的中文提示词。最终只输出提示词正文，不解释过程，不写 Markdown，不使用代码块。'
+  return buildCommerceDetailPromptSystemInstruction()
 }
 
 function commerceDetailPromptUserText(payload: CommerceDetailPromptPayload) {
-  const description = payload.description.trim() || '用户未填写额外文字描述。'
-  const categoryPath = payload.categoryPath?.trim() || '用户未选择商品品类。'
-  return `请完成电商详情图提示词预处理：
-
-输入说明：
-1. 前 ${Math.max(1, payload.productImages.length)} 张图是【商品白底图】，可能包含同一个商品的多个角度，是必须保留的商品主体依据。
-2. 最后一张图是【目标详情风格图】，用于参考详情页版式、信息层级、背景质感、细节展示、分屏节奏、文字区域和商业氛围。
-3. 用户文字描述可能很少，也可能很多；请结合目标详情风格图进行修剪，拆成适合详情图出现的短卖点、利益点或辅助说明。
-
-用户文字描述：
-${description}
-
-用户选择的商品品类：
-${categoryPath}
-
-内部分析要求，不要输出分析过程：
-1. 识别目标详情风格图的版式结构：主视觉区、卖点标题区、细节特写区、场景/功效说明区、装饰元素和留白比例。
-2. 将用户选择的商品品类作为强约束；如果图像识别和品类冲突，优先尊重用户选择的品类，并按该品类常见卖点、材质、使用场景、细节展示和详情页表达规范组织提示词。
-3. 识别目标详情风格图中可见文字的数量、层级、位置、字号关系和用途；只用用户描述里的明确文案替换，避免编造品牌、功效、认证、价格、二维码和平台信息。
-4. 最终提示词必须明确：综合多张商品白底图理解同一商品外观、包装文字、结构、材质和多角度细节，用该商品替换目标详情风格图里的主商品/局部商品。
-5. 目标详情风格图只迁移长图/详情图的排版逻辑、分区节奏、背景、光线、色彩、道具和商业质感，不复制风格图中的商品品牌或无关元素。
-6. 输出提示词应适合图像编辑模型，强调“参考两张图完成商品替换、详情页布局迁移和短文案排版”。
-
-输出结构必须包含这些段落标题：
-【核心任务】
-【商品品类】
-【商品保持】
-【详情结构】
-【卖点文案】
-【细节展示】
-【风格光线】
-【画质要求】
-【负面约束】
-
-总体控制在 520 到 980 个中文字符。`
+  return buildCommerceDetailPromptUserText(payload)
 }
 
 function commerceDetailPromptMessages(payload: CommerceDetailPromptPayload) {
@@ -840,10 +667,6 @@ export const bridge: ImageApiClient = {
   },
 
   async optimizePrompt(payload) {
-    if (payload.promptOptimizerUrl?.trim()) {
-      return optimizePromptWithPromptOptimizer(payload)
-    }
-
     const baseUrl = normalizeBaseUrl(payload.baseUrl)
     const response = await fetch(`${baseUrl}/v1/chat/completions`, {
       method: 'POST',

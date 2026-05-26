@@ -20,15 +20,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   apiKey: '',
   codexApiKey: '',
   textModel: 'gpt-5.5',
-  promptOptimizerUrl: '',
-  promptOptimizerUsername: '',
-  promptOptimizerPassword: '',
   themeMode: 'dark',
-}
-const LEGACY_PROMPT_OPTIMIZER_URL = 'http://38.76.215.105:8081'
-
-function normalizePromptOptimizerUrl(url: string | undefined) {
-  return url === LEGACY_PROMPT_OPTIMIZER_URL ? '' : url || DEFAULT_SETTINGS.promptOptimizerUrl
 }
 
 function openDb(): Promise<IDBDatabase> {
@@ -102,10 +94,6 @@ function normalizeSettings(settings: Partial<AppSettings> | undefined): AppSetti
     apiKey: settings?.persistApiKey ? settings.apiKey || '' : '',
     codexApiKey: settings?.persistApiKey ? settings.codexApiKey || '' : '',
     textModel: settings?.textModel || DEFAULT_SETTINGS.textModel,
-    promptOptimizerUrl: normalizePromptOptimizerUrl(settings?.promptOptimizerUrl),
-    promptOptimizerUsername:
-      settings?.promptOptimizerUsername || DEFAULT_SETTINGS.promptOptimizerUsername,
-    promptOptimizerPassword: settings?.persistApiKey ? settings.promptOptimizerPassword || '' : '',
     themeMode: settings?.themeMode || 'dark',
   }
 }
@@ -117,9 +105,6 @@ function backupSettingsFrom(settings: AppSettings): BackupSettings {
     imageBaseUrl: settings.imageBaseUrl || settings.baseUrl || DEFAULT_SETTINGS.imageBaseUrl,
     persistApiKey: false,
     textModel: settings.textModel || DEFAULT_SETTINGS.textModel,
-    promptOptimizerUrl: settings.promptOptimizerUrl || DEFAULT_SETTINGS.promptOptimizerUrl,
-    promptOptimizerUsername:
-      settings.promptOptimizerUsername || DEFAULT_SETTINGS.promptOptimizerUsername,
     themeMode: settings.themeMode || 'system',
   }
 }
@@ -236,14 +221,10 @@ export async function importBackup(backup: unknown): Promise<number> {
       imageBaseUrl:
         candidate.settings.imageBaseUrl || candidate.settings.baseUrl || current.imageBaseUrl,
       textModel: candidate.settings.textModel || current.textModel,
-      promptOptimizerUrl: candidate.settings.promptOptimizerUrl || current.promptOptimizerUrl,
-      promptOptimizerUsername:
-        candidate.settings.promptOptimizerUsername || current.promptOptimizerUsername,
       themeMode: candidate.settings.themeMode || current.themeMode,
       persistApiKey: false,
       apiKey: '',
       codexApiKey: '',
-      promptOptimizerPassword: '',
     })
   }
 

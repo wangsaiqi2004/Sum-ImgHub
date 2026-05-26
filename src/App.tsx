@@ -1385,13 +1385,26 @@ export function App() {
   const [count, setCount] = useState(1)
   const [responseFormat, setResponseFormat] = useState<'url' | 'b64_json'>('b64_json')
   const [inputFidelity, setInputFidelity] = useState<'low' | 'high'>('high')
+  const [advancedModel, setAdvancedModel] = useState(DEFAULT_MODEL)
+  const [advancedSize, setAdvancedSize] = useState('1024x1024')
+  const [advancedSizeMode, setAdvancedSizeMode] = useState<'preset' | 'custom'>('preset')
+  const [advancedCustomSizeWidth, setAdvancedCustomSizeWidth] = useState('1024')
+  const [advancedCustomSizeHeight, setAdvancedCustomSizeHeight] = useState('1024')
+  const [advancedQuality, setAdvancedQuality] = useState('auto')
+  const [advancedCount, setAdvancedCount] = useState(1)
+  const [advancedResponseFormat, setAdvancedResponseFormat] =
+    useState<'url' | 'b64_json'>('b64_json')
+  const [advancedInputFidelity, setAdvancedInputFidelity] = useState<'low' | 'high'>('high')
   const [advancedNegativePrompt, setAdvancedNegativePrompt] = useState('')
   const [advancedBackground, setAdvancedBackground] = useState<AdvancedBackground>('auto')
   const [advancedCreativity, setAdvancedCreativity] = useState<AdvancedCreativity>('balanced')
   const [advancedStyleWeight, setAdvancedStyleWeight] = useState<AdvancedStyleWeight>('medium')
   const [advancedSketchWeight, setAdvancedSketchWeight] = useState<AdvancedSketchWeight>('reference')
   const [simplePrompt, setSimplePrompt] = useState('')
+  const [advancedPrompt, setAdvancedPrompt] = useState('')
   const [simplePromptOptimizationPreset, setSimplePromptOptimizationPreset] =
+    useState<PromptOptimizationPreset>(DEFAULT_PROMPT_OPTIMIZATION_PRESET)
+  const [advancedPromptOptimizationPreset, setAdvancedPromptOptimizationPreset] =
     useState<PromptOptimizationPreset>(DEFAULT_PROMPT_OPTIMIZATION_PRESET)
   const [advancedSketchDescription, setAdvancedSketchDescription] = useState('')
   const [advancedSketchImageDataUrl, setAdvancedSketchImageDataUrl] = useState('')
@@ -2328,8 +2341,8 @@ export function App() {
     }
   }
 
-  async function handleOptimizeSimplePrompt() {
-    const currentPrompt = simplePrompt.trim()
+  async function handleOptimizeSimplePrompt(target: 'simple' | 'advanced' = 'simple') {
+    const currentPrompt = (target === 'advanced' ? advancedPrompt : simplePrompt).trim()
     if (!currentPrompt) {
       setError('请先输入需要优化的图片描述')
       return
@@ -2352,9 +2365,16 @@ export function App() {
         model: textModel.trim() || DEFAULT_TEXT_MODEL,
         prompt: currentPrompt,
         mode: 'text',
-        optimizationPreset: simplePromptOptimizationPreset,
+        optimizationPreset:
+          target === 'advanced'
+            ? advancedPromptOptimizationPreset
+            : simplePromptOptimizationPreset,
       })
-      setSimplePrompt(optimizedPrompt)
+      if (target === 'advanced') {
+        setAdvancedPrompt(optimizedPrompt)
+      } else {
+        setSimplePrompt(optimizedPrompt)
+      }
       setStatus('提示词已优化')
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
@@ -2569,39 +2589,77 @@ export function App() {
     setIsSidebarDrawerOpen(false)
   }
 
-  function selectedGenerationSize() {
-    if (sizeMode === 'preset') return size
+  function selectedGenerationSizeFor(
+    mode: 'preset' | 'custom',
+    presetSize: string,
+    customWidth: string,
+    customHeight: string
+  ) {
+    if (mode === 'preset') return presetSize
 
-    const width = Number(customSizeWidth)
-    const height = Number(customSizeHeight)
+    const width = Number(customWidth)
+    const height = Number(customHeight)
     if (!Number.isInteger(width) || !Number.isInteger(height)) return ''
     if (width < 64 || height < 64 || width > 4096 || height > 4096) return ''
     return `${width}x${height}`
   }
 
-  function handleSizeSelect(nextValue: string) {
+  function selectedGenerationSize() {
+    return selectedGenerationSizeFor(sizeMode, size, customSizeWidth, customSizeHeight)
+  }
+
+  function selectedAdvancedGenerationSize() {
+    return selectedGenerationSizeFor(
+      advancedSizeMode,
+      advancedSize,
+      advancedCustomSizeWidth,
+      advancedCustomSizeHeight
+    )
+  }
+
+  function handleSizeSelect(
+    nextValue: string,
+    state = {
+      size,
+      setSize,
+      setSizeMode,
+      setCustomSizeWidth,
+      setCustomSizeHeight,
+    }
+  ) {
     if (nextValue === CUSTOM_SIZE_VALUE) {
-      const parsedSize = parseSizeValue(size)
+      const parsedSize = parseSizeValue(state.size)
       if (parsedSize) {
-        setCustomSizeWidth(String(parsedSize.width))
-        setCustomSizeHeight(String(parsedSize.height))
+        state.setCustomSizeWidth(String(parsedSize.width))
+        state.setCustomSizeHeight(String(parsedSize.height))
       }
-      setSizeMode('custom')
+      state.setSizeMode('custom')
       return
     }
 
-    setSizeMode('preset')
-    setSize(nextValue)
+    state.setSizeMode('preset')
+    state.setSize(nextValue)
   }
 
-  function renderSizeField() {
+  function renderSizeField(
+    state = {
+      size,
+      sizeMode,
+      customSizeWidth,
+      customSizeHeight,
+      setSize,
+      setSizeMode,
+      setCustomSizeWidth,
+      setCustomSizeHeight,
+    }
+  ) {
     return (
       <div className='field size-field'>
         <label className='size-select-label'>
           <span>尺寸</span>
           <select
-            value={sizeMode === 'custom' ? CUSTOM_SIZE_VALUE : size}
-            onChange={(event) => handleSizeSelect(event.target.value)}
+            value={state.sizeMode === 'custom' ? CUSTOM_SIZE_VALUE : state.size}
+            onChange={(event) => handleSizeSelect(event.target.value, state)}
           >
             {sizeOptions.map((item) => (
               <option key={item.value} value={item.value}>
@@ -2611,7 +2669,7 @@ export function App() {
             <option value={CUSTOM_SIZE_VALUE}>自定义比例 · 手动输入</option>
           </select>
         </label>
-        {sizeMode === 'custom' ? (
+        {state.sizeMode === 'custom' ? (
           <div className='custom-size-grid'>
             <label>
               <span>宽</span>
@@ -2620,8 +2678,8 @@ export function App() {
                 min='64'
                 max='4096'
                 step='1'
-                value={customSizeWidth}
-                onChange={(event) => setCustomSizeWidth(event.target.value)}
+                value={state.customSizeWidth}
+                onChange={(event) => state.setCustomSizeWidth(event.target.value)}
                 aria-label='自定义宽度'
               />
             </label>
@@ -2632,8 +2690,8 @@ export function App() {
                 min='64'
                 max='4096'
                 step='1'
-                value={customSizeHeight}
-                onChange={(event) => setCustomSizeHeight(event.target.value)}
+                value={state.customSizeHeight}
+                onChange={(event) => state.setCustomSizeHeight(event.target.value)}
                 aria-label='自定义高度'
               />
             </label>
@@ -2795,13 +2853,18 @@ ${description}`
     includeAdvancedSketch?: boolean
     includeAdvancedStyle?: boolean
   }) {
-    const prompt = simplePrompt.trim()
+    const includeAdvancedControls = Boolean(
+      options?.includeAdvancedSketch || options?.includeAdvancedStyle
+    )
+    const prompt = (includeAdvancedControls ? advancedPrompt : simplePrompt).trim()
     if (!isConfigured) {
       setError('')
       setCurrentView('console')
       return
     }
-    const generationSize = selectedGenerationSize()
+    const generationSize = includeAdvancedControls
+      ? selectedAdvancedGenerationSize()
+      : selectedGenerationSize()
     if (!generationSize) {
       setError('请输入 64 到 4096 之间的自定义宽高')
       return
@@ -2816,9 +2879,6 @@ ${description}`
     setStatus('正在生成图片...')
 
     try {
-      const includeAdvancedControls = Boolean(
-        options?.includeAdvancedSketch || options?.includeAdvancedStyle
-      )
       const controlledPrompt = includeAdvancedControls
         ? promptWithCreativity(
             promptWithBackground(
@@ -2839,20 +2899,20 @@ ${description}`
         baseUrl,
         apiKey,
         mode: 'text',
-        model,
+        model: includeAdvancedControls ? advancedModel : model,
         prompt: finalPrompt,
         size: generationSize,
-        quality,
-        count,
-        responseFormat,
+        quality: includeAdvancedControls ? advancedQuality : quality,
+        count: includeAdvancedControls ? advancedCount : count,
+        responseFormat: includeAdvancedControls ? advancedResponseFormat : responseFormat,
         background: includeAdvancedControls ? advancedBackground : undefined,
         onTaskUpdate: (task) => setStatus(taskStatusLabel(task.status)),
       })
       const records = buildLocalImageRecords(result.images, {
         prompt: finalPrompt,
-        model,
+        model: includeAdvancedControls ? advancedModel : model,
         size: generationSize,
-        quality,
+        quality: includeAdvancedControls ? advancedQuality : quality,
         mode: 'text',
       })
       await saveImages(records)
@@ -4308,8 +4368,8 @@ ${description}`
                     <button
                       type='button'
                       className='secondary simple-optimize-action compact-action'
-                      onClick={() => void handleOptimizeSimplePrompt()}
-                      disabled={isGenerating || isOptimizingSimplePrompt || !simplePrompt.trim()}
+                      onClick={() => void handleOptimizeSimplePrompt('advanced')}
+                      disabled={isGenerating || isOptimizingSimplePrompt || !advancedPrompt.trim()}
                     >
                       {isOptimizingSimplePrompt ? (
                         <Loader2 className='spin' size={16} />
@@ -4322,8 +4382,8 @@ ${description}`
                   <textarea
                     id='advanced-prompt'
                     className='simple-prompt advanced-prompt'
-                    value={simplePrompt}
-                    onChange={(event) => setSimplePrompt(event.target.value)}
+                    value={advancedPrompt}
+                    onChange={(event) => setAdvancedPrompt(event.target.value)}
                     placeholder='例如：一张高级科技产品海报，干净背景，清晰主视觉，真实材质，高级棚拍光线'
                   />
                 </div>
@@ -4449,9 +4509,12 @@ ${description}`
                 <div className='advanced-param-grid'>
                   <label className='field'>
                     <span>模型</span>
-                    <select value={model} onChange={(event) => setModel(event.target.value)}>
+                    <select
+                      value={advancedModel}
+                      onChange={(event) => setAdvancedModel(event.target.value)}
+                    >
                       {sortedModels.length === 0 ? (
-                        <option value={model}>{model}</option>
+                        <option value={advancedModel}>{advancedModel}</option>
                       ) : (
                         sortedModels.map((item) => (
                           <option key={item.id} value={item.id}>
@@ -4461,10 +4524,22 @@ ${description}`
                       )}
                     </select>
                   </label>
-                  {renderSizeField()}
+                  {renderSizeField({
+                    size: advancedSize,
+                    sizeMode: advancedSizeMode,
+                    customSizeWidth: advancedCustomSizeWidth,
+                    customSizeHeight: advancedCustomSizeHeight,
+                    setSize: setAdvancedSize,
+                    setSizeMode: setAdvancedSizeMode,
+                    setCustomSizeWidth: setAdvancedCustomSizeWidth,
+                    setCustomSizeHeight: setAdvancedCustomSizeHeight,
+                  })}
                   <label className='field'>
                     <span>质量</span>
-                    <select value={quality} onChange={(event) => setQuality(event.target.value)}>
+                    <select
+                      value={advancedQuality}
+                      onChange={(event) => setAdvancedQuality(event.target.value)}
+                    >
                       {qualities.map((item) => (
                         <option key={item} value={item}>
                           {item}
@@ -4487,7 +4562,10 @@ ${description}`
                   </label>
                   <label className='field'>
                     <span>数量</span>
-                    <select value={count} onChange={(event) => setCount(Number(event.target.value))}>
+                    <select
+                      value={advancedCount}
+                      onChange={(event) => setAdvancedCount(Number(event.target.value))}
+                    >
                       {counts.map((item) => (
                         <option key={item} value={item}>
                           {item}x
@@ -4498,8 +4576,10 @@ ${description}`
                   <label className='field'>
                     <span>返回格式</span>
                     <select
-                      value={responseFormat}
-                      onChange={(event) => setResponseFormat(event.target.value as 'url' | 'b64_json')}
+                      value={advancedResponseFormat}
+                      onChange={(event) =>
+                        setAdvancedResponseFormat(event.target.value as 'url' | 'b64_json')
+                      }
                     >
                       <option value='b64_json'>b64_json</option>
                       <option value='url'>url</option>
@@ -4508,8 +4588,10 @@ ${description}`
                   <label className='field'>
                     <span>输入保真度</span>
                     <select
-                      value={inputFidelity}
-                      onChange={(event) => setInputFidelity(event.target.value as 'low' | 'high')}
+                      value={advancedInputFidelity}
+                      onChange={(event) =>
+                        setAdvancedInputFidelity(event.target.value as 'low' | 'high')
+                      }
                     >
                       <option value='high'>high</option>
                       <option value='low'>low</option>
@@ -4560,9 +4642,9 @@ ${description}`
                   <label className='field'>
                     <span>提示词优化方向</span>
                     <select
-                      value={simplePromptOptimizationPreset}
+                      value={advancedPromptOptimizationPreset}
                       onChange={(event) =>
-                        setSimplePromptOptimizationPreset(event.target.value as PromptOptimizationPreset)
+                        setAdvancedPromptOptimizationPreset(event.target.value as PromptOptimizationPreset)
                       }
                     >
                       {promptOptimizationPresets.map((preset) => (
@@ -4587,7 +4669,7 @@ ${description}`
                       isGenerating ||
                       isAnalyzingAdvancedSketch ||
                       !isConfigured ||
-                      !simplePrompt.trim()
+                      !advancedPrompt.trim()
                     }
                   >
                     {isGenerating || isAnalyzingAdvancedSketch ? (

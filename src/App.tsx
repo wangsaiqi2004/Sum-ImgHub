@@ -4458,7 +4458,9 @@ ${description}`
                       type='button'
                       className='secondary compact-action'
                       onClick={() => void handleOptimizeAdvancedNegativePrompt()}
-                      disabled={isGenerating || isOptimizingNegativePrompt}
+                      disabled={
+                        isGenerating || isOptimizingNegativePrompt || !advancedPrompt.trim()
+                      }
                     >
                       {isOptimizingNegativePrompt ? (
                         <Loader2 className='spin' size={15} />

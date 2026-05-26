@@ -3788,18 +3788,6 @@ export function App() {
           </div>
         ) : null}
 
-        <header className='floating-header'>
-          <div className='brand'>
-            <div className='brand-mark'>
-              <Sparkles size={21} />
-            </div>
-          <div>
-            <h1>GPT Image Tools</h1>
-            <p>右键创建节点 · 拖动端口连线</p>
-          </div>
-        </div>
-        </header>
-
         {error ? (
           <div className='error-toast' role='alert'>
             <strong>执行失败</strong>

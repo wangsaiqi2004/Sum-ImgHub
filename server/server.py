@@ -190,6 +190,14 @@ def upstream_failure_message(
     return f"上游生图失败：HTTP {status}"
 
 
+def normalize_retry_count(value: Any, default: int = IMAGE_UPSTREAM_RETRY_COUNT) -> int:
+    try:
+        count = int(str(value).strip())
+    except (TypeError, ValueError):
+        count = default
+    return max(0, min(5, count))
+
+
 def now_ts() -> float:
     return time.time()
 
@@ -894,6 +902,7 @@ def create_generation_task(
     upstream_path: str,
     content_type: str,
     body: bytes,
+    retry_count: int,
 ) -> str:
     task_id = uuid.uuid4().hex
     metadata = parse_generation_metadata(content_type, body)
@@ -938,6 +947,7 @@ def create_generation_task(
             "count": metadata.get("count"),
             "response_format": metadata.get("response_format"),
             "input_fidelity": metadata.get("input_fidelity"),
+            "retry_count": retry_count,
         },
     )
     return task_id
@@ -1021,6 +1031,7 @@ def run_generation_task(
     auth_header: str,
     content_type: str,
     body: bytes,
+    retry_count: int,
 ) -> None:
     update_task_status(task_id, "running")
     write_log("INFO", "task_running", "生图任务开始请求上游", task_id)
@@ -1037,8 +1048,8 @@ def run_generation_task(
     )
 
     try:
-        max_attempts = IMAGE_UPSTREAM_RETRY_COUNT + 1
-        retry_count = 0
+        max_attempts = retry_count + 1
+        completed_retries = 0
         for attempt in range(1, max_attempts + 1):
             try:
                 with open_url(request, timeout=IMAGE_REQUEST_TIMEOUT) as response:
@@ -1066,23 +1077,23 @@ def run_generation_task(
                     },
                 )
                 if can_retry:
-                    retry_count += 1
+                    completed_retries += 1
                     if IMAGE_UPSTREAM_RETRY_DELAY:
                         time.sleep(IMAGE_UPSTREAM_RETRY_DELAY)
                     continue
                 raise ImageTaskError(
-                    upstream_failure_message(status, response_body, retry_count)
+                    upstream_failure_message(status, response_body, completed_retries)
                 )
             break
 
-        if retry_count:
+        if completed_retries:
             write_log(
                 "INFO",
                 "upstream_image_retry_recovered",
-                f"上游生图在自动重试 {retry_count} 次后成功",
+                f"上游生图在自动重试 {completed_retries} 次后成功",
                 task_id,
                 {
-                    "retry_count": retry_count,
+                    "retry_count": completed_retries,
                     "base_url": base_url,
                     "upstream_path": upstream_path,
                 },
@@ -1145,10 +1156,11 @@ def start_generation_worker(
     auth_header: str,
     content_type: str,
     body: bytes,
+    retry_count: int,
 ) -> None:
     thread = threading.Thread(
         target=run_generation_task,
-        args=(task_id, base_url, upstream_path, auth_header, content_type, body),
+        args=(task_id, base_url, upstream_path, auth_header, content_type, body, retry_count),
         name=f"image-task-{task_id[:8]}",
         daemon=True,
     )
@@ -1531,8 +1543,23 @@ class ImageToolsHandler(SimpleHTTPRequestHandler):
 
             body = self.rfile.read(body_length)
             content_type = self.headers.get("Content-Type", "application/json")
-            task_id = create_generation_task(base_url, upstream_path, content_type, body)
-            start_generation_worker(task_id, base_url, upstream_path, auth_header, content_type, body)
+            retry_count = normalize_retry_count(self.headers.get("X-Image-Tools-Retry-Count"))
+            task_id = create_generation_task(
+                base_url,
+                upstream_path,
+                content_type,
+                body,
+                retry_count,
+            )
+            start_generation_worker(
+                task_id,
+                base_url,
+                upstream_path,
+                auth_header,
+                content_type,
+                body,
+                retry_count,
+            )
             task = read_task(task_id)
             if task is None:
                 raise OpenAIProxyError("任务创建成功，但读取任务状态失败")

@@ -37,6 +37,24 @@ function headers(apiKey: string) {
   }
 }
 
+function imageTaskHeaders(apiKey: string, retryCount?: number) {
+  const retryValue = Math.max(0, Math.min(5, Math.floor(Number(retryCount ?? 1))))
+  return {
+    ...headers(apiKey),
+    'X-Image-Tools-Retry-Count': String(Number.isFinite(retryValue) ? retryValue : 1),
+  }
+}
+
+function imageTaskAuthHeaders(apiKey: string, retryCount?: number) {
+  const key = apiKey.trim()
+  if (!key) throw new Error('API Key is required')
+  const retryValue = Math.max(0, Math.min(5, Math.floor(Number(retryCount ?? 1))))
+  return {
+    Authorization: `Bearer ${key}`,
+    'X-Image-Tools-Retry-Count': String(Number.isFinite(retryValue) ? retryValue : 1),
+  }
+}
+
 function responseSnippet(text: string) {
   return (
     text
@@ -936,9 +954,7 @@ export const bridge: ImageApiClient = {
 
       const response = await fetch(openAiImageProxyUrl('edits', payload.baseUrl), {
         method: 'POST',
-        headers: {
-          Authorization: `Bearer ${payload.apiKey.trim()}`,
-        },
+        headers: imageTaskAuthHeaders(payload.apiKey, payload.retryCount),
         body: form,
       })
       const body = await parseJsonResponse<{
@@ -958,7 +974,7 @@ export const bridge: ImageApiClient = {
     for (let index = 0; index < requestedCount; index += 1) {
       const response = await fetch(openAiImageProxyUrl('generations', payload.baseUrl), {
         method: 'POST',
-        headers: headers(payload.apiKey),
+        headers: imageTaskHeaders(payload.apiKey, payload.retryCount),
         body: JSON.stringify({
           model: payload.model,
           prompt: payload.prompt,

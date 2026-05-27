@@ -92,6 +92,7 @@ const DEFAULT_TEXT_BASE_URL = DEFAULT_BASE_URL
 const DEFAULT_IMAGE_BASE_URL = DEFAULT_BASE_URL
 const DEFAULT_MODEL = 'gpt-image-2'
 const DEFAULT_TEXT_MODEL = 'gpt-5.5'
+const DEFAULT_IMAGE_RETRY_COUNT = 1
 const DEFAULT_PROMPT_OPTIMIZATION_PRESET: PromptOptimizationPreset = 'ecommerce'
 const CONSOLE_URL = 'https://hotapi.top/'
 const GITHUB_REPO_URL = 'https://github.com/1093791954/image-tool'
@@ -103,6 +104,12 @@ const ADVANCED_SKETCH_WIDTH = 960
 const ADVANCED_SKETCH_HEIGHT = 540
 const CONFIGURATION_NOTICE_MESSAGE =
   '请先在控制台补全生图 API Key 和模型，配置完成后再继续使用其他页面。'
+
+function normalizeImageRetryCount(value: unknown) {
+  const count = Math.floor(Number(value))
+  if (!Number.isFinite(count)) return DEFAULT_IMAGE_RETRY_COUNT
+  return Math.max(0, Math.min(5, count))
+}
 
 const CUSTOM_SIZE_VALUE = 'custom'
 const sizeOptions = [
@@ -1427,6 +1434,7 @@ export function App() {
   const [imageBaseUrl, setImageBaseUrl] = useState(DEFAULT_IMAGE_BASE_URL)
   const [apiKey, setApiKey] = useState('')
   const [codexApiKey, setCodexApiKey] = useState('')
+  const [imageRetryCount, setImageRetryCount] = useState(DEFAULT_IMAGE_RETRY_COUNT)
   const [persistApiKey, setPersistApiKey] = useState(false)
   const [hasLoadedSettings, setHasLoadedSettings] = useState(false)
   const [isLoginDialogOpen, setIsLoginDialogOpen] = useState(false)
@@ -1710,6 +1718,7 @@ export function App() {
       .then((settings) => {
         setTextBaseUrl(settings.textBaseUrl || settings.baseUrl || DEFAULT_TEXT_BASE_URL)
         setImageBaseUrl(settings.imageBaseUrl || settings.baseUrl || DEFAULT_IMAGE_BASE_URL)
+        setImageRetryCount(normalizeImageRetryCount(settings.imageRetryCount))
         setPersistApiKey(Boolean(settings.persistApiKey))
         setThemeMode(settings.themeMode || 'system')
         setTextModel(settings.textModel || DEFAULT_TEXT_MODEL)
@@ -2150,6 +2159,7 @@ export function App() {
       persistApiKey,
       apiKey,
       codexApiKey,
+      imageRetryCount,
       textModel,
       themeMode,
     })
@@ -2162,6 +2172,7 @@ export function App() {
     setImageBaseUrl(DEFAULT_IMAGE_BASE_URL)
     setApiKey('')
     setCodexApiKey('')
+    setImageRetryCount(DEFAULT_IMAGE_RETRY_COUNT)
     setPersistApiKey(false)
     setModel(DEFAULT_MODEL)
     setTextModel(DEFAULT_TEXT_MODEL)
@@ -2175,6 +2186,7 @@ export function App() {
       persistApiKey: false,
       apiKey: '',
       codexApiKey: '',
+      imageRetryCount: DEFAULT_IMAGE_RETRY_COUNT,
       textModel: DEFAULT_TEXT_MODEL,
       themeMode,
     })
@@ -2190,6 +2202,7 @@ export function App() {
       persistApiKey,
       apiKey,
       codexApiKey,
+      imageRetryCount,
       textModel,
       themeMode: nextThemeMode,
     })
@@ -2214,6 +2227,7 @@ export function App() {
       const settings = await getSettings()
       setTextBaseUrl(settings.textBaseUrl || settings.baseUrl || DEFAULT_TEXT_BASE_URL)
       setImageBaseUrl(settings.imageBaseUrl || settings.baseUrl || DEFAULT_IMAGE_BASE_URL)
+      setImageRetryCount(normalizeImageRetryCount(settings.imageRetryCount))
       setPersistApiKey(Boolean(settings.persistApiKey))
       setThemeMode(settings.themeMode || 'system')
       setTextModel(settings.textModel || DEFAULT_TEXT_MODEL)
@@ -2395,6 +2409,7 @@ export function App() {
       setImageBaseUrl(result.baseUrl)
       setApiKey(result.apiKey)
       setCodexApiKey(result.codexApiKey)
+      setImageRetryCount(DEFAULT_IMAGE_RETRY_COUNT)
       setPersistApiKey(true)
       setModel(result.model || DEFAULT_MODEL)
       setTextModel(result.codexModel || DEFAULT_TEXT_MODEL)
@@ -2405,6 +2420,7 @@ export function App() {
         persistApiKey: true,
         apiKey: result.apiKey,
         codexApiKey: result.codexApiKey,
+        imageRetryCount: DEFAULT_IMAGE_RETRY_COUNT,
         textModel: result.codexModel || DEFAULT_TEXT_MODEL,
         themeMode,
       })
@@ -2693,6 +2709,7 @@ export function App() {
           count,
           responseFormat,
           inputFidelity,
+          retryCount: imageRetryCount,
           referenceImages:
             effectiveGenerationMode === 'image' ? flowReferenceImages : undefined,
           onTaskUpdate: (task) => {
@@ -3077,6 +3094,7 @@ ${description}`
         count: includeAdvancedControls ? advancedCount : count,
         responseFormat: includeAdvancedControls ? advancedResponseFormat : responseFormat,
         background: includeAdvancedControls ? advancedBackground : undefined,
+        retryCount: imageRetryCount,
         onTaskUpdate: (task) => setStatus(taskStatusLabel(task.status)),
       })
       const records = buildLocalImageRecords(result.images, {
@@ -3225,6 +3243,7 @@ ${description}`
         count,
         responseFormat,
         inputFidelity,
+        retryCount: imageRetryCount,
         referenceImages,
         onTaskUpdate: (task) => setStatus(taskStatusLabel(task.status)),
       })
@@ -5116,6 +5135,19 @@ ${description}`
                         type='password'
                         placeholder='sk-...'
                         spellCheck={false}
+                      />
+                    </label>
+                    <label className='field'>
+                      <span>上游失败重试次数</span>
+                      <input
+                        value={imageRetryCount}
+                        onChange={(event) =>
+                          setImageRetryCount(normalizeImageRetryCount(event.target.value))
+                        }
+                        type='number'
+                        min={0}
+                        max={5}
+                        step={1}
                       />
                     </label>
                   </div>

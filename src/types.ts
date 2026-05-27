@@ -7,6 +7,7 @@ export type AppSettings = {
   persistApiKey: boolean
   apiKey?: string
   codexApiKey?: string
+  imageRetryCount?: number
   textModel?: string
   themeMode?: ThemeMode
 }
@@ -43,6 +44,7 @@ export type ImageGenerationPayload = {
   responseFormat: 'url' | 'b64_json'
   background?: 'auto' | 'opaque' | 'transparent'
   inputFidelity?: 'low' | 'high'
+  retryCount?: number
   referenceImages?: ReferenceImage[]
   onTaskUpdate?: (task: ImageGenerationTask) => void
 }

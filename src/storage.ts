@@ -19,8 +19,15 @@ const DEFAULT_SETTINGS: AppSettings = {
   persistApiKey: false,
   apiKey: '',
   codexApiKey: '',
+  imageRetryCount: 1,
   textModel: 'gpt-5.5',
   themeMode: 'dark',
+}
+
+function normalizeRetryCount(value: unknown) {
+  const count = Math.floor(Number(value))
+  if (!Number.isFinite(count)) return DEFAULT_SETTINGS.imageRetryCount || 1
+  return Math.max(0, Math.min(5, count))
 }
 
 function openDb(): Promise<IDBDatabase> {
@@ -93,6 +100,7 @@ function normalizeSettings(settings: Partial<AppSettings> | undefined): AppSetti
     persistApiKey: Boolean(settings?.persistApiKey),
     apiKey: settings?.persistApiKey ? settings.apiKey || '' : '',
     codexApiKey: settings?.persistApiKey ? settings.codexApiKey || '' : '',
+    imageRetryCount: normalizeRetryCount(settings?.imageRetryCount),
     textModel: settings?.textModel || DEFAULT_SETTINGS.textModel,
     themeMode: settings?.themeMode || 'dark',
   }
@@ -104,6 +112,7 @@ function backupSettingsFrom(settings: AppSettings): BackupSettings {
     textBaseUrl: settings.textBaseUrl || settings.baseUrl || DEFAULT_SETTINGS.textBaseUrl,
     imageBaseUrl: settings.imageBaseUrl || settings.baseUrl || DEFAULT_SETTINGS.imageBaseUrl,
     persistApiKey: false,
+    imageRetryCount: settings.imageRetryCount ?? DEFAULT_SETTINGS.imageRetryCount,
     textModel: settings.textModel || DEFAULT_SETTINGS.textModel,
     themeMode: settings.themeMode || 'system',
   }
@@ -220,6 +229,9 @@ export async function importBackup(backup: unknown): Promise<number> {
         candidate.settings.textBaseUrl || candidate.settings.baseUrl || current.textBaseUrl,
       imageBaseUrl:
         candidate.settings.imageBaseUrl || candidate.settings.baseUrl || current.imageBaseUrl,
+      imageRetryCount: normalizeRetryCount(
+        candidate.settings.imageRetryCount ?? current.imageRetryCount
+      ),
       textModel: candidate.settings.textModel || current.textModel,
       themeMode: candidate.settings.themeMode || current.themeMode,
       persistApiKey: false,

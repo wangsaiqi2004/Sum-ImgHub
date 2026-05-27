@@ -50,6 +50,8 @@ type BaseNodeData = {
 export type AssetNodeData = {
   referenceImages: ReferenceImage[]
   addReferenceFiles: (files: FileList | File[]) => void
+  openGalleryPicker: () => void
+  galleryImageCount: number
   removeReferenceImage: (id: string) => void
   updateReferenceImageTitle: (id: string, title: string) => void
   isReferenceTitleDuplicate: (id: string) => boolean
@@ -230,10 +232,25 @@ function NodeShell({
 export function AssetNode({ id, data }: NodeProps<AssetFlowNode>) {
   const fileInputRef = useRef<HTMLInputElement | null>(null)
   const lastFilePickerOpenAtRef = useRef(0)
+  const [titleDraft, setTitleDraft] = useState('')
+  const [editingTitleImageId, setEditingTitleImageId] = useState<string | null>(null)
   const referenceImage = data.referenceImages[0] || null
   const isReferenceTitleDuplicate = referenceImage
     ? data.isReferenceTitleDuplicate(referenceImage.id)
     : false
+  const referenceTitle = referenceImage?.title ?? referenceImage?.name ?? ''
+
+  useEffect(() => {
+    if (!referenceImage) {
+      setTitleDraft('')
+      setEditingTitleImageId(null)
+      return
+    }
+
+    if (editingTitleImageId !== referenceImage.id) {
+      setTitleDraft(referenceTitle)
+    }
+  }, [editingTitleImageId, referenceImage, referenceTitle])
 
   function openReferenceFilePicker() {
     const now = Date.now()
@@ -241,6 +258,12 @@ export function AssetNode({ id, data }: NodeProps<AssetFlowNode>) {
 
     lastFilePickerOpenAtRef.current = now
     fileInputRef.current?.click()
+  }
+
+  function commitReferenceTitle() {
+    if (!referenceImage) return
+    data.updateReferenceImageTitle(referenceImage.id, titleDraft)
+    setEditingTitleImageId(null)
   }
 
   return (
@@ -258,10 +281,28 @@ export function AssetNode({ id, data }: NodeProps<AssetFlowNode>) {
         >
           <span>@</span>
           <input
-            value={referenceImage.title ?? referenceImage.name}
-            onChange={(event) =>
-              data.updateReferenceImageTitle(referenceImage.id, event.target.value)
+            value={
+              editingTitleImageId === referenceImage.id ? titleDraft : referenceTitle
             }
+            onFocus={() => {
+              setEditingTitleImageId(referenceImage.id)
+              setTitleDraft(referenceTitle)
+            }}
+            onChange={(event) => setTitleDraft(event.target.value)}
+            onBlur={commitReferenceTitle}
+            onKeyDown={(event) => {
+              event.stopPropagation()
+              if (event.key === 'Enter') {
+                event.preventDefault()
+                event.currentTarget.blur()
+              }
+              if (event.key === 'Escape') {
+                event.preventDefault()
+                setTitleDraft(referenceTitle)
+                setEditingTitleImageId(null)
+                event.currentTarget.blur()
+              }
+            }}
             aria-invalid={isReferenceTitleDuplicate}
             placeholder='参考图标题'
             spellCheck={false}
@@ -308,15 +349,27 @@ export function AssetNode({ id, data }: NodeProps<AssetFlowNode>) {
             ))}
           </div>
         )}
-        <button
-          type='button'
-          className='node-file-button nodrag'
-          onClick={openReferenceFilePicker}
-          onDoubleClick={(event) => event.preventDefault()}
-        >
-          <Upload size={15} />
-          选择图片
-        </button>
+        <div className='asset-drop-actions'>
+          <button
+            type='button'
+            className='node-file-button nodrag'
+            onClick={openReferenceFilePicker}
+            onDoubleClick={(event) => event.preventDefault()}
+          >
+            <Upload size={15} />
+            上传图片
+          </button>
+          <button
+            type='button'
+            className='node-file-button nodrag'
+            onClick={data.openGalleryPicker}
+            disabled={data.galleryImageCount === 0}
+            title={data.galleryImageCount === 0 ? '图库暂无图片' : '从图库选择参考图'}
+          >
+            <ImageIcon size={15} />
+            从图库选择
+          </button>
+        </div>
         <input
           ref={fileInputRef}
           type='file'
@@ -426,7 +479,7 @@ export function PromptNode({ id, data }: NodeProps<PromptFlowNode>) {
             data.onOptimizePrompt()
           }}
           disabled={data.isOptimizingPrompt || !data.prompt.trim()}
-          aria-label='优化提示词'
+          aria-label={data.isOptimizingPrompt ? '正在优化提示词' : '优化提示词'}
           title='优化提示词'
         >
           {data.isOptimizingPrompt ? (
@@ -434,6 +487,7 @@ export function PromptNode({ id, data }: NodeProps<PromptFlowNode>) {
           ) : (
             <WandSparkles size={14} />
           )}
+          <span>{data.isOptimizingPrompt ? '优化中' : '优化提示词'}</span>
         </button>
       }
       onDelete={data.onDeleteNode}
@@ -861,23 +915,53 @@ export function BlueprintEdge({
     targetY,
     targetPosition,
   })
+  const deleteButtonRef = useRef<HTMLButtonElement | null>(null)
+  const onDeleteRef = useRef(data?.onDelete)
+
+  useEffect(() => {
+    onDeleteRef.current = data?.onDelete
+  }, [data?.onDelete])
+
+  useEffect(() => {
+    const button = deleteButtonRef.current
+    if (!button) return
+
+    // Edge labels live in React Flow's portal, so bind directly to avoid pane/edge layers swallowing the delete action.
+    const stopEvent = (event: Event) => {
+      event.preventDefault()
+      event.stopPropagation()
+    }
+    const handlePointerDown = (event: globalThis.PointerEvent) => {
+      stopEvent(event)
+      if (event.button === 0) onDeleteRef.current?.(id)
+    }
+    const handleClick = (event: globalThis.MouseEvent) => {
+      stopEvent(event)
+      if (event.detail === 0) onDeleteRef.current?.(id)
+    }
+
+    button.addEventListener('pointerdown', handlePointerDown)
+    button.addEventListener('click', handleClick)
+    return () => {
+      button.removeEventListener('pointerdown', handlePointerDown)
+      button.removeEventListener('click', handleClick)
+    }
+  }, [id])
 
   return (
     <>
-      <BaseEdge id={id} path={edgePath} markerEnd={markerEnd} />
+      <BaseEdge id={id} path={edgePath} markerEnd={markerEnd} interactionWidth={0} />
       <EdgeLabelRenderer>
         <div
           className={`edge-label nodrag nopan ${selected ? 'edge-label-selected' : ''}`}
           style={{
             transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY}px)`,
+            pointerEvents: 'all',
           }}
         >
           <button
+            ref={deleteButtonRef}
             type='button'
-            onClick={(event) => {
-              event.stopPropagation()
-              data?.onDelete(id)
-            }}
             title='断开连接'
             aria-label={`删除连接 ${data?.label || id}`}
           >

@@ -1177,6 +1177,49 @@ function fileToDataUrl(file: File) {
   })
 }
 
+function blobToDataUrl(blob: Blob) {
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(String(reader.result))
+    reader.onerror = () => reject(reader.error)
+    reader.readAsDataURL(blob)
+  })
+}
+
+async function imageSourceToDataUrl(src: string) {
+  if (src.startsWith('data:')) return src
+
+  try {
+    const response = await fetch(src)
+    if (!response.ok) throw new Error(`Failed to download image: ${response.status}`)
+    return blobToDataUrl(await response.blob())
+  } catch {
+    const response = await fetch('/api/image-url-to-data-url', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url: src }),
+    })
+    const body = (await response.json()) as {
+      success?: boolean
+      message?: string
+      dataUrl?: string
+    }
+    if (!response.ok || !body.success || !body.dataUrl) {
+      throw new Error(body.message || '无法读取图库图片')
+    }
+    return body.dataUrl
+  }
+}
+
+function mimeTypeFromDataUrl(dataUrl: string) {
+  return dataUrl.match(/^data:([^;,]+)/)?.[1] || 'image/png'
+}
+
+function imageExtensionFromMimeType(type: string) {
+  if (type === 'image/jpeg') return 'jpg'
+  return type.split('/')[1]?.replace(/[^\w.+-]/g, '') || 'png'
+}
+
 function loadLocalImage(url: string) {
   return new Promise<HTMLImageElement>((resolve, reject) => {
     const image = new Image()
@@ -1436,6 +1479,8 @@ export function App() {
   )
   const [images, setImages] = useState<LocalImageRecord[]>([])
   const [previewImage, setPreviewImage] = useState<LocalImageRecord | null>(null)
+  const [galleryReferencePickerNodeId, setGalleryReferencePickerNodeId] = useState('')
+  const [selectingGalleryReferenceImageId, setSelectingGalleryReferenceImageId] = useState('')
   const [status, setStatus] = useState('未连接')
   const [error, setError] = useState('')
   const [notice, setNotice] = useState<{ id: number; message: string } | null>(null)
@@ -2187,6 +2232,41 @@ export function App() {
     }
   }
 
+  async function selectGalleryReferenceImage(nodeId: string, image: LocalImageRecord) {
+    if (selectingGalleryReferenceImageId) return
+
+    setSelectingGalleryReferenceImageId(image.id)
+    try {
+      const dataUrl = await imageSourceToDataUrl(image.src)
+      const type = mimeTypeFromDataUrl(dataUrl)
+      const baseTitle =
+        normalizeReferenceTitle(image.revisedPrompt || image.prompt) || '图库图片'
+      const nextImage: ReferenceImage = {
+        id: createLocalId('reference'),
+        name: `${baseTitle}.${imageExtensionFromMimeType(type)}`,
+        title: createUniqueReferenceTitle(
+          baseTitle,
+          getCanvasReferenceNameEntries(activeCanvas).filter(
+            (entry) => entry.nodeId !== nodeId
+          )
+        ),
+        type,
+        dataUrl,
+      }
+
+      setAssetNodeReferenceImages(nodeId, [nextImage])
+      setGenerationMode('image')
+      setGalleryReferencePickerNodeId('')
+      setStatus('已从图库选择参考图')
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      setError(message)
+      setStatus('选择图库参考图失败')
+    } finally {
+      setSelectingGalleryReferenceImageId('')
+    }
+  }
+
   function removeReferenceImage(nodeId: string, id: string) {
     const willRemoveLastReference =
       referenceImages.length <= 1 && referenceImages.some((image) => image.id === id)
@@ -2197,10 +2277,18 @@ export function App() {
   }
 
   function updateReferenceImageTitle(nodeId: string, id: string, title: string) {
-    const nextTitle = normalizeReferenceTitle(title)
+    const currentNode = nodes.find(
+      (node) => node.id === nodeId && node.type === 'asset'
+    )
+    const currentImage = getWorkflowNodeReferenceImages(currentNode).find(
+      (image) => image.id === id
+    )
+    const nextTitle =
+      normalizeReferenceTitle(title) ||
+      normalizeReferenceTitle(currentImage?.name || '') ||
+      '参考图'
     if (
       activeCanvas &&
-      nextTitle &&
       isReferenceTitleTaken(activeCanvas, nextTitle, referenceImageOwnerId(id))
     ) {
       setError(`画布内已存在图片名称：${nextTitle}`)
@@ -3289,6 +3377,8 @@ ${description}`
         onDeleteNode: deleteWorkflowNode,
         referenceImages: nodeReferenceImages,
         addReferenceFiles: (files: FileList | File[]) => addReferenceFiles(node.id, files),
+        openGalleryPicker: () => setGalleryReferencePickerNodeId(node.id),
+        galleryImageCount: images.length,
         removeReferenceImage: (id: string) => removeReferenceImage(node.id, id),
         updateReferenceImageTitle: (id: string, title: string) =>
           updateReferenceImageTitle(node.id, id, title),
@@ -3898,6 +3988,11 @@ ${description}`
       </label>
     </div>
   )
+  const isGalleryReferencePickerOpen = Boolean(galleryReferencePickerNodeId)
+  const closeGalleryReferencePicker = () => {
+    if (selectingGalleryReferenceImageId) return
+    setGalleryReferencePickerNodeId('')
+  }
 
   return (
     <div className='app-shell portal-shell' data-theme={resolvedTheme}>
@@ -5200,6 +5295,71 @@ ${description}`
               </button>
             </div>
           </form>
+        </div>
+      ) : null}
+
+      {isGalleryReferencePickerOpen ? (
+        <div
+          className='modal-overlay gallery-reference-overlay'
+          role='dialog'
+          aria-modal='true'
+          aria-label='从图库选择参考图'
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) closeGalleryReferencePicker()
+          }}
+        >
+          <div className='gallery-reference-dialog'>
+            <div className='dialog-header'>
+              <div>
+                <strong>从图库选择参考图</strong>
+                <span>选中的图片会替换当前参考图节点中的图片，并可继续编辑 @标题。</span>
+              </div>
+              <button
+                className='icon-button'
+                onClick={closeGalleryReferencePicker}
+                aria-label='关闭图库选择'
+                disabled={Boolean(selectingGalleryReferenceImageId)}
+              >
+                <X size={18} />
+              </button>
+            </div>
+            {images.length === 0 ? (
+              <div className='gallery-reference-empty'>
+                <ImageIcon size={34} />
+                <strong>图库暂无图片</strong>
+                <span>生成图片后，可以在这里选择为工作流参考图。</span>
+              </div>
+            ) : (
+              <div className='gallery-reference-grid'>
+                {images.map((image) => (
+                  <button
+                    key={image.id}
+                    type='button'
+                    className='gallery-reference-option'
+                    onClick={() =>
+                      void selectGalleryReferenceImage(
+                        galleryReferencePickerNodeId,
+                        image
+                      )
+                    }
+                    disabled={Boolean(selectingGalleryReferenceImageId)}
+                    aria-label='选择这张图库图片作为参考图'
+                  >
+                    <img src={image.src} alt={image.revisedPrompt || image.prompt} />
+                    <span>
+                      <strong>{image.mode === 'image' ? '图片引导' : '文生图'}</strong>
+                      <small>{new Date(image.createdAt).toLocaleString()}</small>
+                    </span>
+                    {selectingGalleryReferenceImageId === image.id ? (
+                      <Loader2 className='spin' size={16} />
+                    ) : (
+                      <Check size={16} />
+                    )}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       ) : null}
 

@@ -169,6 +169,25 @@ function sizeOptionLabel(option: (typeof sizeOptions)[number]) {
   return `${option.ratio} · ${option.value} · ${option.label}`
 }
 
+function greatestCommonDivisor(a: number, b: number): number {
+  return b === 0 ? Math.abs(a) : greatestCommonDivisor(b, a % b)
+}
+
+function ratioLabelForSize(value: string) {
+  const parsed = parseSizeValue(value)
+  if (!parsed || !parsed.width || !parsed.height) return ''
+
+  const divisor = greatestCommonDivisor(parsed.width, parsed.height)
+  if (!divisor) return ''
+  return `${parsed.width / divisor}:${parsed.height / divisor}`
+}
+
+function workflowSizeOptionLabel(value: string) {
+  const preset = sizeOptions.find((option) => option.value === value)
+  const ratio = preset?.ratio || ratioLabelForSize(value)
+  return ratio ? `${ratio} · ${value}` : value
+}
+
 function buildCommerceMainPrompt(description: string, categoryPath = '') {
   const trimmedDescription = description.trim() || '用户未填写额外文字描述。'
   const trimmedCategoryPath = categoryPath.trim() || '用户未选择商品品类。'
@@ -3444,6 +3463,10 @@ ${description}`
         Boolean(apiKey && imageBaseUrl && model && getWorkflowNodePrompt(promptNode).trim())
       const activeSize = selectedGenerationSize() || size
       const workflowSizes = sizes.includes(activeSize) ? sizes : [activeSize, ...sizes]
+      const workflowSizeOptions = workflowSizes.map((item) => ({
+        value: item,
+        label: workflowSizeOptionLabel(item),
+      }))
 
       return {
         onDeleteNode: deleteWorkflowNode,
@@ -3451,7 +3474,7 @@ ${description}`
         sortedModels,
         setModel,
         size: activeSize,
-        sizes: workflowSizes,
+        sizeOptions: workflowSizeOptions,
         setSize: (nextSize: string) => {
           setSizeMode('preset')
           setSize(nextSize)

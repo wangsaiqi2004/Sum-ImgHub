@@ -2671,7 +2671,7 @@ select:disabled {
 }
 
 .flow-node-pink {
-  width: 500px;
+  width: 600px;
   border-color: var(--pink);
 }
 
@@ -3141,6 +3141,17 @@ select:disabled {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 9px;
+}
+
+.flow-node-pink .node-param-grid {
+  grid-template-columns:
+    minmax(112px, 1fr)
+    minmax(210px, 1.55fr)
+    minmax(104px, 0.9fr);
+}
+
+.flow-node-pink .node-param-size-field {
+  grid-column: span 2;
 }
 
 .node-param-grid label {
@@ -3698,7 +3709,7 @@ select:disabled {
   }
 
   .flow-node-pink {
-    width: 450px;
+    width: 580px;
   }
 
   .launchpad-grid,
@@ -4070,8 +4081,13 @@ select:disabled {
   .button-grid,
   .theme-switcher,
   .field-row.two-columns,
+  .flow-node-pink .node-param-grid,
   .node-param-grid {
     grid-template-columns: 1fr;
+  }
+
+  .flow-node-pink .node-param-size-field {
+    grid-column: auto;
   }
 
   .gallery-page .gallery-strip {

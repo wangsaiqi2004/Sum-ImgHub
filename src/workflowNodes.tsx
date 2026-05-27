@@ -83,7 +83,7 @@ export type GenerateNodeData = {
   sortedModels: Array<{ id: string }>
   setModel: Dispatch<SetStateAction<string>>
   size: string
-  sizes: string[]
+  sizeOptions: Array<{ value: string; label: string }>
   setSize: (value: string) => void
   quality: string
   qualities: string[]
@@ -766,12 +766,12 @@ export function GenerateNode({ id, data }: NodeProps<GenerateFlowNode>) {
             )}
           </select>
         </label>
-        <label>
+        <label className='node-param-size-field'>
           <span>尺寸</span>
           <select value={data.size} onChange={(event) => data.setSize(event.target.value)}>
-            {data.sizes.map((item) => (
-              <option key={item} value={item}>
-                {item}
+            {data.sizeOptions.map((item) => (
+              <option key={item.value} value={item.value}>
+                {item.label}
               </option>
             ))}
           </select>

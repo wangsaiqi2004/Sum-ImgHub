@@ -2267,6 +2267,14 @@ select:disabled {
   padding: 0 10px;
 }
 
+.custom-size-hint {
+  display: block;
+  margin-top: 6px;
+  color: var(--text-muted);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
 .simple-actions {
   display: flex;
   justify-content: flex-end;

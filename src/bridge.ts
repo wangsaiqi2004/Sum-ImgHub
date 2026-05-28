@@ -231,13 +231,46 @@ function blobFromDataUrl(dataUrl: string) {
   return new Blob([bytes], { type })
 }
 
+const GPT_IMAGE_OFFICIAL_SIZES = new Set(['1024x1024', '1024x1536', '1536x1024'])
+const GPT_IMAGE_2_PRO_SAFE_SIZES = new Set([
+  '1024x1024',
+  '1024x1536',
+  '1536x1024',
+  '1024x1280',
+  '1280x1024',
+  '1152x1536',
+  '1536x1152',
+  '1024x1792',
+  '1792x1024',
+  '2016x864',
+  '2048x2048',
+  '2048x2560',
+  '2560x2048',
+  '2304x3072',
+  '3072x2304',
+  '2048x3072',
+  '3072x2048',
+  '3840x3840',
+  '3072x3840',
+  '3840x3072',
+  '2880x3840',
+  '3840x2880',
+  '2560x3840',
+  '3840x2560',
+  '2160x3840',
+  '3840x2160',
+  '3840x1646',
+])
+
 function normalizedImageApiSize(model: string, size: string) {
   const normalizedModel = model.trim().toLowerCase()
-  if (normalizedModel === 'gpt-image-2' || normalizedModel === 'gpt-image-2-pro') return size
+  if (normalizedModel === 'gpt-image-2-pro') {
+    if (GPT_IMAGE_2_PRO_SAFE_SIZES.has(size)) return size
+    throw new Error(`当前尺寸 ${size} 不在安全尺寸列表中，请从尺寸下拉框选择 1K/2K/4K 预设。`)
+  }
   if (!normalizedModel.startsWith('gpt-image')) return size
   if (size === 'auto') return size
-  const supportedSizes = new Set(['1024x1024', '1024x1536', '1536x1024'])
-  if (supportedSizes.has(size)) return size
+  if (GPT_IMAGE_OFFICIAL_SIZES.has(size)) return size
 
   const match = size.match(/^(\d{2,5})x(\d{2,5})$/)
   if (!match) return size

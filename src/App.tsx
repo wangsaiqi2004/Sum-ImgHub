@@ -112,40 +112,40 @@ function normalizeImageRetryCount(value: unknown) {
 }
 
 const CUSTOM_SIZE_VALUE = 'custom'
+const DEFAULT_SAFE_IMAGE_SIZE = '1024x1024'
+const SAFE_SIZE_ERROR_MESSAGE =
+  '请选择尺寸下拉框里的安全预设。为了避免上游 invalid size，手动尺寸必须和安全预设完全一致。'
 const sizeOptions = [
+  { ratio: '1:1', value: '1024x1024', label: '方图 1K' },
+  { ratio: '2:3', value: '1024x1536', label: '竖版生成 1K' },
+  { ratio: '3:2', value: '1536x1024', label: '横版生成 1K' },
+  { ratio: '4:5', value: '1024x1280', label: '社媒竖图 1K' },
+  { ratio: '5:4', value: '1280x1024', label: '产品横图 1K' },
+  { ratio: '3:4', value: '1152x1536', label: '竖版海报 1K' },
+  { ratio: '4:3', value: '1536x1152', label: '横版构图 1K' },
+  { ratio: '9:16', value: '1024x1792', label: '手机竖屏 1K' },
+  { ratio: '16:9', value: '1792x1024', label: '宽屏封面 1K' },
+  { ratio: '21:9', value: '2016x864', label: '超宽图 1K' },
   { ratio: '1:1', value: '2048x2048', label: '方图 2K' },
-  { ratio: '1:1', value: '2880x2880', label: '方图 4K' },
-  { ratio: '5:4', value: '1040x832', label: '横屏 1K' },
-  { ratio: '5:4', value: '2080x1664', label: '横屏 2K' },
-  { ratio: '5:4', value: '3200x2560', label: '横屏 4K' },
-  { ratio: '9:16', value: '720x1280', label: '竖屏 1K' },
-  { ratio: '9:16', value: '1152x2048', label: '竖屏 2K' },
-  { ratio: '9:16', value: '2160x3840', label: '竖屏 4K' },
-  { ratio: '16:9', value: '1280x720', label: '横屏 1K' },
-  { ratio: '16:9', value: '2048x1152', label: '横屏 2K' },
-  { ratio: '16:9', value: '3840x2160', label: '横屏 4K' },
-  { ratio: '4:3', value: '1024x768', label: '横屏 1K' },
-  { ratio: '4:3', value: '2048x1536', label: '横屏 2K' },
-  { ratio: '4:3', value: '3264x2448', label: '横屏 4K' },
-  { ratio: '3:2', value: '1008x672', label: '横屏 1K' },
-  { ratio: '3:2', value: '2016x1344', label: '横屏 2K' },
-  { ratio: '3:2', value: '3504x2336', label: '横屏 4K' },
-  { ratio: '4:5', value: '832x1040', label: '竖屏 1K' },
-  { ratio: '4:5', value: '1664x2080', label: '竖屏 2K' },
-  { ratio: '4:5', value: '2560x3200', label: '竖屏 4K' },
-  { ratio: '1:1', value: '1024x1024', label: '方图' },
-  { ratio: '3:4', value: '1024x1365', label: '竖版海报' },
-  { ratio: '4:3', value: '1365x1024', label: '横版构图' },
-  { ratio: '16:9', value: '1536x864', label: '宽屏封面' },
-  { ratio: '9:16', value: '864x1536', label: '手机竖屏' },
-  { ratio: '2:3', value: '1024x1536', label: '竖版生成' },
-  { ratio: '3:2', value: '1536x1024', label: '横版生成' },
-  { ratio: '4:5', value: '1024x1280', label: '社媒竖图' },
-  { ratio: '5:4', value: '1280x1024', label: '产品横图' },
-  { ratio: '4:7', value: '1024x1792', label: '长竖图' },
-  { ratio: '7:4', value: '1792x1024', label: '超宽图' },
+  { ratio: '4:5', value: '2048x2560', label: '社媒竖图 2K' },
+  { ratio: '5:4', value: '2560x2048', label: '产品横图 2K' },
+  { ratio: '3:4', value: '2304x3072', label: '竖版海报 2K' },
+  { ratio: '4:3', value: '3072x2304', label: '横版构图 2K' },
+  { ratio: '2:3', value: '2048x3072', label: '竖版生成 2K' },
+  { ratio: '3:2', value: '3072x2048', label: '横版生成 2K' },
+  { ratio: '1:1', value: '3840x3840', label: '方图 4K' },
+  { ratio: '4:5', value: '3072x3840', label: '社媒竖图 4K' },
+  { ratio: '5:4', value: '3840x3072', label: '产品横图 4K' },
+  { ratio: '3:4', value: '2880x3840', label: '竖版海报 4K' },
+  { ratio: '4:3', value: '3840x2880', label: '横版构图 4K' },
+  { ratio: '2:3', value: '2560x3840', label: '竖版生成 4K' },
+  { ratio: '3:2', value: '3840x2560', label: '横版生成 4K' },
+  { ratio: '9:16', value: '2160x3840', label: '手机竖屏 4K' },
+  { ratio: '16:9', value: '3840x2160', label: '宽屏封面 4K' },
+  { ratio: '21:9', value: '3840x1646', label: '超宽图 4K' },
 ]
 const sizes = sizeOptions.map((item) => item.value)
+const safeImageSizeValues = new Set(sizes)
 const qualities = ['auto', 'standard', 'hd', 'low', 'medium', 'high']
 const counts = [1, 2, 3, 4]
 const inputFidelities = ['low', 'high'] as const
@@ -190,6 +190,10 @@ function parseSizeValue(value: string) {
     width: Number(match[1]),
     height: Number(match[2]),
   }
+}
+
+function isSafeImageSize(value: string) {
+  return safeImageSizeValues.has(value.trim())
 }
 
 function sizeOptionLabel(option: (typeof sizeOptions)[number]) {
@@ -2489,7 +2493,7 @@ export function App() {
     }
     const generationSize = selectedGenerationSize()
     if (!generationSize) {
-      setError('请输入 64 到 8192 之间的自定义宽高')
+      setError(SAFE_SIZE_ERROR_MESSAGE)
       return
     }
     setError('')
@@ -2703,13 +2707,15 @@ export function App() {
     customWidth: string,
     customHeight: string
   ) {
-    if (mode === 'preset') return presetSize
+    if (mode === 'preset') {
+      return isSafeImageSize(presetSize) ? presetSize : DEFAULT_SAFE_IMAGE_SIZE
+    }
 
     const width = Number(customWidth)
     const height = Number(customHeight)
     if (!Number.isInteger(width) || !Number.isInteger(height)) return ''
-    if (width < 64 || height < 64 || width > 8192 || height > 8192) return ''
-    return `${width}x${height}`
+    const customSize = `${width}x${height}`
+    return isSafeImageSize(customSize) ? customSize : ''
   }
 
   function selectedGenerationSize() {
@@ -2746,7 +2752,7 @@ export function App() {
     }
 
     state.setSizeMode('preset')
-    state.setSize(nextValue)
+    state.setSize(isSafeImageSize(nextValue) ? nextValue : DEFAULT_SAFE_IMAGE_SIZE)
   }
 
   function renderSizeField(
@@ -2778,32 +2784,35 @@ export function App() {
           </select>
         </label>
         {state.sizeMode === 'custom' ? (
-          <div className='custom-size-grid'>
-            <label>
-              <span>宽</span>
-              <input
-                type='number'
-                min='64'
-                max='8192'
-                step='1'
-                value={state.customSizeWidth}
-                onChange={(event) => state.setCustomSizeWidth(event.target.value)}
-                aria-label='自定义宽度'
-              />
-            </label>
-            <label>
-              <span>高</span>
-              <input
-                type='number'
-                min='64'
-                max='8192'
-                step='1'
-                value={state.customSizeHeight}
-                onChange={(event) => state.setCustomSizeHeight(event.target.value)}
-                aria-label='自定义高度'
-              />
-            </label>
-          </div>
+          <>
+            <div className='custom-size-grid'>
+              <label>
+                <span>宽</span>
+                <input
+                  type='number'
+                  min='64'
+                  max='8192'
+                  step='1'
+                  value={state.customSizeWidth}
+                  onChange={(event) => state.setCustomSizeWidth(event.target.value)}
+                  aria-label='自定义宽度'
+                />
+              </label>
+              <label>
+                <span>高</span>
+                <input
+                  type='number'
+                  min='64'
+                  max='8192'
+                  step='1'
+                  value={state.customSizeHeight}
+                  onChange={(event) => state.setCustomSizeHeight(event.target.value)}
+                  aria-label='自定义高度'
+                />
+              </label>
+            </div>
+            <small className='custom-size-hint'>仅放行安全预设中的精确尺寸。</small>
+          </>
         ) : null}
       </div>
     )
@@ -2974,7 +2983,7 @@ ${description}`
       ? selectedAdvancedGenerationSize()
       : selectedGenerationSize()
     if (!generationSize) {
-      setError('请输入 64 到 8192 之间的自定义宽高')
+      setError(SAFE_SIZE_ERROR_MESSAGE)
       return
     }
     if (!prompt) {
@@ -3111,7 +3120,7 @@ ${description}`
     }
     const generationSize = selectedGenerationSize()
     if (!generationSize) {
-      setError('请输入 64 到 8192 之间的自定义宽高')
+      setError(SAFE_SIZE_ERROR_MESSAGE)
       return
     }
     if (commerceProductImages.length === 0) {
@@ -3427,7 +3436,7 @@ ${description}`
       const canGenerateNode =
         !activeCanvasGenerating &&
         Boolean(apiKey && imageBaseUrl && model && getWorkflowNodePrompt(promptNode).trim())
-      const activeSize = selectedGenerationSize() || size
+      const activeSize = selectedGenerationSize() || DEFAULT_SAFE_IMAGE_SIZE
       const workflowSizes = sizes.includes(activeSize) ? sizes : [activeSize, ...sizes]
       const workflowSizeOptions = workflowSizes.map((item) => ({
         value: item,
@@ -3443,7 +3452,7 @@ ${description}`
         sizeOptions: workflowSizeOptions,
         setSize: (nextSize: string) => {
           setSizeMode('preset')
-          setSize(nextSize)
+          setSize(isSafeImageSize(nextSize) ? nextSize : DEFAULT_SAFE_IMAGE_SIZE)
         },
         quality,
         qualities,

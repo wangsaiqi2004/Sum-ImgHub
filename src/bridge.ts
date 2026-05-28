@@ -23,13 +23,13 @@ import {
   buildPromptOptimizationMessages,
 } from './promptEngineering'
 
-const NEW_API_BASE_URL = 'https://hotapi.top'
+const NEW_API_BASE_URL = 'https://api.clawopen.top'
 const IMAGE_GROUP = 'gpt-image-2 生图低价'
 const IMAGE_MODEL = 'gpt-image-2'
-const IMAGE_TOKEN_NAME = 'GPT Image Tools - gpt-image-2'
+const IMAGE_TOKEN_NAME = 'Sum ImgHub - gpt-image-2'
 const CODEX_GROUP = 'codex 满血高速'
 const CODEX_MODEL = 'gpt-5.5'
-const CODEX_TOKEN_NAME = 'GPT Image Tools - codex'
+const CODEX_TOKEN_NAME = 'Sum ImgHub - codex'
 const TOKEN_LIST_PAGE_SIZE = 100
 const TOKEN_LIST_MAX_PAGES = 50
 
@@ -42,8 +42,8 @@ function normalizeBaseUrl(baseUrl: string) {
 function normalizeNewApiBaseUrl(value: string) {
   const baseUrl = normalizeBaseUrl(value || NEW_API_BASE_URL)
   const parsed = new URL(baseUrl)
-  if (parsed.protocol !== 'https:' || parsed.host !== 'hotapi.top') {
-    throw new Error('当前只允许登录 https://hotapi.top/')
+  if (parsed.protocol !== 'https:' || parsed.host !== 'api.clawopen.top') {
+    throw new Error('当前只允许登录 https://api.clawopen.top/')
   }
   return `${parsed.protocol}//${parsed.host}`
 }

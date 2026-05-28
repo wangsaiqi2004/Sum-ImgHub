@@ -38,14 +38,14 @@ def env_int(name: str, default: int) -> int:
         return default
 
 
-DEFAULT_BASE_URL = "https://hotapi.top"
-ALLOWED_NEW_API_HOST = "hotapi.top"
+DEFAULT_BASE_URL = "https://api.clawopen.top"
+ALLOWED_NEW_API_HOST = "api.clawopen.top"
 IMAGE_GROUP = "gpt-image-2 生图低价"
 IMAGE_MODEL = "gpt-image-2"
-IMAGE_TOKEN_NAME = "GPT Image Tools - gpt-image-2"
+IMAGE_TOKEN_NAME = "Sum ImgHub - gpt-image-2"
 CODEX_GROUP = "codex 满血高速"
 CODEX_MODEL = "gpt-5.5"
-CODEX_TOKEN_NAME = "GPT Image Tools - codex"
+CODEX_TOKEN_NAME = "Sum ImgHub - codex"
 MAX_JSON_BODY = 16 * 1024
 MAX_IMAGE_BODY = 32 * 1024 * 1024
 MAX_PROXY_BODY = 96 * 1024 * 1024
@@ -519,7 +519,7 @@ def normalize_new_api_base_url(value: str) -> str:
     raw = (value or DEFAULT_BASE_URL).strip().rstrip("/")
     parsed = urllib.parse.urlparse(raw)
     if parsed.scheme != "https" or parsed.netloc != ALLOWED_NEW_API_HOST:
-        raise NewApiError("当前只允许登录 https://hotapi.top/")
+        raise NewApiError("当前只允许登录 https://api.clawopen.top/")
     return f"{parsed.scheme}://{parsed.netloc}"
 
 

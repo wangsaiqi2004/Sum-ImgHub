@@ -13,9 +13,9 @@ const SETTINGS_STORE = 'settings'
 const SETTINGS_ID = 'app'
 
 const DEFAULT_SETTINGS: AppSettings = {
-  baseUrl: 'https://hotapi.top',
-  textBaseUrl: 'https://hotapi.top',
-  imageBaseUrl: 'https://hotapi.top',
+  baseUrl: 'https://api.clawopen.top',
+  textBaseUrl: 'https://api.clawopen.top',
+  imageBaseUrl: 'https://api.clawopen.top',
   persistApiKey: false,
   apiKey: '',
   codexApiKey: '',

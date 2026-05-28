@@ -1,4 +1,4 @@
-# GPT Image Tools
+# Sum ImgHub
 
 一个 Web 端本地优先生图工具。用户填写 OpenAI 兼容 API 的 `Base URL` 和
 `API Key`，应用会直接从浏览器调用 `/v1/models`、`/v1/images/generations`
@@ -6,7 +6,7 @@
 
 ## 在线测试
 
-已部署测试地址：<https://image.hotapi.top/>
+默认中转站：<https://api.clawopen.top/>
 
 用户可以直接打开该地址测试和体验工具。
 
@@ -67,7 +67,7 @@ npm run preview
 
 ## 默认参数
 
-- Base URL: `https://hotapi.top`
+- Base URL: `https://api.clawopen.top`
 - 推荐模型: `gpt-image-2`
 - 默认价格不会在工具内计费，实际扣费由 API 站点处理。
 

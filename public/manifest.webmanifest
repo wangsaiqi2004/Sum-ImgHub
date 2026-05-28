@@ -1,7 +1,7 @@
 {
-  "name": "GPT Image Tools",
-  "short_name": "Image Tools",
-  "description": "Local-first web image generation tool for OpenAI-compatible image APIs.",
+  "name": "Sum ImgHub",
+  "short_name": "Sum ImgHub",
+  "description": "Local-first web image generation tool for SumAPI and OpenAI-compatible image APIs.",
   "start_url": ".",
   "scope": ".",
   "display": "standalone",

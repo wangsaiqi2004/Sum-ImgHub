@@ -88,14 +88,14 @@ import type {
   ThemeMode,
 } from './types'
 
-const DEFAULT_BASE_URL = 'https://hotapi.top'
+const DEFAULT_BASE_URL = 'https://api.clawopen.top'
 const DEFAULT_TEXT_BASE_URL = DEFAULT_BASE_URL
 const DEFAULT_IMAGE_BASE_URL = DEFAULT_BASE_URL
 const DEFAULT_MODEL = 'gpt-image-2'
 const DEFAULT_TEXT_MODEL = 'gpt-5.5'
 const DEFAULT_IMAGE_RETRY_COUNT = 1
 const DEFAULT_PROMPT_OPTIMIZATION_PRESET: PromptOptimizationPreset = 'ecommerce'
-const CONSOLE_URL = 'https://hotapi.top/'
+const CONSOLE_URL = 'https://api.clawopen.top/'
 const GITHUB_REPO_URL = 'https://github.com/1093791954/image-tool'
 const MAX_COMMERCE_PRODUCT_IMAGES = 4
 const COMMERCE_REFERENCE_MAX_SIDE = 1600
@@ -3882,7 +3882,7 @@ ${description}`
                 <Sparkles size={21} />
               </span>
               <span>
-                <strong>GPT Image Tools</strong>
+                <strong>Sum ImgHub</strong>
                 <small>{isConfigured ? `已配置 ${model}` : '先完成控制台配置'}</small>
               </span>
             </button>
@@ -4210,7 +4210,7 @@ ${description}`
                 <Sparkles size={21} />
               </span>
               <span>
-                <strong>GPT Image Tools</strong>
+                <strong>Sum ImgHub</strong>
                 <small>{isConfigured ? `已配置 ${model}` : '先完成控制台配置'}</small>
               </span>
             </button>
@@ -4880,7 +4880,7 @@ ${description}`
                       <input
                         value={textBaseUrl}
                         onChange={(event) => setTextBaseUrl(event.target.value)}
-                        placeholder='https://hotapi.top'
+                        placeholder='https://api.clawopen.top'
                         spellCheck={false}
                       />
                     </label>
@@ -4915,7 +4915,7 @@ ${description}`
                       <input
                         value={imageBaseUrl}
                         onChange={(event) => setImageBaseUrl(event.target.value)}
-                        placeholder='https://hotapi.top'
+                        placeholder='https://api.clawopen.top'
                         spellCheck={false}
                       />
                     </label>

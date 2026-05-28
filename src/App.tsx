@@ -1347,6 +1347,24 @@ function taskStatusLabel(status: ImageGenerationTask['status']) {
   return '上游生图失败'
 }
 
+const GENERATION_RETRY_MESSAGE = '生成失败，请重新尝试。'
+
+function generationErrorMessage(error: unknown) {
+  const message = error instanceof Error ? error.message : String(error || '')
+  if (
+    /Image (generation|edit) failed|Failed to fetch|HTTP 5\d\d|上游|后台生图|浏览器没有拿到接口响应|生图服务|网关|无法连接中转站/i.test(
+      message
+    )
+  ) {
+    return GENERATION_RETRY_MESSAGE
+  }
+  return message || GENERATION_RETRY_MESSAGE
+}
+
+function logGenerationError(scope: string, error: unknown) {
+  console.warn(`${scope} failed`, error)
+}
+
 function promptWithStyles(
   prompt: string,
   selectedStyles: StyleOption[],
@@ -2693,8 +2711,8 @@ export function App() {
       const records = await executeGenerateNode(targetNode, new Set())
       setStatus(`已生成 ${records.length} 张图片，结果已保存到本地图库`)
     } catch (err) {
-      const message = err instanceof Error ? err.message : String(err)
-      setError(message)
+      logGenerationError('workflow generation', err)
+      setError(generationErrorMessage(err))
       if (generatingCanvasId) clearCanvasGenerationTask(generatingCanvasId)
       setStatus('生成失败')
     }
@@ -3088,8 +3106,8 @@ ${description}`
         message: `${includeAdvancedControls ? '高级生成' : '快速生成'}已生成 ${records.length} 张图片，结果已保存到图库。`,
       })
     } catch (err) {
-      const message = err instanceof Error ? err.message : String(err)
-      setError(message)
+      logGenerationError(includeAdvancedControls ? 'advanced generation' : 'quick generation', err)
+      setError(generationErrorMessage(err))
       setGenerationSuccess(null)
       setStatus('生成失败')
     } finally {
@@ -3235,8 +3253,8 @@ ${description}`
       await refreshImages()
       setStatus(`已生成 ${records.length} 张${outputLabel}`)
     } catch (err) {
-      const message = err instanceof Error ? err.message : String(err)
-      setError(message)
+      logGenerationError('commerce generation', err)
+      setError(generationErrorMessage(err))
       setStatus('生成失败')
     } finally {
       setIsCommerceGenerating(false)

@@ -239,7 +239,7 @@ function blobFromDataUrl(dataUrl: string) {
 }
 
 const GPT_IMAGE_OFFICIAL_SIZES = new Set(['1024x1024', '1024x1536', '1536x1024'])
-const GPT_IMAGE_2_PRO_SAFE_SIZES = new Set([
+const GPT_IMAGE_2_SAFE_SIZES = new Set([
   '1024x1024',
   '1024x1536',
   '1536x1024',
@@ -280,8 +280,12 @@ function imageRequestHeaders(apiKey: string, isMultipart: boolean, baseUrl: stri
 
 function normalizedImageApiSize(model: string, size: string) {
   const normalizedModel = model.trim().toLowerCase()
-  if (normalizedModel === 'gpt-image-2-pro') {
-    if (GPT_IMAGE_2_PRO_SAFE_SIZES.has(size)) return size
+  if (
+    normalizedModel === 'gpt-image-2' ||
+    normalizedModel === 'gpt-image-2-pro' ||
+    normalizedModel.includes('image-2')
+  ) {
+    if (GPT_IMAGE_2_SAFE_SIZES.has(size)) return size
     throw new Error(`当前尺寸 ${size} 不在安全尺寸列表中，请从尺寸下拉框选择 1K/2K/4K 预设。`)
   }
   if (!normalizedModel.startsWith('gpt-image')) return size

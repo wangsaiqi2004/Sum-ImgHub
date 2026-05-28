@@ -195,8 +195,9 @@ function normalizedImageModelId(model = '') {
   return model.trim().toLowerCase().replace(/^models\//, '')
 }
 
-function isGptImage2ProModel(model = '') {
-  return normalizedImageModelId(model) === 'gpt-image-2-pro'
+function isGptImage2FamilyModel(model = '') {
+  const normalized = normalizedImageModelId(model)
+  return normalized === 'gpt-image-2' || normalized === 'gpt-image-2-pro' || normalized.includes('image-2')
 }
 
 function isGptImageModel(model = '') {
@@ -204,7 +205,7 @@ function isGptImageModel(model = '') {
 }
 
 function safeSizeOptionsForModel(model = '') {
-  if (isGptImageModel(model) && !isGptImage2ProModel(model)) {
+  if (isGptImageModel(model) && !isGptImage2FamilyModel(model)) {
     return sizeOptions.filter((option) => officialGptImageSizeValues.has(option.value))
   }
   return sizeOptions
@@ -2793,7 +2794,7 @@ export function App() {
     const presetSelectValue = availableSizeOptions.some((option) => option.value === state.size)
       ? state.size
       : DEFAULT_SAFE_IMAGE_SIZE
-    const isOfficialOnlySizeMode = isGptImageModel(activeModel) && !isGptImage2ProModel(activeModel)
+    const isOfficialOnlySizeMode = isGptImageModel(activeModel) && !isGptImage2FamilyModel(activeModel)
     return (
       <div className='field size-field'>
         <label className='size-select-label'>
@@ -2811,7 +2812,7 @@ export function App() {
           </select>
         </label>
         {isOfficialOnlySizeMode ? (
-          <small className='custom-size-hint'>当前模型只开放官方三档；要用 2K/4K 请切到 gpt-image-2-pro。</small>
+          <small className='custom-size-hint'>当前模型只开放官方三档；SumAPI 的 gpt-image-2 可用 2K/4K。</small>
         ) : null}
         {state.sizeMode === 'custom' ? (
           <>

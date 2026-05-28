@@ -114,7 +114,7 @@ function normalizeImageRetryCount(value: unknown) {
 const CUSTOM_SIZE_VALUE = 'custom'
 const DEFAULT_SAFE_IMAGE_SIZE = '1024x1024'
 const SAFE_SIZE_ERROR_MESSAGE =
-  '请选择尺寸下拉框里的安全预设。为了避免上游 invalid size，手动尺寸必须和安全预设完全一致。'
+  '请选择尺寸下拉框里的安全预设。为了避免尺寸不被支持，手动尺寸必须和安全预设完全一致。'
 const sizeOptions = [
   { ratio: '1:1', value: '1024x1024', label: '方图 1K' },
   { ratio: '5:4', value: '1040x832', label: '横屏 1K' },
@@ -1348,10 +1348,10 @@ async function buildCommerceProductReferenceImage(images: ReferenceImage[]) {
 
 function taskStatusLabel(status: ImageGenerationTask['status']) {
   if (status === 'queued') return '生图请求已排队'
-  if (status === 'running') return '正在请求上游生成图片...'
-  if (status === 'completed') return '上游已返回结果，正在保存到本地'
+  if (status === 'running') return '正在生成图片...'
+  if (status === 'completed') return '图片已生成，正在保存到本地'
   if (status === 'expired') return '生图请求已过期'
-  return '上游生图失败'
+  return '生图失败'
 }
 
 const GENERATION_RETRY_MESSAGE = '生成失败，请重新尝试。'
@@ -1359,7 +1359,7 @@ const GENERATION_RETRY_MESSAGE = '生成失败，请重新尝试。'
 function generationErrorMessage(error: unknown) {
   const message = error instanceof Error ? error.message : String(error || '')
   if (
-    /Image (generation|edit) failed|Failed to fetch|HTTP 5\d\d|上游|后台生图|浏览器没有拿到接口响应|生图服务|网关|无法连接中转站/i.test(
+    /Image (generation|edit) failed|Failed to fetch|HTTP 5\d\d|后台生图|浏览器没有拿到接口响应|生图服务|生图失败|网关|invalid size/i.test(
       message
     )
   ) {
@@ -1369,7 +1369,7 @@ function generationErrorMessage(error: unknown) {
 }
 
 function logGenerationError(scope: string, error: unknown) {
-  console.warn(`${scope} failed`, error)
+  console.warn(`${scope} failed`)
 }
 
 function promptWithStyles(
@@ -2609,7 +2609,7 @@ export function App() {
         for (const edge of upstreamGenerateEdges) {
           const upstreamNode = nodes.find((node) => node.id === edge.source)
           if (!upstreamNode) continue
-          setStatus(`正在先执行上游图片生成：${upstreamNode.id}`)
+          setStatus(`正在先生成依赖图片：${upstreamNode.id}`)
           const upstreamRecords = await executeGenerateNode(upstreamNode, visiting)
           const firstRecord = upstreamRecords[0]
           if (!firstRecord) continue
@@ -5228,7 +5228,7 @@ ${description}`
                       />
                     </label>
                     <label className='field'>
-                      <span>上游失败重试次数</span>
+                      <span>生图失败重试次数</span>
                       <input
                         value={imageRetryCount}
                         onChange={(event) =>
@@ -5340,7 +5340,7 @@ ${description}`
                       清空图库
                     </button>
                     <p>
-                      图片和设置保存在当前浏览器 IndexedDB。生成和提示词请求从当前浏览器直接发送到上游接口；备份文件不包含 API Key。
+                      图片和设置保存在当前浏览器 IndexedDB。生成和提示词请求会发送到你配置的 SumAPI 接口；备份文件不包含 API Key。
                     </p>
                   </section>
               </div>

@@ -170,22 +170,18 @@ def upstream_failure_message(
     response_body: bytes,
     retry_count: int,
 ) -> str:
-    upstream_message = extract_upstream_error_message(status, response_body)
     retry_text = f"，已自动重试 {retry_count} 次" if retry_count > 0 else ""
     if status == 504:
         return (
-            "上游生图网关超时（HTTP 504）。"
-            "这通常表示中转站或模型服务排队/生成时间超过它自己的网关限制，"
-            f"不是本站服务宕机{retry_text}。请稍后重试，或切换到更稳定的生图中转地址。"
+            "生图服务响应超时（HTTP 504）。"
+            f"这通常表示图片排队或生成耗时较长{retry_text}。请稍后重新尝试。"
         )
     if status in {502, 503}:
         return (
-            f"上游生图服务暂时不可用（HTTP {status}）{retry_text}。"
-            "请稍后重试，或切换到更稳定的生图中转地址。"
+            f"生图服务暂时不可用（HTTP {status}）{retry_text}。"
+            "请稍后重新尝试。"
         )
-    if upstream_message:
-        return f"上游生图失败：HTTP {status} {upstream_message}"
-    return f"上游生图失败：HTTP {status}"
+    return f"生图失败（HTTP {status}），请重新尝试。"
 
 
 def normalize_retry_count(value: Any, default: int = IMAGE_UPSTREAM_RETRY_COUNT) -> int:
@@ -717,14 +713,14 @@ class NewApiSession:
                 raw = response.read().decode("utf-8")
         except urllib.error.HTTPError as exc:
             raw = exc.read().decode("utf-8", errors="replace")
-            raise NewApiError(f"中转站请求失败：HTTP {exc.code} {raw[:200]}") from exc
+            raise NewApiError(f"控制台请求失败：HTTP {exc.code} {raw[:200]}") from exc
         except urllib.error.URLError as exc:
-            raise NewApiError(f"无法连接中转站：{exc.reason}") from exc
+            raise NewApiError(f"无法连接控制台：{exc.reason}") from exc
 
         try:
             return json.loads(raw) if raw else {}
         except json.JSONDecodeError as exc:
-            raise NewApiError("中转站返回了无法解析的数据") from exc
+            raise NewApiError("控制台返回了无法解析的数据") from exc
 
     def login(self, username: str, password: str) -> None:
         response = self.request(
@@ -1034,7 +1030,7 @@ def run_generation_task(
     retry_count: int,
 ) -> None:
     update_task_status(task_id, "running")
-    write_log("INFO", "task_running", "生图任务开始请求上游", task_id)
+    write_log("INFO", "task_running", "生图任务开始请求服务", task_id)
     request = urllib.request.Request(
         f"{base_url}{upstream_path}",
         data=body,
@@ -1100,7 +1096,7 @@ def run_generation_task(
                 write_log(
                     "WARN" if can_retry else "ERROR",
                     "upstream_image_failed",
-                    f"上游生图返回 HTTP {status}: {upstream_message or '无错误正文'}",
+                    f"生图服务返回 HTTP {status}: {upstream_message or '无错误正文'}",
                     task_id,
                     log_details,
                 )
@@ -1118,7 +1114,7 @@ def run_generation_task(
             write_log(
                 "INFO",
                 "upstream_image_retry_recovered",
-                f"上游生图在自动重试 {completed_retries} 次后成功",
+                f"生图服务在自动重试 {completed_retries} 次后成功",
                 task_id,
                 {
                     "retry_count": completed_retries,
@@ -1130,7 +1126,7 @@ def run_generation_task(
         try:
             upstream_result = json.loads(response_body.decode("utf-8"))
         except json.JSONDecodeError as exc:
-            raise ImageTaskError("上游返回了无法解析的 JSON") from exc
+            raise ImageTaskError("生图服务返回了无法解析的 JSON") from exc
 
         cached_result, cache_bytes = cache_openai_image_response(task_id, upstream_result)
         update_task_status(
@@ -1150,19 +1146,19 @@ def run_generation_task(
         evict_cache_if_needed(skip_task_id=task_id)
     except (TimeoutError, socket.timeout):
         message = (
-            f"上游生图请求超过 {IMAGE_REQUEST_TIMEOUT} 秒仍未返回，"
-            "请稍后重试或调大 IMAGE_TOOLS_IMAGE_REQUEST_TIMEOUT"
+            f"生图服务超过 {IMAGE_REQUEST_TIMEOUT} 秒仍未返回，"
+            "请稍后重新尝试"
         )
         update_task_status(task_id, "failed", error=message, completed=True)
         write_log("ERROR", "task_failed", message, task_id)
     except urllib.error.URLError as exc:
         if isinstance(exc.reason, (TimeoutError, socket.timeout)):
             message = (
-                f"上游生图请求超过 {IMAGE_REQUEST_TIMEOUT} 秒仍未返回，"
-                "请稍后重试或调大 IMAGE_TOOLS_IMAGE_REQUEST_TIMEOUT"
+                f"生图服务超过 {IMAGE_REQUEST_TIMEOUT} 秒仍未返回，"
+                "请稍后重新尝试"
             )
         else:
-            message = f"无法连接中转站：{exc.reason}"
+            message = "暂时无法连接生图服务，请稍后重新尝试"
         update_task_status(task_id, "failed", error=message, completed=True)
         write_log("ERROR", "task_failed", message, task_id)
     except Exception as exc:
@@ -1556,7 +1552,9 @@ class ImageToolsHandler(SimpleHTTPRequestHandler):
     def handle_openai_image_proxy(self, parsed_path: urllib.parse.ParseResult) -> None:
         try:
             query = urllib.parse.parse_qs(parsed_path.query)
-            base_url = normalize_public_base_url((query.get("base_url") or [""])[0])
+            base_url = normalize_public_base_url(
+                (query.get("base_url") or [DEFAULT_BASE_URL])[0]
+            )
             upstream_path = OPENAI_IMAGE_PROXY_PATHS[parsed_path.path]
             auth_header = self.headers.get("Authorization", "")
             if not auth_header.startswith("Bearer "):

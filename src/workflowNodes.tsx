@@ -833,7 +833,7 @@ export function GenerateNode({ id, data }: NodeProps<GenerateFlowNode>) {
       <div className='node-action-bar nodrag'>
         <div>
           <strong>{data.isGenerating ? '等待生成结果' : '等待执行'}</strong>
-          <span>{data.isGenerating ? '正在请求上游生成' : '输入提示词后立即生成'}</span>
+          <span>{data.isGenerating ? '正在生成图片' : '输入提示词后立即生成'}</span>
         </div>
         <button type='button' onClick={data.onGenerate} disabled={!data.canGenerate}>
           {data.isGenerating ? <Loader2 className='spin' size={16} /> : <Play size={16} />}

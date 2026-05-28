@@ -52,18 +52,6 @@ function imageTaskAuthHeaders(apiKey: string) {
   }
 }
 
-function responseSnippet(text: string) {
-  return (
-    text
-      .replace(/<script[\s\S]*?<\/script>/gi, '')
-      .replace(/<style[\s\S]*?<\/style>/gi, '')
-      .replace(/<[^>]+>/g, ' ')
-      .replace(/\s+/g, ' ')
-      .trim()
-      .slice(0, 240) || '空响应'
-  )
-}
-
 function cleanErrorMessage(message: string) {
   const normalized = message.trim()
   if (!normalized) return ''
@@ -127,7 +115,7 @@ async function parseJsonResponse<T>(response: Response, prefix: string) {
       body = parseEventStreamBody(text)
       if (!body) {
         throw new Error(
-          `${prefix}: 上游没有返回 JSON（HTTP ${response.status}，${contentType}）：${responseSnippet(text)}`
+          `${prefix}: 接口没有返回有效 JSON（HTTP ${response.status}，${contentType}）`
         )
       }
     }
@@ -139,7 +127,7 @@ async function parseJsonResponse<T>(response: Response, prefix: string) {
   }
 
   if (!body) {
-    throw new Error(`${prefix}: upstream returned an empty response`)
+    throw new Error(`${prefix}: 接口返回为空`)
   }
 
   return body as T
@@ -172,8 +160,8 @@ function isTransientUpstreamStatus(status: number) {
   return status === 502 || status === 503 || status === 504
 }
 
-function networkFailureMessage(prefix: string, url: string) {
-  return `${prefix}: 浏览器没有拿到接口响应。通常是网络中断、CORS/预检被拦、上游长时间生成导致连接断开，或当前静态部署没有启用生图代理。请求地址：${url}`
+function networkFailureMessage(prefix: string) {
+  return `${prefix}: 浏览器没有拿到接口响应。通常是网络中断、CORS/预检被拦、图片生成耗时过长导致连接断开，或当前静态部署没有启用生图代理。`
 }
 
 async function fetchJsonWithRetry<T>(
@@ -204,7 +192,7 @@ async function fetchJsonWithRetry<T>(
         continue
       }
       if (error instanceof TypeError) {
-        throw new Error(networkFailureMessage(prefix, url))
+        throw new Error(networkFailureMessage(prefix))
       }
       throw error
     }
@@ -316,8 +304,10 @@ function shouldUseLocalImageProxy(baseUrl: string) {
 
 function imageProxyUrl(baseUrl: string, upstreamPath: '/v1/images/generations' | '/v1/images/edits') {
   const path = localImageProxyPath(upstreamPath)
-  if (!shouldUseLocalImageProxy(baseUrl)) return `${normalizeBaseUrl(baseUrl)}${upstreamPath}`
-  return `${path}?base_url=${encodeURIComponent(normalizeBaseUrl(baseUrl))}`
+  const normalizedBaseUrl = normalizeBaseUrl(baseUrl)
+  if (!shouldUseLocalImageProxy(baseUrl)) return `${normalizedBaseUrl}${upstreamPath}`
+  if (normalizedBaseUrl === 'https://api.clawopen.top') return path
+  return `${path}?base_url=${encodeURIComponent(normalizedBaseUrl)}`
 }
 
 function upstreamImageResponseFormat(baseUrl: string, responseFormat: 'url' | 'b64_json') {
@@ -335,8 +325,8 @@ function canFallbackToDirectImageRequest(baseUrl: string, url: string) {
   return shouldUseLocalImageProxy(baseUrl) && url.startsWith('/api/openai/v1/images/')
 }
 
-function localImageProxyMissingMessage(url: string) {
-  return `当前页面没有启用本地生图代理，不能安全处理 2K/4K 这类长请求。请用 npm start 或 docker compose up -d --build 启动后访问 http://127.0.0.1:19080，不要用 5173 的 Vite 开发服务直接生图。代理请求地址：${url}`
+function localImageProxyMissingMessage() {
+  return '当前页面没有启用本地生图代理，不能安全处理 2K/4K 这类长请求。请用 npm start 或 docker compose up -d --build 启动后访问 http://127.0.0.1:19080，不要用 5173 的 Vite 开发服务直接生图。'
 }
 
 async function pollImageTask(taskId: string, onTaskUpdate?: (task: ImageGenerationTask) => void) {
@@ -402,7 +392,7 @@ async function fetchImageJson<T>(
       canFallbackToDirectImageRequest(baseUrl, url) &&
       /404|Not found|没有返回 JSON|empty response/i.test(error.message)
     ) {
-      throw new Error(localImageProxyMissingMessage(url))
+      throw new Error(localImageProxyMissingMessage())
     }
     throw error
   }
@@ -1124,8 +1114,8 @@ export const bridge: ImageApiClient = {
               updatedAt: Date.now(),
               pollAfterMs: 0,
               error: status
-                ? `上游返回 HTTP ${status}，正在重试 ${attempt}/${maxAttempts - 1}`
-                : `上游请求失败，正在重试 ${attempt}/${maxAttempts - 1}`,
+                ? `生图服务返回 HTTP ${status}，正在重试 ${attempt}/${maxAttempts - 1}`
+                : `生图请求失败，正在重试 ${attempt}/${maxAttempts - 1}`,
             })
           },
           payload.onTaskUpdate
@@ -1189,8 +1179,8 @@ export const bridge: ImageApiClient = {
               updatedAt: Date.now(),
               pollAfterMs: 0,
               error: status
-                ? `第 ${index + 1}/${requestedCount} 张上游返回 HTTP ${status}，正在重试 ${attempt}/${maxAttempts - 1}`
-                : `第 ${index + 1}/${requestedCount} 张上游请求失败，正在重试 ${attempt}/${maxAttempts - 1}`,
+                ? `第 ${index + 1}/${requestedCount} 张生图服务返回 HTTP ${status}，正在重试 ${attempt}/${maxAttempts - 1}`
+                : `第 ${index + 1}/${requestedCount} 张生图请求失败，正在重试 ${attempt}/${maxAttempts - 1}`,
             })
           },
           payload.onTaskUpdate

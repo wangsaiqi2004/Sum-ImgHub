@@ -21,7 +21,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   codexApiKey: '',
   imageRetryCount: 1,
   textModel: 'gpt-5.5',
-  themeMode: 'dark',
+  themeMode: 'light',
 }
 
 function normalizeRetryCount(value: unknown) {
@@ -102,7 +102,7 @@ function normalizeSettings(settings: Partial<AppSettings> | undefined): AppSetti
     codexApiKey: settings?.persistApiKey ? settings.codexApiKey || '' : '',
     imageRetryCount: normalizeRetryCount(settings?.imageRetryCount),
     textModel: settings?.textModel || DEFAULT_SETTINGS.textModel,
-    themeMode: settings?.themeMode || 'dark',
+    themeMode: settings?.themeMode || 'light',
   }
 }
 

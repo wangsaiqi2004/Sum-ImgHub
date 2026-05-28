@@ -5,7 +5,6 @@ import type {
   ImageGenerationPayload,
   ImageGenerationResult,
   ImageGenerationTask,
-  ManagedNewApiLoginResult,
   ModelOption,
   NegativePromptOptimizationPayload,
   PromptOptimizationPayload,
@@ -23,29 +22,10 @@ import {
   buildPromptOptimizationMessages,
 } from './promptEngineering'
 
-const NEW_API_BASE_URL = 'https://api.clawopen.top'
-const IMAGE_GROUP = 'gpt-image-2 生图低价'
-const IMAGE_MODEL = 'gpt-image-2'
-const IMAGE_TOKEN_NAME = 'Sum ImgHub - gpt-image-2'
-const CODEX_GROUP = 'codex 满血高速'
-const CODEX_MODEL = 'gpt-5.5'
-const CODEX_TOKEN_NAME = 'Sum ImgHub - codex'
-const TOKEN_LIST_PAGE_SIZE = 100
-const TOKEN_LIST_MAX_PAGES = 50
-
 function normalizeBaseUrl(baseUrl: string) {
   const trimmed = baseUrl.trim().replace(/\/+$/, '')
   if (!trimmed) throw new Error('Base URL is required')
   return trimmed
-}
-
-function normalizeNewApiBaseUrl(value: string) {
-  const baseUrl = normalizeBaseUrl(value || NEW_API_BASE_URL)
-  const parsed = new URL(baseUrl)
-  if (parsed.protocol !== 'https:' || parsed.host !== 'api.clawopen.top') {
-    throw new Error('当前只允许登录 https://api.clawopen.top/')
-  }
-  return `${parsed.protocol}//${parsed.host}`
 }
 
 function headers(apiKey: string) {
@@ -165,22 +145,6 @@ async function parseJsonResponse<T>(response: Response, prefix: string) {
   return body as T
 }
 
-async function parseNewApiResponse(
-  response: Response,
-  prefix: string
-): Promise<{ success?: boolean; message?: string; data?: any }> {
-  try {
-    return await parseJsonResponse(response, prefix)
-  } catch (error) {
-    if (error instanceof TypeError) {
-      throw new Error(
-        `${prefix}: 浏览器无法直连中转站登录接口，可能是对方未开放跨域。请在控制台手动填写 API Key。`
-      )
-    }
-    throw error
-  }
-}
-
 function assertApiSuccess<T>(
   body: { success?: boolean; message?: string; data?: T },
   fallback: string
@@ -192,208 +156,6 @@ function assertApiSuccess<T>(
     throw new Error(fallback)
   }
   return body.data
-}
-
-function splitModelLimits(value: unknown) {
-  return new Set(
-    String(value || '')
-      .split(',')
-      .map((item) => item.trim())
-      .filter(Boolean)
-  )
-}
-
-async function newApiRequest(
-  baseUrl: string,
-  method: string,
-  path: string,
-  options: { payload?: Record<string, unknown>; userId?: number } = {}
-) {
-  const requestHeaders: Record<string, string> = {
-    Accept: 'application/json',
-  }
-  if (options.payload) {
-    requestHeaders['Content-Type'] = 'application/json'
-  }
-  if (options.userId !== undefined) {
-    requestHeaders['New-Api-User'] = String(options.userId)
-  }
-
-  const response = await fetch(`${baseUrl}${path}`, {
-    method,
-    credentials: 'include',
-    headers: requestHeaders,
-    body: options.payload ? JSON.stringify(options.payload) : undefined,
-  })
-  const body = await parseNewApiResponse(response, 'New API request failed')
-  if (!body.success) {
-    throw new Error(String(body.message || '中转站请求失败'))
-  }
-  return body.data
-}
-
-async function loginNewApiBrowser(baseUrl: string, username: string, password: string) {
-  if (!username.trim() || !password) throw new Error('请输入账号和密码')
-  const data = await newApiRequest(baseUrl, 'POST', '/api/user/login?turnstile=', {
-    payload: { username: username.trim(), password },
-  })
-  if (data?.require_2fa) {
-    throw new Error('该账号开启了 2FA，请先在控制台登录并处理安全验证')
-  }
-  const userId = data?.id
-  if (typeof userId !== 'number') {
-    throw new Error('登录成功但没有返回用户 ID')
-  }
-  return userId
-}
-
-async function listNewApiTokens(baseUrl: string, userId: number) {
-  const firstPage = await newApiRequest(
-    baseUrl,
-    'GET',
-    `/api/token/?p=1&size=${TOKEN_LIST_PAGE_SIZE}`,
-    { userId }
-  )
-  const items = Array.isArray(firstPage?.items) ? firstPage.items : []
-  const tokens = items.filter((item: unknown): item is Record<string, any> => {
-    return Boolean(item && typeof item === 'object')
-  })
-  const total = typeof firstPage?.total === 'number' ? firstPage.total : tokens.length
-
-  for (let page = 2; tokens.length < total && page <= TOKEN_LIST_MAX_PAGES; page += 1) {
-    const data = await newApiRequest(
-      baseUrl,
-      'GET',
-      `/api/token/?p=${page}&size=${TOKEN_LIST_PAGE_SIZE}`,
-      { userId }
-    )
-    const pageItems = Array.isArray(data?.items) ? data.items : []
-    if (pageItems.length === 0) break
-    tokens.push(
-      ...pageItems.filter((item: unknown): item is Record<string, any> =>
-        Boolean(item && typeof item === 'object')
-      )
-    )
-  }
-
-  return tokens
-}
-
-async function findNewApiToken(baseUrl: string, userId: number, group: string, model: string) {
-  const tokens = await listNewApiTokens(baseUrl, userId)
-  return (
-    tokens.find((token: Record<string, any>) => {
-      if (token.group !== group) return false
-      if (token.status !== undefined && token.status !== 1) return false
-      if (token.model_limits_enabled && !splitModelLimits(token.model_limits).has(model)) {
-        return false
-      }
-      return true
-    }) || null
-  )
-}
-
-async function createNewApiToken(
-  baseUrl: string,
-  userId: number,
-  name: string,
-  group: string,
-  model: string
-) {
-  const data = await newApiRequest(baseUrl, 'POST', '/api/token/', {
-    userId,
-    payload: {
-      name,
-      remain_quota: 0,
-      expired_time: -1,
-      unlimited_quota: true,
-      model_limits_enabled: true,
-      model_limits: model,
-      allow_ips: '',
-      group,
-      cross_group_retry: false,
-    },
-  })
-
-  const candidates = [data, data?.token, data?.item]
-  const createdToken = candidates.find((item) => item && typeof item.id === 'number')
-  if (createdToken) return createdToken
-
-  const token = await findNewApiToken(baseUrl, userId, group, model)
-  if (!token) throw new Error(`${group} 秘钥已创建，但重新查询时没有找到`)
-  return token
-}
-
-async function getNewApiFullKey(baseUrl: string, userId: number, tokenId: number, group: string) {
-  const data = await newApiRequest(baseUrl, 'POST', `/api/token/${tokenId}/key`, { userId })
-  const key = data?.key
-  if (typeof key !== 'string' || !key) {
-    throw new Error(`中转站没有返回“${group}”可用秘钥`)
-  }
-  return key
-}
-
-async function obtainNewApiTokenKey(
-  baseUrl: string,
-  userId: number,
-  name: string,
-  group: string,
-  model: string
-) {
-  let token = await findNewApiToken(baseUrl, userId, group, model)
-  let created = false
-  if (!token) {
-    token = await createNewApiToken(baseUrl, userId, name, group, model)
-    created = true
-  }
-
-  const tokenId = token.id
-  if (typeof tokenId !== 'number') throw new Error(`${group} 目标秘钥缺少 ID`)
-
-  return {
-    apiKey: await getNewApiFullKey(baseUrl, userId, tokenId, group),
-    group,
-    model,
-    tokenName: token.name || name,
-    created,
-  }
-}
-
-async function obtainManagedNewApiKey(payload: {
-  baseUrl: string
-  username: string
-  password: string
-}): Promise<ManagedNewApiLoginResult> {
-  const baseUrl = normalizeNewApiBaseUrl(payload.baseUrl)
-  const userId = await loginNewApiBrowser(baseUrl, payload.username, payload.password)
-  const imageKey = await obtainNewApiTokenKey(
-    baseUrl,
-    userId,
-    IMAGE_TOKEN_NAME,
-    IMAGE_GROUP,
-    IMAGE_MODEL
-  )
-  const codexKey = await obtainNewApiTokenKey(
-    baseUrl,
-    userId,
-    CODEX_TOKEN_NAME,
-    CODEX_GROUP,
-    CODEX_MODEL
-  )
-
-  return {
-    baseUrl,
-    apiKey: imageKey.apiKey,
-    group: imageKey.group,
-    model: imageKey.model,
-    tokenName: imageKey.tokenName,
-    created: imageKey.created,
-    codexApiKey: codexKey.apiKey,
-    codexGroup: codexKey.group,
-    codexModel: codexKey.model,
-    codexTokenName: codexKey.tokenName,
-    codexCreated: codexKey.created,
-  }
 }
 
 function delay(ms: number) {
@@ -471,6 +233,7 @@ function blobFromDataUrl(dataUrl: string) {
 
 function normalizedImageApiSize(model: string, size: string) {
   const normalizedModel = model.trim().toLowerCase()
+  if (normalizedModel === 'gpt-image-2' || normalizedModel === 'gpt-image-2-pro') return size
   if (!normalizedModel.startsWith('gpt-image')) return size
   if (size === 'auto') return size
   const supportedSizes = new Set(['1024x1024', '1024x1536', '1536x1024'])
@@ -901,10 +664,6 @@ function commerceDetailPromptResponsesRequestBody(payload: CommerceDetailPromptP
 export const bridge: ImageApiClient = {
   async openExternal(url) {
     window.open(url, '_blank', 'noopener,noreferrer')
-  },
-
-  async loginNewApi(payload) {
-    return obtainManagedNewApiKey(payload)
   },
 
   async listModels(args) {

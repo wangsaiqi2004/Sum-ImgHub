@@ -34,7 +34,6 @@ import {
   Image as ImageIcon,
   KeyRound,
   Layers,
-  LogIn,
   Loader2,
   Menu,
   Monitor,
@@ -114,6 +113,26 @@ function normalizeImageRetryCount(value: unknown) {
 
 const CUSTOM_SIZE_VALUE = 'custom'
 const sizeOptions = [
+  { ratio: '1:1', value: '2048x2048', label: '方图 2K' },
+  { ratio: '1:1', value: '2880x2880', label: '方图 4K' },
+  { ratio: '5:4', value: '1040x832', label: '横屏 1K' },
+  { ratio: '5:4', value: '2080x1664', label: '横屏 2K' },
+  { ratio: '5:4', value: '3200x2560', label: '横屏 4K' },
+  { ratio: '9:16', value: '720x1280', label: '竖屏 1K' },
+  { ratio: '9:16', value: '1152x2048', label: '竖屏 2K' },
+  { ratio: '9:16', value: '2160x3840', label: '竖屏 4K' },
+  { ratio: '16:9', value: '1280x720', label: '横屏 1K' },
+  { ratio: '16:9', value: '2048x1152', label: '横屏 2K' },
+  { ratio: '16:9', value: '3840x2160', label: '横屏 4K' },
+  { ratio: '4:3', value: '1024x768', label: '横屏 1K' },
+  { ratio: '4:3', value: '2048x1536', label: '横屏 2K' },
+  { ratio: '4:3', value: '3264x2448', label: '横屏 4K' },
+  { ratio: '3:2', value: '1008x672', label: '横屏 1K' },
+  { ratio: '3:2', value: '2016x1344', label: '横屏 2K' },
+  { ratio: '3:2', value: '3504x2336', label: '横屏 4K' },
+  { ratio: '4:5', value: '832x1040', label: '竖屏 1K' },
+  { ratio: '4:5', value: '1664x2080', label: '竖屏 2K' },
+  { ratio: '4:5', value: '2560x3200', label: '竖屏 4K' },
   { ratio: '1:1', value: '1024x1024', label: '方图' },
   { ratio: '3:4', value: '1024x1365', label: '竖版海报' },
   { ratio: '4:3', value: '1365x1024', label: '横版构图' },
@@ -188,6 +207,65 @@ function ratioLabelForSize(value: string) {
   const divisor = greatestCommonDivisor(parsed.width, parsed.height)
   if (!divisor) return ''
   return `${parsed.width / divisor}:${parsed.height / divisor}`
+}
+
+function dataUrlMimeType(src: string) {
+  const match = src.match(/^data:([^;,]+)[;,]/)
+  return match?.[1] || 'image/png'
+}
+
+function extensionForMimeType(mimeType = '') {
+  if (mimeType.includes('jpeg') || mimeType.includes('jpg')) return 'jpg'
+  if (mimeType.includes('webp')) return 'webp'
+  if (mimeType.includes('gif')) return 'gif'
+  if (mimeType.includes('svg')) return 'svg'
+  return 'png'
+}
+
+function formatImageMimeType(mimeType = '') {
+  const normalized = mimeType.replace(/^image\//, '').replace('jpeg', 'jpg')
+  return normalized ? normalized.toUpperCase() : 'PNG'
+}
+
+function estimateDataUrlBytes(src: string) {
+  const commaIndex = src.indexOf(',')
+  if (commaIndex < 0) return undefined
+  const meta = src.slice(0, commaIndex)
+  const payload = src.slice(commaIndex + 1)
+  if (!payload) return 0
+  if (!meta.includes(';base64')) {
+    try {
+      return new TextEncoder().encode(decodeURIComponent(payload)).length
+    } catch {
+      return payload.length
+    }
+  }
+  const normalized = payload.replace(/\s/g, '')
+  const padding = normalized.endsWith('==') ? 2 : normalized.endsWith('=') ? 1 : 0
+  return Math.max(0, Math.floor((normalized.length * 3) / 4) - padding)
+}
+
+function formatBytes(bytes?: number) {
+  if (!Number.isFinite(bytes || NaN)) return '-'
+  const value = bytes || 0
+  if (value < 1024) return `${value} B`
+  if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)} KB`
+  return `${(value / (1024 * 1024)).toFixed(2)} MB`
+}
+
+function getImageDimensions(src: string) {
+  return new Promise<{ width: number; height: number }>((resolve, reject) => {
+    const image = new Image()
+    image.onload = () => {
+      if (!image.naturalWidth || !image.naturalHeight) {
+        reject(new Error('Image has no readable dimensions'))
+        return
+      }
+      resolve({ width: image.naturalWidth, height: image.naturalHeight })
+    }
+    image.onerror = () => reject(new Error('Image dimensions could not be read'))
+    image.src = src
+  })
 }
 
 function workflowSizeOptionLabel(value: string) {
@@ -1301,12 +1379,8 @@ export function App() {
   const [imageRetryCount, setImageRetryCount] = useState(DEFAULT_IMAGE_RETRY_COUNT)
   const [persistApiKey, setPersistApiKey] = useState(false)
   const [hasLoadedSettings, setHasLoadedSettings] = useState(false)
-  const [isLoginDialogOpen, setIsLoginDialogOpen] = useState(false)
-  const [loginUsername, setLoginUsername] = useState('')
-  const [loginPassword, setLoginPassword] = useState('')
-  const [isNewApiLoggingIn, setIsNewApiLoggingIn] = useState(false)
-  const [themeMode, setThemeMode] = useState<ThemeMode>('dark')
-  const [resolvedTheme, setResolvedTheme] = useState<'light' | 'dark'>('dark')
+  const [themeMode, setThemeMode] = useState<ThemeMode>('light')
+  const [resolvedTheme, setResolvedTheme] = useState<'light' | 'dark'>('light')
   const [models, setModels] = useState<ModelOption[]>([])
   const [styles, setStyles] = useState<StyleOption[]>([])
   const [styleSummaries, setStyleSummaries] = useState<StyleOption[]>([])
@@ -1338,6 +1412,7 @@ export function App() {
   const [advancedStyleWeight, setAdvancedStyleWeight] = useState<AdvancedStyleWeight>('medium')
   const [advancedSketchWeight, setAdvancedSketchWeight] = useState<AdvancedSketchWeight>('reference')
   const [simplePrompt, setSimplePrompt] = useState('')
+  const [simpleReferenceImages, setSimpleReferenceImages] = useState<ReferenceImage[]>([])
   const [advancedPrompt, setAdvancedPrompt] = useState('')
   const [simplePromptOptimizationPreset, setSimplePromptOptimizationPreset] =
     useState<PromptOptimizationPreset>(DEFAULT_PROMPT_OPTIMIZATION_PRESET)
@@ -1373,6 +1448,10 @@ export function App() {
   )
   const [images, setImages] = useState<LocalImageRecord[]>([])
   const [previewImage, setPreviewImage] = useState<LocalImageRecord | null>(null)
+  const [previewImageDimensions, setPreviewImageDimensions] = useState<{
+    width: number
+    height: number
+  } | null>(null)
   const [galleryReferencePickerNodeId, setGalleryReferencePickerNodeId] = useState('')
   const [selectingGalleryReferenceImageId, setSelectingGalleryReferenceImageId] = useState('')
   const [status, setStatus] = useState('未连接')
@@ -1408,6 +1487,19 @@ export function App() {
   ].filter(Boolean).join(' / ')
   const effectiveCommerceCategoryPath =
     commerceCategoryMode === 'custom' ? commerceCustomCategory.trim() : selectedCommerceCategoryPath
+  const previewImageMimeType = previewImage
+    ? previewImage.mimeType || dataUrlMimeType(previewImage.src)
+    : 'image/png'
+  const previewImageByteSize = previewImage
+    ? previewImage.byteSize ?? estimateDataUrlBytes(previewImage.src)
+    : undefined
+  const previewImageAspectRatio = previewImage
+    ? ratioLabelForSize(
+        previewImageDimensions
+          ? `${previewImageDimensions.width}x${previewImageDimensions.height}`
+          : previewImage.size
+      ) || '-'
+    : '-'
 
   const activeCanvas = useMemo(
     () => canvases.find((canvas) => canvas.id === activeCanvasId) || canvases[0],
@@ -1836,6 +1928,32 @@ export function App() {
     }
   }, [activeCanvas?.id, flowInstance, resolvedTheme])
 
+  useEffect(() => {
+    let isCancelled = false
+    if (!previewImage) {
+      setPreviewImageDimensions(null)
+      return
+    }
+
+    if (previewImage.width && previewImage.height) {
+      setPreviewImageDimensions({ width: previewImage.width, height: previewImage.height })
+      return
+    }
+
+    setPreviewImageDimensions(null)
+    void getImageDimensions(previewImage.src)
+      .then((dimensions) => {
+        if (!isCancelled) setPreviewImageDimensions(dimensions)
+      })
+      .catch(() => {
+        if (!isCancelled) setPreviewImageDimensions(null)
+      })
+
+    return () => {
+      isCancelled = true
+    }
+  }, [previewImage])
+
   async function refreshImages() {
     setImages(await listImages())
   }
@@ -1872,7 +1990,7 @@ export function App() {
     setCanvasGenerationTask(canvasId, null)
   }
 
-  function buildLocalImageRecords(
+  async function buildLocalImageRecords(
     images: Array<{ src: string; revisedPrompt?: string }>,
     context: {
       prompt: string
@@ -1884,18 +2002,34 @@ export function App() {
     }
   ) {
     const createdAt = Date.now()
-    return images.map((item, index) => ({
-      id: newImageId(index),
-      src: item.src,
-      prompt: context.prompt,
-      model: context.model,
-      size: context.size,
-      quality: context.quality,
-      createdAt,
-      revisedPrompt: item.revisedPrompt,
-      mode: context.mode,
-      referenceImageNames: context.referenceImageNames,
-    }))
+    return Promise.all(
+      images.map(async (item, index) => {
+        let dimensions: { width: number; height: number } | null = null
+        try {
+          dimensions = await getImageDimensions(item.src)
+        } catch {
+          dimensions = null
+        }
+
+        const mimeType = dataUrlMimeType(item.src)
+        return {
+          id: newImageId(index),
+          src: item.src,
+          prompt: context.prompt,
+          model: context.model,
+          size: context.size,
+          quality: context.quality,
+          createdAt,
+          revisedPrompt: item.revisedPrompt,
+          mode: context.mode,
+          referenceImageNames: context.referenceImageNames,
+          width: dimensions?.width,
+          height: dimensions?.height,
+          mimeType,
+          byteSize: estimateDataUrlBytes(item.src),
+        }
+      })
+    )
   }
 
   async function persistCompletedTaskResult(
@@ -1912,7 +2046,7 @@ export function App() {
       generateNodeId?: string
     }
   ) {
-    const records = buildLocalImageRecords(generatedImages, context)
+    const records = await buildLocalImageRecords(generatedImages, context)
     await saveImages(records)
     if (context.canvasId && records[0]) {
       setCanvases((currentCanvases) =>
@@ -1973,8 +2107,6 @@ export function App() {
     setModel(DEFAULT_MODEL)
     setTextModel(DEFAULT_TEXT_MODEL)
     setModels([])
-    setLoginPassword('')
-    setIsLoginDialogOpen(false)
     await saveSettings({
       baseUrl: DEFAULT_IMAGE_BASE_URL,
       textBaseUrl: DEFAULT_TEXT_BASE_URL,
@@ -2059,6 +2191,36 @@ export function App() {
     if (imageFiles.length > 1) {
       setStatus('每个参考图节点只能放 1 张图片，已保留第一张')
     }
+  }
+
+  async function handleSimpleReferenceFiles(files?: FileList | null) {
+    const imageFiles = [...(files || [])].filter((file) => file.type.startsWith('image/'))
+    if (imageFiles.length === 0) return
+
+    const nextImages: ReferenceImage[] = await Promise.all(
+      imageFiles.slice(0, 4).map(async (file, index) => ({
+        id: createLocalId(`quick-reference-${index}`),
+        name: file.name,
+        title: referenceTitleFromFileName(file.name, index),
+        type: file.type || 'image/png',
+        dataUrl: await fileToDataUrl(file),
+      }))
+    )
+
+    setSimpleReferenceImages(nextImages)
+    setStatus(
+      nextImages.length > 1
+        ? `已添加 ${nextImages.length} 张快速参考图，生成时会自动使用图生图`
+        : '已添加快速参考图，生成时会自动使用图生图'
+    )
+  }
+
+  function removeSimpleReferenceImage(id: string) {
+    setSimpleReferenceImages((current) => current.filter((image) => image.id !== id))
+  }
+
+  function clearSimpleReferenceImages() {
+    setSimpleReferenceImages([])
   }
 
   async function selectGalleryReferenceImage(nodeId: string, image: LocalImageRecord) {
@@ -2181,56 +2343,6 @@ export function App() {
       setStatus('获取模型失败')
     } finally {
       setIsLoadingModels(false)
-    }
-  }
-
-  async function handleNewApiLogin() {
-    if (!loginUsername.trim() || !loginPassword) {
-      setError('请输入中转站账号和密码')
-      return
-    }
-
-    setError('')
-    setStatus('正在登录中转站...')
-    setIsNewApiLoggingIn(true)
-
-    try {
-      const result = await bridge.loginNewApi({
-        baseUrl: DEFAULT_BASE_URL,
-        username: loginUsername,
-        password: loginPassword,
-      })
-
-      setTextBaseUrl(result.baseUrl)
-      setImageBaseUrl(result.baseUrl)
-      setApiKey(result.apiKey)
-      setCodexApiKey(result.codexApiKey)
-      setImageRetryCount(DEFAULT_IMAGE_RETRY_COUNT)
-      setPersistApiKey(true)
-      setModel(result.model || DEFAULT_MODEL)
-      setTextModel(result.codexModel || DEFAULT_TEXT_MODEL)
-      await saveSettings({
-        baseUrl: result.baseUrl,
-        textBaseUrl: result.baseUrl,
-        imageBaseUrl: result.baseUrl,
-        persistApiKey: true,
-        apiKey: result.apiKey,
-        codexApiKey: result.codexApiKey,
-        imageRetryCount: DEFAULT_IMAGE_RETRY_COUNT,
-        textModel: result.codexModel || DEFAULT_TEXT_MODEL,
-        themeMode,
-      })
-      setLoginPassword('')
-      setIsLoginDialogOpen(false)
-      setStatus(
-        `${result.created ? '已创建' : '已启用'} ${result.group}，${result.codexCreated ? '已创建' : '已启用'} ${result.codexGroup}`
-      )
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err)
-      setError(message)
-      setStatus('中转站登录失败')
-    } finally {
-      setIsNewApiLoggingIn(false)
     }
   }
 
@@ -2377,7 +2489,7 @@ export function App() {
     }
     const generationSize = selectedGenerationSize()
     if (!generationSize) {
-      setError('请输入 64 到 4096 之间的自定义宽高')
+      setError('请输入 64 到 8192 之间的自定义宽高')
       return
     }
     setError('')
@@ -2596,7 +2708,7 @@ export function App() {
     const width = Number(customWidth)
     const height = Number(customHeight)
     if (!Number.isInteger(width) || !Number.isInteger(height)) return ''
-    if (width < 64 || height < 64 || width > 4096 || height > 4096) return ''
+    if (width < 64 || height < 64 || width > 8192 || height > 8192) return ''
     return `${width}x${height}`
   }
 
@@ -2672,7 +2784,7 @@ export function App() {
               <input
                 type='number'
                 min='64'
-                max='4096'
+                max='8192'
                 step='1'
                 value={state.customSizeWidth}
                 onChange={(event) => state.setCustomSizeWidth(event.target.value)}
@@ -2684,7 +2796,7 @@ export function App() {
               <input
                 type='number'
                 min='64'
-                max='4096'
+                max='8192'
                 step='1'
                 value={state.customSizeHeight}
                 onChange={(event) => state.setCustomSizeHeight(event.target.value)}
@@ -2862,7 +2974,7 @@ ${description}`
       ? selectedAdvancedGenerationSize()
       : selectedGenerationSize()
     if (!generationSize) {
-      setError('请输入 64 到 4096 之间的自定义宽高')
+      setError('请输入 64 到 8192 之间的自定义宽高')
       return
     }
     if (!prompt) {
@@ -2896,7 +3008,10 @@ ${description}`
       const result = await bridge.generateImages({
         baseUrl: imageBaseUrl,
         apiKey,
-        mode: 'text',
+        mode:
+          !includeAdvancedControls && simpleReferenceImages.length > 0
+            ? 'image'
+            : 'text',
         model: includeAdvancedControls ? advancedModel : model,
         prompt: finalPrompt,
         size: generationSize,
@@ -2904,15 +3019,26 @@ ${description}`
         count: includeAdvancedControls ? advancedCount : count,
         responseFormat: includeAdvancedControls ? advancedResponseFormat : responseFormat,
         background: includeAdvancedControls ? advancedBackground : undefined,
+        referenceImages:
+          !includeAdvancedControls && simpleReferenceImages.length > 0
+            ? simpleReferenceImages
+            : undefined,
         retryCount: imageRetryCount,
         onTaskUpdate: (task) => setStatus(taskStatusLabel(task.status)),
       })
-      const records = buildLocalImageRecords(result.images, {
+      const records = await buildLocalImageRecords(result.images, {
         prompt: finalPrompt,
         model: includeAdvancedControls ? advancedModel : model,
         size: generationSize,
         quality: includeAdvancedControls ? advancedQuality : quality,
-        mode: 'text',
+        mode:
+          !includeAdvancedControls && simpleReferenceImages.length > 0
+            ? 'image'
+            : 'text',
+        referenceImageNames:
+          !includeAdvancedControls && simpleReferenceImages.length > 0
+            ? simpleReferenceImages.map((image) => image.title || image.name)
+            : undefined,
       })
       await saveImages(records)
       await refreshImages()
@@ -2985,7 +3111,7 @@ ${description}`
     }
     const generationSize = selectedGenerationSize()
     if (!generationSize) {
-      setError('请输入 64 到 4096 之间的自定义宽高')
+      setError('请输入 64 到 8192 之间的自定义宽高')
       return
     }
     if (commerceProductImages.length === 0) {
@@ -3057,7 +3183,7 @@ ${description}`
         referenceImages,
         onTaskUpdate: (task) => setStatus(taskStatusLabel(task.status)),
       })
-      const records = buildLocalImageRecords(result.images, {
+      const records = await buildLocalImageRecords(result.images, {
         prompt,
         model,
         size: generationSize,
@@ -3088,8 +3214,19 @@ ${description}`
   }
 
   function handleDownloadImage(image: LocalImageRecord, index = 0) {
-    downloadDataUrl(image.src, `${image.id || `gpt-image-${index + 1}`}.png`)
+    const extension = extensionForMimeType(image.mimeType || dataUrlMimeType(image.src))
+    downloadDataUrl(image.src, `${image.id || `gpt-image-${index + 1}`}.${extension}`)
     setStatus('已触发图片下载；Codex 内置浏览器可能不支持下载，请在系统浏览器中打开后保存')
+  }
+
+  async function handleCopyPreviewPrompt(image: LocalImageRecord) {
+    const text = image.revisedPrompt || image.prompt
+    try {
+      await navigator.clipboard.writeText(text)
+      setStatus('提示词已复制')
+    } catch {
+      setError('浏览器暂不支持写入剪贴板，请手动复制')
+    }
   }
 
   function handleCreateCanvas() {
@@ -4321,6 +4458,62 @@ ${description}`
                       placeholder='例如：一张高级科技产品海报，干净背景，清晰主视觉，真实材质，高级棚拍光线'
                     />
                   </label>
+                  <section
+                    className={`quick-reference-drop ${simpleReferenceImages.length > 0 ? 'filled' : ''}`}
+                    aria-label='快速参考图'
+                  >
+                    <div className='quick-reference-copy'>
+                      <strong>参考图</strong>
+                      <span>
+                        {simpleReferenceImages.length > 0
+                          ? '已启用图生图，生成时会把这些图片作为参考'
+                          : '上传图片后，快速生成会自动切换为图生图'}
+                      </span>
+                    </div>
+                    {simpleReferenceImages.length > 0 ? (
+                      <div className='quick-reference-list'>
+                        {simpleReferenceImages.map((image) => (
+                          <article key={image.id}>
+                            <img src={image.dataUrl} alt={image.title || image.name} />
+                            <span>{image.title || image.name}</span>
+                            <button
+                              type='button'
+                              className='node-icon-button'
+                              onClick={() => removeSimpleReferenceImage(image.id)}
+                              aria-label='移除参考图'
+                            >
+                              <X size={14} />
+                            </button>
+                          </article>
+                        ))}
+                      </div>
+                    ) : null}
+                    <div className='quick-reference-actions'>
+                      <label className='secondary file-action'>
+                        <Upload size={16} />
+                        上传图片
+                        <input
+                          type='file'
+                          accept='image/*'
+                          multiple
+                          onChange={(event) => {
+                            void handleSimpleReferenceFiles(event.target.files)
+                            event.currentTarget.value = ''
+                          }}
+                        />
+                      </label>
+                      {simpleReferenceImages.length > 0 ? (
+                        <button
+                          type='button'
+                          className='ghost'
+                          onClick={clearSimpleReferenceImages}
+                        >
+                          <Trash2 size={16} />
+                          清空参考图
+                        </button>
+                      ) : null}
+                    </div>
+                  </section>
                   <div className='simple-param-grid'>
                     <label className='field'>
                       <span>模型</span>
@@ -4863,6 +5056,24 @@ ${description}`
 
           {currentView === 'console' ? (
             <section className='console-page'>
+              <div className='console-hero'>
+                <div>
+                  <span className='console-kicker'>SumAPI connection</span>
+                  <h2>把 API Key 填好，Sum ImgHub 就能直接生图。</h2>
+                  <p>
+                    SumAPI 登录页带有人机验证，这里不再代登录。去控制台创建 Key 后粘贴到下方，
+                    图像和提示词请求会从当前浏览器直连你的中转站。
+                  </p>
+                </div>
+                <button
+                  type='button'
+                  className='primary-action console-hero-action'
+                  onClick={() => void handleOpenConsole()}
+                >
+                  <ExternalLink size={16} />
+                  打开 SumAPI 控制台
+                </button>
+              </div>
               <div className='console-layout'>
                 <section className='portal-panel'>
                   <div className='section-title'>
@@ -4972,14 +5183,12 @@ ${description}`
                   </label>
                   <div className='button-grid'>
                     <button
-                      className='secondary login-button'
-                      onClick={() => {
-                        setError('')
-                        setIsLoginDialogOpen(true)
-                      }}
+                      type='button'
+                      className='secondary login-button console-link-button'
+                      onClick={() => void handleOpenConsole()}
                     >
-                      <LogIn size={16} />
-                      登录
+                      <ExternalLink size={16} />
+                      打开控制台
                     </button>
                     <button
                       className='secondary danger destructive-button'
@@ -5008,6 +5217,27 @@ ${description}`
                     </button>
                   </div>
                 </section>
+
+                  <section className='portal-panel compact-panel console-guide-panel'>
+                    <div className='section-title'>
+                      <Terminal size={16} />
+                      <span>配置步骤</span>
+                    </div>
+                    <ol className='console-steps'>
+                      <li>
+                        <strong>创建 API Key</strong>
+                        <span>在 SumAPI 控制台新建可用秘钥，确认包含生图模型权限。</span>
+                      </li>
+                      <li>
+                        <strong>粘贴到两个 Key 输入框</strong>
+                        <span>文本模型 Key 用于提示词优化，生图模型 Key 用于图片生成。</span>
+                      </li>
+                      <li>
+                        <strong>获取模型并保存</strong>
+                        <span>点击获取模型检查连接，再按需选择是否保存到当前浏览器。</span>
+                      </li>
+                    </ol>
+                  </section>
 
                   <section className='portal-panel compact-panel'>
                     <div className='section-title'>
@@ -5078,91 +5308,6 @@ ${description}`
           </section>
         </main>
       )}
-
-      {isLoginDialogOpen ? (
-        <div
-          className='modal-overlay'
-          role='dialog'
-          aria-modal='true'
-          aria-label='登录中转站'
-          onMouseDown={(event) => {
-            if (!isNewApiLoggingIn && event.target === event.currentTarget) {
-              setIsLoginDialogOpen(false)
-            }
-          }}
-        >
-          <form
-            className='login-dialog'
-            onSubmit={(event) => {
-              event.preventDefault()
-              void handleNewApiLogin()
-            }}
-          >
-            <div className='dialog-header'>
-              <div>
-                <strong>登录中转站</strong>
-                <span>自动获取生图和提示词优化所需的两个分组秘钥</span>
-              </div>
-              <button
-                type='button'
-                className='icon-button'
-                onClick={() => setIsLoginDialogOpen(false)}
-                disabled={isNewApiLoggingIn}
-                aria-label='关闭登录窗口'
-              >
-                <X size={18} />
-              </button>
-            </div>
-
-            <label className='field'>
-              <span>中转站</span>
-              <input value={DEFAULT_BASE_URL} disabled />
-            </label>
-            <label className='field'>
-              <span>账号</span>
-              <input
-                value={loginUsername}
-                onChange={(event) => setLoginUsername(event.target.value)}
-                autoComplete='username'
-                disabled={isNewApiLoggingIn}
-                placeholder='用户名或邮箱'
-              />
-            </label>
-            <label className='field'>
-              <span>密码</span>
-              <input
-                value={loginPassword}
-                onChange={(event) => setLoginPassword(event.target.value)}
-                type='password'
-                autoComplete='current-password'
-                disabled={isNewApiLoggingIn}
-                placeholder='中转站密码'
-              />
-            </label>
-            <p>
-              账号密码只用于本次登录中转站；服务端不保存。成功后仅把生图和 Codex API Key 保存到当前浏览器。
-            </p>
-            <div className='dialog-actions'>
-              <button
-                type='button'
-                className='ghost'
-                onClick={() => setIsLoginDialogOpen(false)}
-                disabled={isNewApiLoggingIn}
-              >
-                取消
-              </button>
-              <button
-                type='submit'
-                className='secondary'
-                disabled={isNewApiLoggingIn || !loginUsername.trim() || !loginPassword}
-              >
-                {isNewApiLoggingIn ? <Loader2 className='spin' size={16} /> : <LogIn size={16} />}
-                登录并获取秘钥
-              </button>
-            </div>
-          </form>
-        </div>
-      ) : null}
 
       {isGalleryReferencePickerOpen ? (
         <div
@@ -5250,6 +5395,22 @@ ${description}`
               </div>
               <button
                 className='icon-button'
+                onClick={() => void handleCopyPreviewPrompt(previewImage)}
+                aria-label='复制提示词'
+                title='复制提示词'
+              >
+                <Copy size={16} />
+              </button>
+              <button
+                className='icon-button'
+                onClick={() => handleDownloadImage(previewImage)}
+                aria-label='下载图片'
+                title='下载图片'
+              >
+                <Download size={16} />
+              </button>
+              <button
+                className='icon-button'
                 onClick={() => setPreviewImage(null)}
                 aria-label='关闭预览'
               >
@@ -5262,6 +5423,58 @@ ${description}`
                 alt={previewImage.revisedPrompt || previewImage.prompt}
               />
             </div>
+            <dl className='preview-info'>
+              <div>
+                <dt>协议</dt>
+                <dd>OpenAI 兼容</dd>
+              </div>
+              <div>
+                <dt>宽高比</dt>
+                <dd>{previewImageAspectRatio}</dd>
+              </div>
+              <div>
+                <dt>分辨率</dt>
+                <dd>{previewImage.size === 'auto' ? 'auto' : previewImage.size}</dd>
+              </div>
+              <div>
+                <dt>实际尺寸</dt>
+                <dd>
+                  {previewImageDimensions
+                    ? `${previewImageDimensions.width} x ${previewImageDimensions.height}`
+                    : '-'}
+                </dd>
+              </div>
+              <div>
+                <dt>请求尺寸</dt>
+                <dd>{previewImage.size}</dd>
+              </div>
+              <div>
+                <dt>质量</dt>
+                <dd>{previewImage.quality}</dd>
+              </div>
+              <div>
+                <dt>格式</dt>
+                <dd>{formatImageMimeType(previewImageMimeType)}</dd>
+              </div>
+              <div>
+                <dt>大小</dt>
+                <dd>{formatBytes(previewImageByteSize)}</dd>
+              </div>
+              <div>
+                <dt>类型</dt>
+                <dd>{previewImage.mode === 'image' ? '图生图' : '文生图'}</dd>
+              </div>
+              <div>
+                <dt>完成</dt>
+                <dd>{new Date(previewImage.createdAt).toLocaleString()}</dd>
+              </div>
+            </dl>
+            {previewImage.referenceImageNames?.length ? (
+              <div className='preview-reference-list'>
+                <strong>参考图</strong>
+                <span>{previewImage.referenceImageNames.join(' / ')}</span>
+              </div>
+            ) : null}
             <div className='preview-caption'>
               <p>{previewImage.revisedPrompt || previewImage.prompt}</p>
             </div>

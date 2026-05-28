@@ -112,26 +112,6 @@ export type ImageGenerationTask = {
   pollAfterMs?: number
 }
 
-export type ManagedNewApiLoginPayload = {
-  baseUrl: string
-  username: string
-  password: string
-}
-
-export type ManagedNewApiLoginResult = {
-  baseUrl: string
-  apiKey: string
-  codexApiKey: string
-  group: string
-  model: string
-  tokenName: string
-  created: boolean
-  codexGroup: string
-  codexModel: string
-  codexTokenName: string
-  codexCreated: boolean
-}
-
 export type PromptOptimizationPayload = {
   baseUrl: string
   apiKey: string
@@ -181,6 +161,10 @@ export type LocalImageRecord = {
   revisedPrompt?: string
   mode?: 'text' | 'image'
   referenceImageNames?: string[]
+  width?: number
+  height?: number
+  mimeType?: string
+  byteSize?: number
 }
 
 export type BackupFile = {
@@ -192,9 +176,6 @@ export type BackupFile = {
 
 export type ImageApiClient = {
   listModels: (args: { baseUrl: string; apiKey: string }) => Promise<ModelOption[]>
-  loginNewApi: (
-    payload: ManagedNewApiLoginPayload
-  ) => Promise<ManagedNewApiLoginResult>
   optimizePrompt: (payload: PromptOptimizationPayload) => Promise<string>
   optimizeNegativePrompt: (payload: NegativePromptOptimizationPayload) => Promise<string>
   describeSketch: (payload: SketchDescriptionPayload) => Promise<string>

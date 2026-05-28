@@ -7,7 +7,6 @@ import {
   type KeyboardEvent,
   type ReactNode,
   type SetStateAction,
-  type CSSProperties,
 } from 'react'
 import {
   BaseEdge,
@@ -989,76 +988,10 @@ export function GalleryStrip({
   onDelete: (id: string) => void
 }) {
   const visibleImages = useMemo(() => images.slice(0, limit), [images, limit])
-  const stripRef = useRef<HTMLDivElement | null>(null)
-  const [columnCount, setColumnCount] = useState(1)
-  const [imageRatios, setImageRatios] = useState<Record<string, number>>({})
-
-  useEffect(() => {
-    const strip = stripRef.current
-    if (!strip) return
-
-    const updateColumnCount = () => {
-      const width = strip.getBoundingClientRect().width
-      const minColumnWidth = width < 620 ? 220 : 300
-      const gap = 12
-      const nextCount = Math.max(1, Math.floor((width + gap) / (minColumnWidth + gap)))
-      setColumnCount(Math.min(nextCount, 5, Math.max(1, visibleImages.length)))
-    }
-
-    updateColumnCount()
-    const observer = new ResizeObserver(updateColumnCount)
-    observer.observe(strip)
-    return () => observer.disconnect()
-  }, [visibleImages.length])
-
-  useEffect(() => {
-    let isCancelled = false
-    const missingImages = visibleImages.filter((image) => !imageRatios[image.id])
-    if (missingImages.length === 0) return
-
-    for (const image of missingImages) {
-      const loader = new Image()
-      loader.onload = () => {
-        if (isCancelled || !loader.naturalWidth || !loader.naturalHeight) return
-        setImageRatios((current) => ({
-          ...current,
-          [image.id]: loader.naturalHeight / loader.naturalWidth,
-        }))
-      }
-      loader.src = image.src
-    }
-
-    return () => {
-      isCancelled = true
-    }
-  }, [visibleImages, imageRatios])
-
-  const masonryColumns = useMemo(() => {
-    const columns = Array.from({ length: columnCount }, () => ({
-      height: 0,
-      items: [] as Array<{ image: LocalImageRecord; index: number }>,
-    }))
-
-    visibleImages.forEach((image, index) => {
-      const targetColumn = columns.reduce((shortest, column, columnIndex) =>
-        column.height < columns[shortest].height ? columnIndex : shortest
-      , 0)
-      columns[targetColumn].items.push({ image, index })
-      columns[targetColumn].height += imageRatios[image.id] || 1
-    })
-
-    return columns
-  }, [columnCount, imageRatios, visibleImages])
 
   return (
-    <div
-      className='gallery-strip'
-      ref={stripRef}
-      style={{ '--gallery-columns': columnCount } as CSSProperties}
-    >
-      {masonryColumns.map((column, columnIndex) => (
-        <div className='gallery-column' key={`gallery-column-${columnIndex}`}>
-          {column.items.map(({ image, index }) => (
+    <div className='gallery-strip'>
+      {visibleImages.map((image, index) => (
             <article key={image.id} className='gallery-tile'>
               <button
                 type='button'
@@ -1071,7 +1004,9 @@ export function GalleryStrip({
               <div className='gallery-tile-overlay'>
                 <div className='gallery-tile-copy'>
                   <strong>{image.mode === 'image' ? '图片引导' : '文生图'}</strong>
-                  <span>{new Date(image.createdAt).toLocaleString()}</span>
+                  <span>
+                    {image.size} · {image.quality} · {new Date(image.createdAt).toLocaleString()}
+                  </span>
                   <p>{image.revisedPrompt || image.prompt}</p>
                 </div>
                 <nav aria-label='图片操作'>
@@ -1084,11 +1019,6 @@ export function GalleryStrip({
                 </nav>
               </div>
             </article>
-          ))}
-          {column.items.length === 0 ? (
-            <span className='gallery-column-placeholder' aria-hidden='true' />
-          ) : null}
-        </div>
       ))}
     </div>
   )

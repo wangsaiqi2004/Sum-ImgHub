@@ -196,6 +196,14 @@ def now_ts() -> float:
     return time.time()
 
 
+def duration_ms(started_at: float) -> int:
+    return max(0, int((now_ts() - started_at) * 1000))
+
+
+def public_url_host(value: str) -> str:
+    return urllib.parse.urlparse(value).netloc or "unknown"
+
+
 def init_storage() -> None:
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     CACHE_DIR.mkdir(parents=True, exist_ok=True)
@@ -304,6 +312,14 @@ def write_log(
         detail_text = json.dumps(details, ensure_ascii=False, default=str)
     else:
         detail_text = details
+    log_method = LOGGER.error if level.upper() == "ERROR" else LOGGER.warning if level.upper() == "WARN" else LOGGER.info
+    log_method(
+        "%s task=%s message=%s details=%s",
+        event,
+        task_id or "-",
+        message,
+        detail_text or "-",
+    )
     try:
         with DB_LOCK, connect_db() as conn:
             conn.execute(
@@ -331,6 +347,8 @@ def parse_generation_metadata(content_type: str, body: bytes) -> dict[str, Any]:
             "field_names": [],
             "size": None,
             "quality": None,
+            "count": None,
+            "response_format": None,
             "input_fidelity": None,
         }
         boundary_match = re.search(r'boundary="?([^";]+)"?', content_type)
@@ -367,11 +385,13 @@ def parse_generation_metadata(content_type: str, body: bytes) -> dict[str, Any]:
                     metadata["image_fields"].append(name)
                 continue
 
-            if name in {"model", "prompt", "size", "quality", "input_fidelity"}:
+            if name in {"model", "prompt", "size", "quality", "input_fidelity", "n", "response_format"}:
                 value = payload.decode("utf-8", errors="replace").strip()
                 limit = 2000 if name == "prompt" else 200
-                metadata[name] = value[:limit] or None
-
+                if name == "n":
+                    metadata["count"] = value[:limit] or None
+                else:
+                    metadata[name] = value[:limit] or None
         return metadata
 
     if not content_type.startswith("application/json"):
@@ -527,6 +547,48 @@ def normalize_public_base_url(value: str) -> str:
     if not is_public_hostname(parsed.hostname):
         raise OpenAIProxyError("Base URL 不是可公开访问地址")
     return f"{parsed.scheme}://{parsed.netloc}"
+
+
+def check_image_service_reachability() -> dict[str, Any]:
+    started_at = now_ts()
+    request = urllib.request.Request(
+        f"{DEFAULT_BASE_URL}/v1/models",
+        method="GET",
+        headers={
+            "Accept": "application/json",
+            "Authorization": "Bearer health-check",
+            "User-Agent": "Sum-ImgHub-Health/1.0",
+        },
+    )
+    status: int | None = None
+    error_type = ""
+    try:
+        with open_url(request, timeout=min(10, REQUEST_TIMEOUT)) as response:
+            status = response.status
+            response.read(512)
+    except urllib.error.HTTPError as exc:
+        status = exc.code
+        exc.read(512)
+    except urllib.error.URLError as exc:
+        error_type = type(exc.reason).__name__
+    except (TimeoutError, socket.timeout):
+        error_type = "TimeoutError"
+
+    elapsed = duration_ms(started_at)
+    reachable = status in {200, 401, 403}
+    LOGGER.info(
+        "image_service_health reachable=%s status=%s duration_ms=%s error_type=%s",
+        reachable,
+        status if status is not None else "-",
+        elapsed,
+        error_type or "-",
+    )
+    return {
+        "reachable": reachable,
+        "status": status,
+        "durationMs": elapsed,
+        "errorType": error_type or None,
+    }
 
 
 def split_model_limits(value: str | None) -> set[str]:
@@ -931,6 +993,7 @@ def create_generation_task(
         "生图任务已投递到服务器后台",
         task_id,
         {
+            "base_host": public_url_host(base_url),
             "upstream_path": upstream_path,
             "request_size": len(body),
             "model": metadata["model"],
@@ -1029,6 +1092,8 @@ def run_generation_task(
     body: bytes,
     retry_count: int,
 ) -> None:
+    task_started_at = now_ts()
+    base_host = public_url_host(base_url)
     update_task_status(task_id, "running")
     write_log("INFO", "task_running", "生图任务开始请求服务", task_id)
     request = urllib.request.Request(
@@ -1047,6 +1112,17 @@ def run_generation_task(
         max_attempts = retry_count + 1
         completed_retries = 0
         for attempt in range(1, max_attempts + 1):
+            attempt_started_at = now_ts()
+            LOGGER.info(
+                "image_request_start task=%s host=%s path=%s attempt=%s/%s timeout=%s body_bytes=%s",
+                task_id,
+                base_host,
+                upstream_path,
+                attempt,
+                max_attempts,
+                IMAGE_REQUEST_TIMEOUT,
+                len(body),
+            )
             response_headers: dict[str, str] = {}
             try:
                 with open_url(request, timeout=IMAGE_REQUEST_TIMEOUT) as response:
@@ -1057,6 +1133,17 @@ def run_generation_task(
                 response_body = exc.read()
                 status = exc.code
                 response_headers = dict(exc.headers.items())
+            LOGGER.info(
+                "image_request_finish task=%s host=%s path=%s status=%s attempt=%s/%s duration_ms=%s response_bytes=%s",
+                task_id,
+                base_host,
+                upstream_path,
+                status,
+                attempt,
+                max_attempts,
+                duration_ms(attempt_started_at),
+                len(response_body),
+            )
 
             if status < 200 or status >= 300:
                 upstream_message = extract_upstream_error_message(status, response_body)
@@ -1065,8 +1152,9 @@ def run_generation_task(
                     "attempt": attempt,
                     "max_attempts": max_attempts,
                     "status": status,
-                    "base_url": base_url,
+                    "base_host": base_host,
                     "upstream_path": upstream_path,
+                    "duration_ms": duration_ms(attempt_started_at),
                     "will_retry": can_retry,
                     "upstream_message": upstream_message,
                     "response_headers": {
@@ -1118,7 +1206,7 @@ def run_generation_task(
                 task_id,
                 {
                     "retry_count": completed_retries,
-                    "base_url": base_url,
+                    "base_host": base_host,
                     "upstream_path": upstream_path,
                 },
             )
@@ -1149,6 +1237,13 @@ def run_generation_task(
             f"生图服务超过 {IMAGE_REQUEST_TIMEOUT} 秒仍未返回，"
             "请稍后重新尝试"
         )
+        LOGGER.error(
+            "image_task_timeout task=%s host=%s path=%s duration_ms=%s",
+            task_id,
+            base_host,
+            upstream_path,
+            duration_ms(task_started_at),
+        )
         update_task_status(task_id, "failed", error=message, completed=True)
         write_log("ERROR", "task_failed", message, task_id)
     except urllib.error.URLError as exc:
@@ -1159,10 +1254,26 @@ def run_generation_task(
             )
         else:
             message = "暂时无法连接生图服务，请稍后重新尝试"
+        LOGGER.error(
+            "image_task_url_error task=%s host=%s path=%s duration_ms=%s reason_type=%s reason=%s",
+            task_id,
+            base_host,
+            upstream_path,
+            duration_ms(task_started_at),
+            type(exc.reason).__name__,
+            exc.reason,
+        )
         update_task_status(task_id, "failed", error=message, completed=True)
         write_log("ERROR", "task_failed", message, task_id)
     except Exception as exc:
         message = str(exc) or "后台生图任务失败"
+        LOGGER.exception(
+            "image_task_failed task=%s host=%s path=%s duration_ms=%s",
+            task_id,
+            base_host,
+            upstream_path,
+            duration_ms(task_started_at),
+        )
         update_task_status(task_id, "failed", error=message, completed=True)
         write_log(
             "ERROR",
@@ -1386,6 +1497,9 @@ class ImageToolsHandler(SimpleHTTPRequestHandler):
         if parsed_path.path.startswith("/api/openai/tasks/"):
             self.handle_openai_task_status(parsed_path)
             return
+        if parsed_path.path == "/api/openai/health":
+            self.handle_openai_health()
+            return
         if parsed_path.path.startswith("/api/image-cache/"):
             self.handle_cache_file(parsed_path)
             return
@@ -1521,6 +1635,13 @@ class ImageToolsHandler(SimpleHTTPRequestHandler):
             return
 
         json_response(self, HTTPStatus.OK, task_response_payload(task))
+
+    def handle_openai_health(self) -> None:
+        json_response(
+            self,
+            HTTPStatus.OK,
+            {"success": True, "message": "", "data": check_image_service_reachability()},
+        )
 
     def handle_cache_file(self, parsed_path: urllib.parse.ParseResult) -> None:
         prefix = "/api/image-cache/"

@@ -157,7 +157,7 @@ function normalizeRetryCount(value: unknown) {
 }
 
 function isTransientUpstreamStatus(status: number) {
-  return status === 502 || status === 503 || status === 504
+  return status === 502 || status === 503 || status === 504 || status === 524
 }
 
 function networkFailureMessage(prefix: string) {

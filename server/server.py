@@ -62,7 +62,7 @@ DEFAULT_LOCAL_PROXY = "http://127.0.0.1:7897"
 DEFAULT_LOCAL_PROXY_HOST = "127.0.0.1"
 DEFAULT_LOCAL_PROXY_PORT = 7897
 TASK_POLL_SECONDS = 1.5
-TRANSIENT_UPSTREAM_STATUSES = {502, 503, 504}
+TRANSIENT_UPSTREAM_STATUSES = {502, 503, 504, 524}
 OPENAI_IMAGE_PROXY_PATHS = {
     "/api/openai/v1/images/generations": "/v1/images/generations",
     "/api/openai/v1/images/edits": "/v1/images/edits",
@@ -171,9 +171,9 @@ def upstream_failure_message(
     retry_count: int,
 ) -> str:
     retry_text = f"，已自动重试 {retry_count} 次" if retry_count > 0 else ""
-    if status == 504:
+    if status in {504, 524}:
         return (
-            "生图服务响应超时（HTTP 504）。"
+            f"生图服务响应超时（HTTP {status}）。"
             f"这通常表示图片排队或生成耗时较长{retry_text}。请稍后重新尝试。"
         )
     if status in {502, 503}:

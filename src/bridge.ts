@@ -241,32 +241,35 @@ function blobFromDataUrl(dataUrl: string) {
 const GPT_IMAGE_OFFICIAL_SIZES = new Set(['1024x1024', '1024x1536', '1536x1024'])
 const GPT_IMAGE_2_SAFE_SIZES = new Set([
   '1024x1024',
-  '1024x1536',
-  '1536x1024',
-  '1024x1280',
-  '1280x1024',
-  '1152x1536',
-  '1536x1152',
-  '1024x1792',
-  '1792x1024',
-  '2016x864',
+  '1040x832',
+  '720x1280',
+  '1280x720',
+  '1024x768',
+  '1008x672',
+  '832x1040',
+  '768x1024',
+  '672x1008',
+  '1344x576',
   '2048x2048',
-  '2048x2560',
-  '2560x2048',
-  '2304x3072',
-  '3072x2304',
-  '2048x3072',
-  '3072x2048',
-  '3840x3840',
-  '3072x3840',
-  '3840x3072',
-  '2880x3840',
-  '3840x2880',
-  '2560x3840',
-  '3840x2560',
+  '2080x1664',
+  '1152x2048',
+  '2048x1152',
+  '2048x1536',
+  '2016x1344',
+  '1664x2080',
+  '1536x2048',
+  '1344x2016',
+  '2016x864',
+  '2880x2880',
+  '3200x2560',
   '2160x3840',
   '3840x2160',
-  '3840x1646',
+  '3264x2448',
+  '3504x2336',
+  '2560x3200',
+  '2448x3264',
+  '2336x3504',
+  '3696x1584',
 ])
 
 function imageRequestHeaders(apiKey: string, isMultipart: boolean, baseUrl: string, retryCount?: number) {
@@ -319,6 +322,13 @@ function imageProxyUrl(baseUrl: string, upstreamPath: '/v1/images/generations' |
 
 function upstreamImageResponseFormat(baseUrl: string, responseFormat: 'url' | 'b64_json') {
   return shouldUseLocalImageProxy(baseUrl) ? 'url' : responseFormat
+}
+
+function upstreamImageQuality(baseUrl: string, quality: string) {
+  const normalized = quality.trim()
+  if (!normalized) return undefined
+  if (shouldUseLocalImageProxy(baseUrl)) return normalized
+  return normalized === 'auto' ? undefined : normalized
 }
 
 function canFallbackToDirectImageRequest(baseUrl: string, url: string) {
@@ -1076,12 +1086,13 @@ export const bridge: ImageApiClient = {
       }
 
       const apiSize = normalizedImageApiSize(payload.model, payload.size)
+      const apiQuality = upstreamImageQuality(payload.baseUrl, payload.quality)
       const form = new FormData()
       form.set('model', payload.model)
       form.set('prompt', payload.prompt)
       form.set('size', apiSize)
-      if (payload.quality !== 'auto') {
-        form.set('quality', payload.quality)
+      if (apiQuality) {
+        form.set('quality', apiQuality)
       }
       form.set('n', String(payload.count))
       form.set('response_format', upstreamImageResponseFormat(payload.baseUrl, payload.responseFormat))
@@ -1146,6 +1157,7 @@ export const bridge: ImageApiClient = {
 
     const requestedCount = Math.max(1, Math.floor(payload.count))
     const apiSize = normalizedImageApiSize(payload.model, payload.size)
+    const apiQuality = upstreamImageQuality(payload.baseUrl, payload.quality)
     const images: ImageGenerationResult['images'] = []
 
     try {
@@ -1162,7 +1174,7 @@ export const bridge: ImageApiClient = {
               model: payload.model,
               prompt: payload.prompt,
               size: apiSize,
-              ...(payload.quality !== 'auto' ? { quality: payload.quality } : {}),
+              ...(apiQuality ? { quality: apiQuality } : {}),
               n: 1,
               response_format: upstreamImageResponseFormat(payload.baseUrl, payload.responseFormat),
             }),

@@ -117,35 +117,42 @@ const SAFE_SIZE_ERROR_MESSAGE =
   '请选择尺寸下拉框里的安全预设。为了避免上游 invalid size，手动尺寸必须和安全预设完全一致。'
 const sizeOptions = [
   { ratio: '1:1', value: '1024x1024', label: '方图 1K' },
-  { ratio: '2:3', value: '1024x1536', label: '竖版生成 1K' },
-  { ratio: '3:2', value: '1536x1024', label: '横版生成 1K' },
-  { ratio: '4:5', value: '1024x1280', label: '社媒竖图 1K' },
-  { ratio: '5:4', value: '1280x1024', label: '产品横图 1K' },
-  { ratio: '3:4', value: '1152x1536', label: '竖版海报 1K' },
-  { ratio: '4:3', value: '1536x1152', label: '横版构图 1K' },
-  { ratio: '9:16', value: '1024x1792', label: '手机竖屏 1K' },
-  { ratio: '16:9', value: '1792x1024', label: '宽屏封面 1K' },
-  { ratio: '21:9', value: '2016x864', label: '超宽图 1K' },
+  { ratio: '5:4', value: '1040x832', label: '横屏 1K' },
+  { ratio: '9:16', value: '720x1280', label: '竖屏 1K' },
+  { ratio: '16:9', value: '1280x720', label: '横屏 1K' },
+  { ratio: '4:3', value: '1024x768', label: '横屏 1K' },
+  { ratio: '3:2', value: '1008x672', label: '横屏 1K' },
+  { ratio: '4:5', value: '832x1040', label: '竖屏 1K' },
+  { ratio: '3:4', value: '768x1024', label: '竖屏 1K' },
+  { ratio: '2:3', value: '672x1008', label: '竖屏 1K' },
+  { ratio: '21:9', value: '1344x576', label: '横屏 1K' },
   { ratio: '1:1', value: '2048x2048', label: '方图 2K' },
-  { ratio: '4:5', value: '2048x2560', label: '社媒竖图 2K' },
-  { ratio: '5:4', value: '2560x2048', label: '产品横图 2K' },
-  { ratio: '3:4', value: '2304x3072', label: '竖版海报 2K' },
-  { ratio: '4:3', value: '3072x2304', label: '横版构图 2K' },
-  { ratio: '2:3', value: '2048x3072', label: '竖版生成 2K' },
-  { ratio: '3:2', value: '3072x2048', label: '横版生成 2K' },
-  { ratio: '1:1', value: '3840x3840', label: '方图 4K' },
-  { ratio: '4:5', value: '3072x3840', label: '社媒竖图 4K' },
-  { ratio: '5:4', value: '3840x3072', label: '产品横图 4K' },
-  { ratio: '3:4', value: '2880x3840', label: '竖版海报 4K' },
-  { ratio: '4:3', value: '3840x2880', label: '横版构图 4K' },
-  { ratio: '2:3', value: '2560x3840', label: '竖版生成 4K' },
-  { ratio: '3:2', value: '3840x2560', label: '横版生成 4K' },
+  { ratio: '5:4', value: '2080x1664', label: '横屏 2K' },
+  { ratio: '9:16', value: '1152x2048', label: '竖屏 2K' },
+  { ratio: '16:9', value: '2048x1152', label: '横屏 2K' },
+  { ratio: '4:3', value: '2048x1536', label: '横屏 2K' },
+  { ratio: '3:2', value: '2016x1344', label: '横屏 2K' },
+  { ratio: '4:5', value: '1664x2080', label: '竖屏 2K' },
+  { ratio: '3:4', value: '1536x2048', label: '竖屏 2K' },
+  { ratio: '2:3', value: '1344x2016', label: '竖屏 2K' },
+  { ratio: '21:9', value: '2016x864', label: '横屏 2K' },
+  { ratio: '1:1', value: '2880x2880', label: '方图 4K' },
+  { ratio: '5:4', value: '3200x2560', label: '横屏 4K' },
   { ratio: '9:16', value: '2160x3840', label: '手机竖屏 4K' },
   { ratio: '16:9', value: '3840x2160', label: '宽屏封面 4K' },
-  { ratio: '21:9', value: '3840x1646', label: '超宽图 4K' },
+  { ratio: '4:3', value: '3264x2448', label: '横屏 4K' },
+  { ratio: '3:2', value: '3504x2336', label: '横屏 4K' },
+  { ratio: '4:5', value: '2560x3200', label: '竖屏 4K' },
+  { ratio: '3:4', value: '2448x3264', label: '竖屏 4K' },
+  { ratio: '2:3', value: '2336x3504', label: '竖屏 4K' },
+  { ratio: '21:9', value: '3696x1584', label: '横屏 4K' },
 ]
-const officialGptImageSizeValues = new Set(['1024x1024', '1024x1536', '1536x1024'])
-const qualities = ['auto', 'standard', 'hd', 'low', 'medium', 'high']
+const officialGptImageSizeOptions = [
+  { ratio: '1:1', value: '1024x1024', label: '方图 1K' },
+  { ratio: '2:3', value: '1024x1536', label: '竖版生成 官方' },
+  { ratio: '3:2', value: '1536x1024', label: '横版生成 官方' },
+]
+const qualities = ['auto', 'low', 'medium', 'high']
 const counts = [1, 2, 3, 4]
 const inputFidelities = ['low', 'high'] as const
 const backgroundOptions: Array<{ value: AdvancedBackground; label: string }> = [
@@ -206,7 +213,7 @@ function isGptImageModel(model = '') {
 
 function safeSizeOptionsForModel(model = '') {
   if (isGptImageModel(model) && !isGptImage2FamilyModel(model)) {
-    return sizeOptions.filter((option) => officialGptImageSizeValues.has(option.value))
+    return officialGptImageSizeOptions
   }
   return sizeOptions
 }

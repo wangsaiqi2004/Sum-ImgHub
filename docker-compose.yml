@@ -14,6 +14,7 @@ services:
       IMAGE_TOOLS_STATIC_DIR: /app/dist
       IMAGE_TOOLS_DATA_DIR: /data
       IMAGE_TOOLS_IMAGE_REQUEST_TIMEOUT: 600
+      IMAGE_TOOLS_OUTBOUND_PROXY: direct
     volumes:
       - sum-imghub-data:/data
     healthcheck:

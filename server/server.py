@@ -117,8 +117,6 @@ def resolve_outbound_proxy() -> str | None:
             return None
         return value
 
-    if local_proxy_is_available():
-        return DEFAULT_LOCAL_PROXY
     return None
 
 

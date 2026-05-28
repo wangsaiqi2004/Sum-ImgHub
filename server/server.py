@@ -1051,30 +1051,58 @@ def run_generation_task(
         max_attempts = retry_count + 1
         completed_retries = 0
         for attempt in range(1, max_attempts + 1):
+            response_headers: dict[str, str] = {}
             try:
                 with open_url(request, timeout=IMAGE_REQUEST_TIMEOUT) as response:
                     response_body = response.read()
                     status = response.status
+                    response_headers = dict(response.headers.items())
             except urllib.error.HTTPError as exc:
                 response_body = exc.read()
                 status = exc.code
+                response_headers = dict(exc.headers.items())
 
             if status < 200 or status >= 300:
                 upstream_message = extract_upstream_error_message(status, response_body)
                 can_retry = status in TRANSIENT_UPSTREAM_STATUSES and attempt < max_attempts
+                log_details = {
+                    "attempt": attempt,
+                    "max_attempts": max_attempts,
+                    "status": status,
+                    "base_url": base_url,
+                    "upstream_path": upstream_path,
+                    "will_retry": can_retry,
+                    "upstream_message": upstream_message,
+                    "response_headers": {
+                        key: value
+                        for key, value in response_headers.items()
+                        if key.lower()
+                        in {
+                            "content-type",
+                            "server",
+                            "x-oneapi-request-id",
+                            "x-new-api-version",
+                            "cf-ray",
+                            "via",
+                        }
+                    },
+                }
+                LOGGER.warning(
+                    "upstream image failed task=%s status=%s attempt=%s/%s retry=%s message=%s headers=%s",
+                    task_id,
+                    status,
+                    attempt,
+                    max_attempts,
+                    can_retry,
+                    upstream_message or "empty body",
+                    log_details["response_headers"],
+                )
                 write_log(
                     "WARN" if can_retry else "ERROR",
                     "upstream_image_failed",
                     f"上游生图返回 HTTP {status}: {upstream_message or '无错误正文'}",
                     task_id,
-                    {
-                        "attempt": attempt,
-                        "max_attempts": max_attempts,
-                        "status": status,
-                        "base_url": base_url,
-                        "upstream_path": upstream_path,
-                        "will_retry": can_retry,
-                    },
+                    log_details,
                 )
                 if can_retry:
                     completed_retries += 1

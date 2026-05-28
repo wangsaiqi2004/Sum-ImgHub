@@ -1,0 +1,33 @@
+services:
+  sum-imghub:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: sum-imghub:latest
+    container_name: sum-imghub
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:19080:19080"
+    environment:
+      HOST: 0.0.0.0
+      PORT: 19080
+      IMAGE_TOOLS_STATIC_DIR: /app/dist
+      IMAGE_TOOLS_DATA_DIR: /data
+      IMAGE_TOOLS_IMAGE_REQUEST_TIMEOUT: 600
+    volumes:
+      - sum-imghub-data:/data
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:19080/', timeout=3).close()",
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+volumes:
+  sum-imghub-data:

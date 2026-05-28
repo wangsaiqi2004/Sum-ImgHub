@@ -62,6 +62,28 @@ npm start
 生图任务代理。宝塔项目端口默认是 `19080`，也可以用环境变量 `PORT` 修改。
 如果只做纯静态部署，页面仍可打开，但 4K 生图可能因为浏览器直连上游超时或断连而失败。
 
+## Docker 部署
+
+```bash
+git clone https://github.com/wangsaiqi2004/Sum-ImgHub.git
+cd Sum-ImgHub
+docker compose up -d --build
+```
+
+容器默认只把服务映射到宿主机 `127.0.0.1:19080`，适合让宝塔或 Nginx 反代：
+
+```txt
+目标 URL: http://127.0.0.1:19080
+```
+
+容器里的临时生图缓存、任务记录和 SQLite 数据库会写到 Docker volume
+`sum-imghub-data`。更新代码时执行：
+
+```bash
+git pull
+docker compose up -d --build
+```
+
 ## 本地数据说明
 
 - 图片、提示词、模型、生成参数保存在浏览器 IndexedDB。未完成的生成任务会在浏览器重新打开后继续轮询服务器缓存结果。

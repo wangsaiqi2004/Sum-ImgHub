@@ -321,6 +321,10 @@ function canFallbackToDirectImageRequest(baseUrl: string, url: string) {
   return shouldUseLocalImageProxy(baseUrl) && url.startsWith('/api/openai/v1/images/')
 }
 
+function localImageProxyMissingMessage(url: string) {
+  return `当前页面没有启用本地生图代理，不能安全处理 2K/4K 这类长请求。请用 npm start 或 docker compose up -d --build 启动后访问 http://127.0.0.1:19080，不要用 5173 的 Vite 开发服务直接生图。代理请求地址：${url}`
+}
+
 async function pollImageTask(taskId: string, onTaskUpdate?: (task: ImageGenerationTask) => void) {
   const maxPolls = 420
   for (let pollIndex = 0; pollIndex < maxPolls; pollIndex += 1) {
@@ -384,13 +388,7 @@ async function fetchImageJson<T>(
       canFallbackToDirectImageRequest(baseUrl, url) &&
       /404|Not found|没有返回 JSON|empty response/i.test(error.message)
     ) {
-      return await fetchJsonWithRetry<T>(
-        `${normalizeBaseUrl(baseUrl)}${upstreamPath}`,
-        init,
-        prefix,
-        retryCount,
-        onRetry
-      )
+      throw new Error(localImageProxyMissingMessage(url))
     }
     throw error
   }

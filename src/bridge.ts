@@ -317,6 +317,10 @@ function imageProxyUrl(baseUrl: string, upstreamPath: '/v1/images/generations' |
   return `${path}?base_url=${encodeURIComponent(normalizeBaseUrl(baseUrl))}`
 }
 
+function upstreamImageResponseFormat(baseUrl: string, responseFormat: 'url' | 'b64_json') {
+  return shouldUseLocalImageProxy(baseUrl) ? 'url' : responseFormat
+}
+
 function canFallbackToDirectImageRequest(baseUrl: string, url: string) {
   return shouldUseLocalImageProxy(baseUrl) && url.startsWith('/api/openai/v1/images/')
 }
@@ -1080,7 +1084,7 @@ export const bridge: ImageApiClient = {
         form.set('quality', payload.quality)
       }
       form.set('n', String(payload.count))
-      form.set('response_format', payload.responseFormat)
+      form.set('response_format', upstreamImageResponseFormat(payload.baseUrl, payload.responseFormat))
       if (payload.inputFidelity && payload.model.trim().toLowerCase() !== 'gpt-image-2') {
         form.set('input_fidelity', payload.inputFidelity)
       }
@@ -1160,7 +1164,7 @@ export const bridge: ImageApiClient = {
               size: apiSize,
               ...(payload.quality !== 'auto' ? { quality: payload.quality } : {}),
               n: 1,
-              response_format: payload.responseFormat,
+              response_format: upstreamImageResponseFormat(payload.baseUrl, payload.responseFormat),
             }),
           },
           'Image generation failed',

@@ -542,6 +542,8 @@ def split_model_limits(value: str | None) -> set[str]:
 def is_public_hostname(hostname: str | None) -> bool:
     if not hostname:
         return False
+    if hostname.lower() == ALLOWED_NEW_API_HOST:
+        return True
     if hostname.lower() in {"localhost"}:
         return False
 

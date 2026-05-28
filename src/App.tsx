@@ -144,8 +144,7 @@ const sizeOptions = [
   { ratio: '16:9', value: '3840x2160', label: '宽屏封面 4K' },
   { ratio: '21:9', value: '3840x1646', label: '超宽图 4K' },
 ]
-const sizes = sizeOptions.map((item) => item.value)
-const safeImageSizeValues = new Set(sizes)
+const officialGptImageSizeValues = new Set(['1024x1024', '1024x1536', '1536x1024'])
 const qualities = ['auto', 'standard', 'hd', 'low', 'medium', 'high']
 const counts = [1, 2, 3, 4]
 const inputFidelities = ['low', 'high'] as const
@@ -192,8 +191,27 @@ function parseSizeValue(value: string) {
   }
 }
 
-function isSafeImageSize(value: string) {
-  return safeImageSizeValues.has(value.trim())
+function normalizedImageModelId(model = '') {
+  return model.trim().toLowerCase().replace(/^models\//, '')
+}
+
+function isGptImage2ProModel(model = '') {
+  return normalizedImageModelId(model) === 'gpt-image-2-pro'
+}
+
+function isGptImageModel(model = '') {
+  return normalizedImageModelId(model).startsWith('gpt-image')
+}
+
+function safeSizeOptionsForModel(model = '') {
+  if (isGptImageModel(model) && !isGptImage2ProModel(model)) {
+    return sizeOptions.filter((option) => officialGptImageSizeValues.has(option.value))
+  }
+  return sizeOptions
+}
+
+function isSafeImageSizeForModel(value: string, model = '') {
+  return safeSizeOptionsForModel(model).some((option) => option.value === value.trim())
 }
 
 function sizeOptionLabel(option: (typeof sizeOptions)[number]) {
@@ -2705,21 +2723,22 @@ export function App() {
     mode: 'preset' | 'custom',
     presetSize: string,
     customWidth: string,
-    customHeight: string
+    customHeight: string,
+    activeModel = model
   ) {
     if (mode === 'preset') {
-      return isSafeImageSize(presetSize) ? presetSize : DEFAULT_SAFE_IMAGE_SIZE
+      return isSafeImageSizeForModel(presetSize, activeModel) ? presetSize : DEFAULT_SAFE_IMAGE_SIZE
     }
 
     const width = Number(customWidth)
     const height = Number(customHeight)
     if (!Number.isInteger(width) || !Number.isInteger(height)) return ''
     const customSize = `${width}x${height}`
-    return isSafeImageSize(customSize) ? customSize : ''
+    return isSafeImageSizeForModel(customSize, activeModel) ? customSize : ''
   }
 
   function selectedGenerationSize() {
-    return selectedGenerationSizeFor(sizeMode, size, customSizeWidth, customSizeHeight)
+    return selectedGenerationSizeFor(sizeMode, size, customSizeWidth, customSizeHeight, model)
   }
 
   function selectedAdvancedGenerationSize() {
@@ -2727,7 +2746,8 @@ export function App() {
       advancedSizeMode,
       advancedSize,
       advancedCustomSizeWidth,
-      advancedCustomSizeHeight
+      advancedCustomSizeHeight,
+      advancedModel
     )
   }
 
@@ -2739,7 +2759,8 @@ export function App() {
       setSizeMode,
       setCustomSizeWidth,
       setCustomSizeHeight,
-    }
+    },
+    activeModel = model
   ) {
     if (nextValue === CUSTOM_SIZE_VALUE) {
       const parsedSize = parseSizeValue(state.size)
@@ -2752,7 +2773,7 @@ export function App() {
     }
 
     state.setSizeMode('preset')
-    state.setSize(isSafeImageSize(nextValue) ? nextValue : DEFAULT_SAFE_IMAGE_SIZE)
+    state.setSize(isSafeImageSizeForModel(nextValue, activeModel) ? nextValue : DEFAULT_SAFE_IMAGE_SIZE)
   }
 
   function renderSizeField(
@@ -2765,17 +2786,23 @@ export function App() {
       setSizeMode,
       setCustomSizeWidth,
       setCustomSizeHeight,
-    }
+    },
+    activeModel = model
   ) {
+    const availableSizeOptions = safeSizeOptionsForModel(activeModel)
+    const presetSelectValue = availableSizeOptions.some((option) => option.value === state.size)
+      ? state.size
+      : DEFAULT_SAFE_IMAGE_SIZE
+    const isOfficialOnlySizeMode = isGptImageModel(activeModel) && !isGptImage2ProModel(activeModel)
     return (
       <div className='field size-field'>
         <label className='size-select-label'>
           <span>尺寸</span>
           <select
-            value={state.sizeMode === 'custom' ? CUSTOM_SIZE_VALUE : state.size}
-            onChange={(event) => handleSizeSelect(event.target.value, state)}
+            value={state.sizeMode === 'custom' ? CUSTOM_SIZE_VALUE : presetSelectValue}
+            onChange={(event) => handleSizeSelect(event.target.value, state, activeModel)}
           >
-            {sizeOptions.map((item) => (
+            {availableSizeOptions.map((item) => (
               <option key={item.value} value={item.value}>
                 {sizeOptionLabel(item)}
               </option>
@@ -2783,6 +2810,9 @@ export function App() {
             <option value={CUSTOM_SIZE_VALUE}>自定义比例 · 手动输入</option>
           </select>
         </label>
+        {isOfficialOnlySizeMode ? (
+          <small className='custom-size-hint'>当前模型只开放官方三档；要用 2K/4K 请切到 gpt-image-2-pro。</small>
+        ) : null}
         {state.sizeMode === 'custom' ? (
           <>
             <div className='custom-size-grid'>
@@ -3437,7 +3467,10 @@ ${description}`
         !activeCanvasGenerating &&
         Boolean(apiKey && imageBaseUrl && model && getWorkflowNodePrompt(promptNode).trim())
       const activeSize = selectedGenerationSize() || DEFAULT_SAFE_IMAGE_SIZE
-      const workflowSizes = sizes.includes(activeSize) ? sizes : [activeSize, ...sizes]
+      const availableWorkflowSizes = safeSizeOptionsForModel(model).map((item) => item.value)
+      const workflowSizes = availableWorkflowSizes.includes(activeSize)
+        ? availableWorkflowSizes
+        : [activeSize, ...availableWorkflowSizes]
       const workflowSizeOptions = workflowSizes.map((item) => ({
         value: item,
         label: workflowSizeOptionLabel(item),
@@ -3452,7 +3485,7 @@ ${description}`
         sizeOptions: workflowSizeOptions,
         setSize: (nextSize: string) => {
           setSizeMode('preset')
-          setSize(isSafeImageSize(nextSize) ? nextSize : DEFAULT_SAFE_IMAGE_SIZE)
+          setSize(isSafeImageSizeForModel(nextSize, model) ? nextSize : DEFAULT_SAFE_IMAGE_SIZE)
         },
         quality,
         qualities,
@@ -4777,7 +4810,7 @@ ${description}`
                     setSizeMode: setAdvancedSizeMode,
                     setCustomSizeWidth: setAdvancedCustomSizeWidth,
                     setCustomSizeHeight: setAdvancedCustomSizeHeight,
-                  })}
+                  }, advancedModel)}
                   <label className='field'>
                     <span>质量</span>
                     <select

@@ -1,8 +1,8 @@
 # Sum ImgHub
 
 一个 Web 端本地优先生图工具。用户填写 OpenAI 兼容 API 的 `Base URL` 和
-`API Key`，应用会直接从浏览器调用 `/v1/models`、`/v1/images/generations`
-和 `/v1/images/edits`。
+`API Key`。文本和模型列表会直接请求中转站；生图请求默认通过内置 Python
+服务端转成后台任务，避免 4K 等慢请求在浏览器长连接里断开。
 
 ## 在线测试
 
@@ -49,6 +49,18 @@ npm run build
 ```bash
 npm run preview
 ```
+
+## 宝塔部署
+
+```bash
+npm install
+npm run build
+npm start
+```
+
+`npm start` 会用 `server/server.py` 托管 `dist`，并启用 `/api/openai/...`
+生图任务代理。宝塔项目端口默认是 `19080`，也可以用环境变量 `PORT` 修改。
+如果只做纯静态部署，页面仍可打开，但 4K 生图可能因为浏览器直连上游超时或断连而失败。
 
 ## 本地数据说明
 

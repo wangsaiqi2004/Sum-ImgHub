@@ -172,6 +172,10 @@ function isTransientUpstreamStatus(status: number) {
   return status === 502 || status === 503 || status === 504
 }
 
+function networkFailureMessage(prefix: string, url: string) {
+  return `${prefix}: 浏览器没有拿到接口响应。通常是网络中断、CORS/预检被拦、上游长时间生成导致连接断开，或当前静态部署没有启用生图代理。请求地址：${url}`
+}
+
 async function fetchJsonWithRetry<T>(
   url: string,
   init: RequestInit,
@@ -198,6 +202,9 @@ async function fetchJsonWithRetry<T>(
         onRetry?.(attempt, maxAttempts, 0)
         await delay(800)
         continue
+      }
+      if (error instanceof TypeError) {
+        throw new Error(networkFailureMessage(prefix, url))
       }
       throw error
     }
@@ -262,6 +269,15 @@ const GPT_IMAGE_2_PRO_SAFE_SIZES = new Set([
   '3840x1646',
 ])
 
+function imageRequestHeaders(apiKey: string, isMultipart: boolean, baseUrl: string, retryCount?: number) {
+  const baseHeaders = isMultipart ? imageTaskAuthHeaders(apiKey) : imageTaskHeaders(apiKey)
+  if (!shouldUseLocalImageProxy(baseUrl)) return baseHeaders
+  return {
+    ...baseHeaders,
+    'X-Image-Tools-Retry-Count': String(normalizeRetryCount(retryCount)),
+  }
+}
+
 function normalizedImageApiSize(model: string, size: string) {
   const normalizedModel = model.trim().toLowerCase()
   if (normalizedModel === 'gpt-image-2-pro') {
@@ -279,6 +295,101 @@ function normalizedImageApiSize(model: string, size: string) {
   if (!Number.isFinite(width) || !Number.isFinite(height)) return size
   if (Math.abs(width - height) / Math.max(width, height) < 0.08) return '1024x1024'
   return height > width ? '1024x1536' : '1536x1024'
+}
+
+function localImageProxyPath(upstreamPath: '/v1/images/generations' | '/v1/images/edits') {
+  return `/api/openai${upstreamPath}`
+}
+
+function shouldUseLocalImageProxy(baseUrl: string) {
+  const normalizedBaseUrl = normalizeBaseUrl(baseUrl)
+  if (window.location.protocol === 'file:') return false
+  return normalizedBaseUrl === 'https://api.clawopen.top'
+}
+
+function imageProxyUrl(baseUrl: string, upstreamPath: '/v1/images/generations' | '/v1/images/edits') {
+  const path = localImageProxyPath(upstreamPath)
+  if (!shouldUseLocalImageProxy(baseUrl)) return `${normalizeBaseUrl(baseUrl)}${upstreamPath}`
+  return `${path}?base_url=${encodeURIComponent(normalizeBaseUrl(baseUrl))}`
+}
+
+function canFallbackToDirectImageRequest(baseUrl: string, url: string) {
+  return shouldUseLocalImageProxy(baseUrl) && url.startsWith('/api/openai/v1/images/')
+}
+
+async function pollImageTask(taskId: string, onTaskUpdate?: (task: ImageGenerationTask) => void) {
+  const maxPolls = 420
+  for (let pollIndex = 0; pollIndex < maxPolls; pollIndex += 1) {
+    const response = await fetch(`/api/openai/tasks/${encodeURIComponent(taskId)}`, {
+      method: 'GET',
+      headers: { Accept: 'application/json' },
+    })
+    const body = await parseJsonResponse<{ success?: boolean; message?: string; data?: ImageGenerationTask }>(
+      response,
+      'Image task poll failed'
+    )
+    const task = assertApiSuccess(body, 'Image task poll failed')
+    onTaskUpdate?.(task)
+    if (task.status === 'completed') {
+      if (!task.result) throw new Error('后台生图任务已完成，但没有返回结果')
+      return task.result
+    }
+    if (task.status === 'failed' || task.status === 'expired') {
+      throw new Error(task.error || '后台生图任务失败')
+    }
+    await delay(Math.max(500, task.pollAfterMs || 1500))
+  }
+
+  throw new Error('后台生图任务仍未完成，请稍后到图库或服务器日志查看结果')
+}
+
+async function fetchImageJson<T>(
+  baseUrl: string,
+  upstreamPath: '/v1/images/generations' | '/v1/images/edits',
+  init: RequestInit,
+  prefix: string,
+  retryCount?: number,
+  onRetry?: (attempt: number, maxAttempts: number, status: number) => void,
+  onTaskUpdate?: (task: ImageGenerationTask) => void
+) {
+  const url = imageProxyUrl(baseUrl, upstreamPath)
+  try {
+    const body = await fetchJsonWithRetry<T | { success?: boolean; message?: string; data?: ImageGenerationTask }>(
+      url,
+      init,
+      prefix,
+      retryCount,
+      onRetry
+    )
+    if (shouldUseLocalImageProxy(baseUrl)) {
+      const task = assertApiSuccess(body as { success?: boolean; message?: string; data?: ImageGenerationTask }, prefix)
+      onTaskUpdate?.(task)
+      if (task.status === 'completed') {
+        if (!task.result) throw new Error('后台生图任务已完成，但没有返回结果')
+        return task.result as T
+      }
+      if (task.status === 'failed' || task.status === 'expired') {
+        throw new Error(task.error || '后台生图任务失败')
+      }
+      return (await pollImageTask(task.taskId, onTaskUpdate)) as T
+    }
+    return body as T
+  } catch (error) {
+    if (
+      error instanceof Error &&
+      canFallbackToDirectImageRequest(baseUrl, url) &&
+      /404|Not found|没有返回 JSON|empty response/i.test(error.message)
+    ) {
+      return await fetchJsonWithRetry<T>(
+        `${normalizeBaseUrl(baseUrl)}${upstreamPath}`,
+        init,
+        prefix,
+        retryCount,
+        onRetry
+      )
+    }
+    throw error
+  }
 }
 
 async function parseImageResult(
@@ -976,13 +1087,14 @@ export const bridge: ImageApiClient = {
       })
 
       try {
-        const result = await fetchJsonWithRetry<{
+        const result = await fetchImageJson<{
           data?: Array<{ url?: string; b64_json?: string; revised_prompt?: string }>
         }>(
-          `${normalizeBaseUrl(payload.baseUrl)}/v1/images/edits`,
+          payload.baseUrl,
+          '/v1/images/edits',
           {
             method: 'POST',
-            headers: imageTaskAuthHeaders(payload.apiKey),
+            headers: imageRequestHeaders(payload.apiKey, true, payload.baseUrl, payload.retryCount),
             body: form,
           },
           'Image edit failed',
@@ -998,7 +1110,8 @@ export const bridge: ImageApiClient = {
                 ? `上游返回 HTTP ${status}，正在重试 ${attempt}/${maxAttempts - 1}`
                 : `上游请求失败，正在重试 ${attempt}/${maxAttempts - 1}`,
             })
-          }
+          },
+          payload.onTaskUpdate
         )
         const parsed = await parseImageResult(result)
         payload.onTaskUpdate?.({
@@ -1031,13 +1144,14 @@ export const bridge: ImageApiClient = {
 
     try {
       for (let index = 0; index < requestedCount; index += 1) {
-        const result = await fetchJsonWithRetry<{
+        const result = await fetchImageJson<{
           data?: Array<{ url?: string; b64_json?: string; revised_prompt?: string }>
         }>(
-          `${normalizeBaseUrl(payload.baseUrl)}/v1/images/generations`,
+          payload.baseUrl,
+          '/v1/images/generations',
           {
             method: 'POST',
-            headers: imageTaskHeaders(payload.apiKey),
+            headers: imageRequestHeaders(payload.apiKey, false, payload.baseUrl, payload.retryCount),
             body: JSON.stringify({
               model: payload.model,
               prompt: payload.prompt,
@@ -1060,7 +1174,8 @@ export const bridge: ImageApiClient = {
                 ? `第 ${index + 1}/${requestedCount} 张上游返回 HTTP ${status}，正在重试 ${attempt}/${maxAttempts - 1}`
                 : `第 ${index + 1}/${requestedCount} 张上游请求失败，正在重试 ${attempt}/${maxAttempts - 1}`,
             })
-          }
+          },
+          payload.onTaskUpdate
         )
         const parsed = await parseImageResult(result)
         images.push(...parsed.images)

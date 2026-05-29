@@ -1,10 +1,9 @@
-.git
-.gitignore
 node_modules
 dist
-server-data
+.data
+.env
+.git
+.tmp
 *.tsbuildinfo
-npm-debug.log*
-Dockerfile
-docker-compose.yml
-README.md
+screenshot-*.png
+generated_images

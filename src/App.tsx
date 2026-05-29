@@ -1,5554 +1,11218 @@
 import {
-  useCallback,
+  AlertCircle,
+  ArrowRight,
+  BarChart3,
+  Bot,
+  CheckCircle2,
+  Clock3,
+  ChevronRight,
+  Copy,
+  Database,
+  Download,
+  DownloadCloud,
+  ExternalLink,
+  Flame,
+  Heart,
+  ImagePlus,
+  Loader2,
+  LogOut,
+  Maximize2,
+  PanelLeftClose,
+  PanelLeftOpen,
+  PanelRightClose,
+  PanelRightOpen,
+  RefreshCw,
+  Search,
+  Send,
+  Settings2,
+  ShieldCheck,
+  Star,
+  Square,
+  CheckSquare,
+  Trash2,
+  UploadCloud,
+  WandSparkles,
+  Wifi,
+  X,
+} from "lucide-react";
+import {
+  type CSSProperties,
+  type ChangeEvent,
+  type DragEvent,
+  Fragment,
+  type FormEvent,
+  memo,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
-  type KeyboardEvent as ReactKeyboardEvent,
-  type MouseEvent as ReactMouseEvent,
-  type PointerEvent as ReactPointerEvent,
-} from 'react'
-import {
-  Background,
-  Controls,
-  ReactFlow,
-  addEdge,
-  applyEdgeChanges,
-  applyNodeChanges,
-  type EdgeChange,
-  type NodeChange,
-  type ReactFlowInstance,
-  type IsValidConnection,
-  type Connection,
-  type Edge,
-  type Node,
-} from '@xyflow/react'
-import {
-  Check,
-  Copy,
-  Download,
-  Edit3,
-  ExternalLink,
-  Github,
-  Home,
-  Image as ImageIcon,
-  KeyRound,
-  Layers,
-  Loader2,
-  Menu,
-  Monitor,
-  Moon,
-  Plus,
-  RefreshCw,
-  Save,
-  ShoppingBag,
-  SlidersHorizontal,
-  Sparkles,
-  Sun,
-  Terminal,
-  Trash2,
-  Upload,
-  Workflow,
-  X,
-} from 'lucide-react'
-import {
-  clearImages,
-  deleteImage,
-  exportBackup,
-  getSettings,
-  importBackup,
-  listImages,
-  listReferenceImageBlobs,
-  saveSettings,
-  saveImages,
-  saveReferenceImageBlobs,
-} from './storage'
-import { bridge } from './bridge'
-import { commerceCategoryTree } from './commerceCategories'
-import {
-  GalleryStrip,
-  edgeTypes,
-  nodeTypes,
-  PROMPT_REFERENCE_HANDLE_IDS,
-  type AssetNodeData,
-  type BlueprintEdgeData,
-  type GenerateNodeData,
-  type PromptNodeData,
-} from './workflowNodes'
-import type {
-  ImageGenerationTask,
-  ImageGenerationTaskStatus,
-  LocalImageRecord,
-  ModelOption,
-  PromptOptimizationPreset,
-  ReferenceImage,
-  StyleCategory,
-  StyleOption,
-  ThemeMode,
-} from './types'
+} from "react";
+import homeHeroImage from "./assets/home-hero.png";
+import homePromptPreview from "./assets/home-prompt-preview.png";
+import homeStudioPreview from "./assets/home-studio-preview.png";
+import sumapiLogo from "./assets/sumapi-logo.svg";
 
-const DEFAULT_BASE_URL = 'https://api.clawopen.top'
-const DEFAULT_TEXT_BASE_URL = DEFAULT_BASE_URL
-const DEFAULT_IMAGE_BASE_URL = DEFAULT_BASE_URL
-const DEFAULT_MODEL = 'gpt-image-2'
-const DEFAULT_TEXT_MODEL = 'gpt-5.5'
-const DEFAULT_IMAGE_RETRY_COUNT = 1
-const DEFAULT_PROMPT_OPTIMIZATION_PRESET: PromptOptimizationPreset = 'ecommerce'
-const CONSOLE_URL = 'https://api.clawopen.top/'
-const GITHUB_REPO_URL = 'https://github.com/wangsaiqi2004/Sum-ImgHub'
-const MAX_COMMERCE_PRODUCT_IMAGES = 4
-const COMMERCE_REFERENCE_MAX_SIDE = 1600
-const COMMERCE_REFERENCE_JPEG_QUALITY = 0.86
-const COMMERCE_PRODUCT_SHEET_SIZE = 1600
-const ADVANCED_SKETCH_WIDTH = 960
-const ADVANCED_SKETCH_HEIGHT = 540
-const CONFIGURATION_NOTICE_MESSAGE =
-  '请先在控制台补全生图 API Key 和模型，配置完成后再继续使用其他页面。'
+type ImageProtocol =
+  | "custom-openai"
+  | "openai-images"
+  | "openai-responses"
+  | "gemini-native"
+  | "gemini-openai"
+  | "google-imagen"
+  | "stability-core";
 
-function normalizeImageRetryCount(value: unknown) {
-  const count = Math.floor(Number(value))
-  if (!Number.isFinite(count)) return DEFAULT_IMAGE_RETRY_COUNT
-  return Math.max(0, Math.min(5, count))
-}
+type ApiConfig = {
+  protocol: ImageProtocol;
+  baseUrl: string;
+  apiKey: string;
+  rememberKey: boolean;
+};
 
-const CUSTOM_SIZE_VALUE = 'custom'
-const DEFAULT_SAFE_IMAGE_SIZE = '1024x1024'
-const SAFE_SIZE_ERROR_MESSAGE =
-  '请选择尺寸下拉框里的安全预设。为了避免尺寸不被支持，手动尺寸必须和安全预设完全一致。'
-const sizeOptions = [
-  { ratio: '1:1', value: '1024x1024', label: '方图 1K' },
-  { ratio: '5:4', value: '1040x832', label: '横屏 1K' },
-  { ratio: '9:16', value: '720x1280', label: '竖屏 1K' },
-  { ratio: '16:9', value: '1280x720', label: '横屏 1K' },
-  { ratio: '4:3', value: '1024x768', label: '横屏 1K' },
-  { ratio: '3:2', value: '1008x672', label: '横屏 1K' },
-  { ratio: '4:5', value: '832x1040', label: '竖屏 1K' },
-  { ratio: '3:4', value: '768x1024', label: '竖屏 1K' },
-  { ratio: '2:3', value: '672x1008', label: '竖屏 1K' },
-  { ratio: '21:9', value: '1344x576', label: '横屏 1K' },
-  { ratio: '1:1', value: '2048x2048', label: '方图 2K' },
-  { ratio: '5:4', value: '2080x1664', label: '横屏 2K' },
-  { ratio: '9:16', value: '1152x2048', label: '竖屏 2K' },
-  { ratio: '16:9', value: '2048x1152', label: '横屏 2K' },
-  { ratio: '4:3', value: '2048x1536', label: '横屏 2K' },
-  { ratio: '3:2', value: '2016x1344', label: '横屏 2K' },
-  { ratio: '4:5', value: '1664x2080', label: '竖屏 2K' },
-  { ratio: '3:4', value: '1536x2048', label: '竖屏 2K' },
-  { ratio: '2:3', value: '1344x2016', label: '竖屏 2K' },
-  { ratio: '21:9', value: '2016x864', label: '横屏 2K' },
-  { ratio: '1:1', value: '2880x2880', label: '方图 4K' },
-  { ratio: '5:4', value: '3200x2560', label: '横屏 4K' },
-  { ratio: '9:16', value: '2160x3840', label: '手机竖屏 4K' },
-  { ratio: '16:9', value: '3840x2160', label: '宽屏封面 4K' },
-  { ratio: '4:3', value: '3264x2448', label: '横屏 4K' },
-  { ratio: '3:2', value: '3504x2336', label: '横屏 4K' },
-  { ratio: '4:5', value: '2560x3200', label: '竖屏 4K' },
-  { ratio: '3:4', value: '2448x3264', label: '竖屏 4K' },
-  { ratio: '2:3', value: '2336x3504', label: '竖屏 4K' },
-  { ratio: '21:9', value: '3696x1584', label: '横屏 4K' },
-]
-const officialGptImageSizeOptions = [
-  { ratio: '1:1', value: '1024x1024', label: '方图 1K' },
-  { ratio: '2:3', value: '1024x1536', label: '竖版生成 官方' },
-  { ratio: '3:2', value: '1536x1024', label: '横版生成 官方' },
-]
-const qualities = ['auto', 'low', 'medium', 'high']
-const counts = [1, 2, 3, 4]
-const inputFidelities = ['low', 'high'] as const
-const backgroundOptions: Array<{ value: AdvancedBackground; label: string }> = [
-  { value: 'auto', label: 'auto' },
-  { value: 'opaque', label: 'opaque' },
-  { value: 'transparent', label: 'transparent' },
-]
-const creativityOptions: Array<{ value: AdvancedCreativity; label: string }> = [
-  { value: 'strict', label: '严格' },
-  { value: 'balanced', label: '平衡' },
-  { value: 'exploratory', label: '发散' },
-]
-const styleWeightOptions: Array<{ value: AdvancedStyleWeight; label: string }> = [
-  { value: 'weak', label: '弱' },
-  { value: 'medium', label: '中' },
-  { value: 'strong', label: '强' },
-]
-const sketchWeightOptions: Array<{ value: AdvancedSketchWeight; label: string }> = [
-  { value: 'reference', label: '参考' },
-  { value: 'strict', label: '严格遵循' },
-  { value: 'layout', label: '只看布局' },
-]
-const themeOptions: Array<{ value: ThemeMode; label: string; icon: typeof Sun }> = [
-  { value: 'light', label: '亮色', icon: Sun },
-  { value: 'dark', label: '暗色', icon: Moon },
-  { value: 'system', label: '跟随系统', icon: Monitor },
-]
-const promptOptimizationPresets: Array<{ value: PromptOptimizationPreset; label: string }> = [
-  { value: 'ecommerce', label: '电商卖货' },
-  { value: 'product', label: '产品质感' },
-  { value: 'social', label: '社媒爆款' },
-  { value: 'brand', label: '品牌海报' },
-  { value: 'character', label: 'IP/角色' },
-  { value: 'general', label: '通用增强' },
-]
+type ImageResolution = "1K" | "2K" | "4K";
 
-function parseSizeValue(value: string) {
-  const match = value.trim().match(/^(\d{2,5})x(\d{2,5})$/)
-  if (!match) return null
-  return {
-    width: Number(match[1]),
-    height: Number(match[2]),
-  }
-}
+type ImageParams = {
+  aspectRatio: string;
+  size: string;
+  resolution: ImageResolution;
+  quality: string;
+  outputFormat: "png" | "jpeg" | "webp";
+  batchCount: number;
+  concurrency: number;
+  retryLimit: number;
+  seed: string;
+  negativePrompt: string;
+};
 
-function normalizedImageModelId(model = '') {
-  return model.trim().toLowerCase().replace(/^models\//, '')
-}
+type SubmittedReference = {
+  name: string;
+  type: string;
+  dataUrl: string;
+  originalBytes: number;
+  requestBytes: number;
+  compressed: boolean;
+};
 
-function isGptImage2FamilyModel(model = '') {
-  const normalized = normalizedImageModelId(model)
-  return normalized === 'gpt-image-2' || normalized === 'gpt-image-2-pro' || normalized.includes('image-2')
-}
+type ReferenceStatus = "ready" | "warning" | "error";
 
-function isGptImageModel(model = '') {
-  return normalizedImageModelId(model).startsWith('gpt-image')
-}
+type UploadedReference = {
+  id: string;
+  name: string;
+  type: string;
+  size: number;
+  dataUrl: string;
+  thumbnailDataUrl?: string;
+  width?: number;
+  height?: number;
+  status?: ReferenceStatus;
+  message?: string;
+};
 
-function safeSizeOptionsForModel(model = '') {
-  if (isGptImageModel(model) && !isGptImage2FamilyModel(model)) {
-    return officialGptImageSizeOptions
-  }
-  return sizeOptions
-}
+type JobStatus = "queued" | "running" | "success" | "error";
 
-function isSafeImageSizeForModel(value: string, model = '') {
-  return safeSizeOptionsForModel(model).some((option) => option.value === value.trim())
-}
+type ErrorDetail = unknown;
 
-function sizeOptionLabel(option: (typeof sizeOptions)[number]) {
-  return `${option.ratio} · ${option.value} · ${option.label}`
-}
+type Job = {
+  id: string;
+  requestId?: string;
+  batchId: string;
+  index: number;
+  total: number;
+  protocol: ImageProtocol;
+  prompt: string;
+  model: string;
+  params: ImageParams;
+  referenceImages: UploadedReference[];
+  status: JobStatus;
+  createdAt: number;
+  startedAt?: number;
+  finishedAt?: number;
+  durationMs?: number;
+  imageBlob?: Blob;
+  imageUrl?: string;
+  width?: number;
+  height?: number;
+  revisedPrompt?: string;
+  errorDetail?: ErrorDetail;
+  agentId?: string;
+  agentName?: string;
+  agentScenario?: string;
+  promptVariant?: PromptVariant;
+  attempt?: number;
+  maxAttempts?: number;
+  submittedReferenceImages?: SubmittedReference[];
+};
 
-function greatestCommonDivisor(a: number, b: number): number {
-  return b === 0 ? Math.abs(a) : greatestCommonDivisor(b, a % b)
-}
+type StoredHistoryRecord = {
+  id: string;
+  requestId?: string;
+  batchId?: string;
+  index?: number;
+  total?: number;
+  protocol?: ImageProtocol;
+  prompt: string;
+  model: string;
+  params: ImageParams;
+  referenceImages?: UploadedReference[];
+  submittedReferenceImages?: SubmittedReference[];
+  status: "success" | "error";
+  createdAt: number;
+  startedAt?: number;
+  finishedAt?: number;
+  durationMs?: number;
+  imageBlob?: Blob;
+  width?: number;
+  height?: number;
+  revisedPrompt?: string;
+  errorDetail?: ErrorDetail;
+  agentId?: string;
+  agentName?: string;
+  agentScenario?: string;
+  promptVariant?: PromptVariant;
+};
 
-function ratioLabelForSize(value: string) {
-  const parsed = parseSizeValue(value)
-  if (!parsed || !parsed.width || !parsed.height) return ''
+type HistoryRecord = Omit<StoredHistoryRecord, "referenceImages"> & {
+  referenceImages: UploadedReference[];
+  objectUrl?: string;
+};
 
-  const divisor = greatestCommonDivisor(parsed.width, parsed.height)
-  if (!divisor) return ''
-  return `${parsed.width / divisor}:${parsed.height / divisor}`
-}
+type ModelLoadState = {
+  status: "idle" | "loading" | "ready" | "error";
+  message: string;
+};
 
-function dataUrlMimeType(src: string) {
-  const match = src.match(/^data:([^;,]+)[;,]/)
-  return match?.[1] || 'image/png'
-}
+type LocalLogLevel = "info" | "success" | "warning" | "error";
+type LocalLogType = "model_load" | "api_health" | "prompt_analysis" | "image_generation" | "agent_analysis";
 
-function extensionForMimeType(mimeType = '') {
-  if (mimeType.includes('jpeg') || mimeType.includes('jpg')) return 'jpg'
-  if (mimeType.includes('webp')) return 'webp'
-  if (mimeType.includes('gif')) return 'gif'
-  if (mimeType.includes('svg')) return 'svg'
-  return 'png'
-}
+type ReferenceUploadStatus =
+  | "none"
+  | "prepared"
+  | "sent_ok"
+  | "sent_failed"
+  | "skipped_unsupported";
 
-function formatImageMimeType(mimeType = '') {
-  const normalized = mimeType.replace(/^image\//, '').replace('jpeg', 'jpg')
-  return normalized ? normalized.toUpperCase() : 'PNG'
-}
+type ReferenceSummary = {
+  hasReferences: boolean;
+  count: number;
+  totalBytes: number;
+  status: ReferenceUploadStatus;
+  unsupportedReason?: string;
+  items?: Array<{
+    name: string;
+    type: string;
+    originalBytes: number;
+    requestBytes: number;
+    compressed: boolean;
+  }>;
+};
 
-function estimateDataUrlBytes(src: string) {
-  const commaIndex = src.indexOf(',')
-  if (commaIndex < 0) return undefined
-  const meta = src.slice(0, commaIndex)
-  const payload = src.slice(commaIndex + 1)
-  if (!payload) return 0
-  if (!meta.includes(';base64')) {
-    try {
-      return new TextEncoder().encode(decodeURIComponent(payload)).length
-    } catch {
-      return payload.length
-    }
-  }
-  const normalized = payload.replace(/\s/g, '')
-  const padding = normalized.endsWith('==') ? 2 : normalized.endsWith('=') ? 1 : 0
-  return Math.max(0, Math.floor((normalized.length * 3) / 4) - padding)
-}
+type LocalLogEntry = {
+  id: string;
+  createdAt: number;
+  type: LocalLogType;
+  level: LocalLogLevel;
+  title: string;
+  message: string;
+  endpoint?: string;
+  requestId?: string;
+  durationMs?: number;
+  referenceSummary?: ReferenceSummary;
+  params?: Record<string, unknown>;
+  response?: Record<string, unknown>;
+  error?: unknown;
+};
 
-function formatBytes(bytes?: number) {
-  if (!Number.isFinite(bytes || NaN)) return '-'
-  const value = bytes || 0
-  if (value < 1024) return `${value} B`
-  if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)} KB`
-  return `${(value / (1024 * 1024)).toFixed(2)} MB`
-}
+type GenerateProxyResponse = {
+  ok: boolean;
+  requestId?: string;
+  status?: number;
+  images?: Array<{ dataUrl: string; revisedPrompt?: string }>;
+  detail?: unknown;
+  raw?: unknown;
+};
 
-function getImageDimensions(src: string) {
-  return new Promise<{ width: number; height: number }>((resolve, reject) => {
-    const image = new Image()
-    image.onload = () => {
-      if (!image.naturalWidth || !image.naturalHeight) {
-        reject(new Error('Image has no readable dimensions'))
-        return
-      }
-      resolve({ width: image.naturalWidth, height: image.naturalHeight })
-    }
-    image.onerror = () => reject(new Error('Image dimensions could not be read'))
-    image.src = src
-  })
-}
+type AnalysisMode = "send" | "optimize" | "params" | "risk" | "style";
+type RiskLevel = "low" | "medium" | "high";
 
-function workflowSizeOptionLabel(value: string) {
-  const preset = sizeOptions.find((option) => option.value === value)
-  const ratio = preset?.ratio || ratioLabelForSize(value)
-  return ratio ? `${ratio} · ${value}` : value
-}
+type SuggestedParams = {
+  aspectRatio?: string;
+  size?: string;
+  resolution?: ImageResolution;
+  count?: number;
+  quality?: string;
+  styleStrength?: "low" | "medium" | "high";
+  referenceWeight?: "low" | "medium" | "high";
+};
 
-function buildCommerceMainPrompt(description: string, categoryPath = '') {
-  const trimmedDescription = description.trim() || '用户未填写额外文字描述。'
-  const trimmedCategoryPath = categoryPath.trim() || '用户未选择商品品类。'
-  return [
-    '你是一名资深电商视觉设计师，请基于参考图生成一张电商商品主图。',
-    `商品品类：${trimmedCategoryPath}。该品类是强约束，如果图像识别结果和用户选择的品类冲突，优先按用户选择的品类理解商品。`,
-    '参考图中的商品白底图是商品主体依据，必须保持商品外观、结构、颜色、材质和关键细节真实一致，不要改变商品本身。',
-    '目标风格图只用于迁移构图节奏、光线氛围、背景质感、色彩倾向和视觉高级感，不要复制风格图中的商品或品牌元素。',
-    '根据目标风格图完成商品替换；如果风格图中有文字，只在用户描述提供明确文案时选择性替换，否则去除或弱化原图文字。',
-    `商品信息和主图诉求：${trimmedDescription}`,
-    '画面要求：主体清晰醒目，构图稳定，适合电商列表首图；背景干净但有质感，光影自然，边缘干净，产品比例合理。',
-    '不要生成无关文字、水印、Logo、价格、二维码或平台界面元素。输出应像真实商业摄影和精修后的电商主图。',
-  ].join('\n')
-}
+type PromptRisk = {
+  level: RiskLevel;
+  title: string;
+  description: string;
+  fix?: string;
+};
 
-function buildCommerceDetailPrompt(description: string, categoryPath = '') {
-  const trimmedDescription = description.trim() || '用户未填写额外文字描述。'
-  const trimmedCategoryPath = categoryPath.trim() || '用户未选择商品品类。'
-  return [
-    '你是一名资深电商详情页视觉设计师，请基于参考图生成一张商品详情图。',
-    `商品品类：${trimmedCategoryPath}。该品类是强约束，如果图像识别结果和用户选择的品类冲突，优先按用户选择的品类理解商品。`,
-    '参考图中的商品白底图是商品主体依据，必须保持商品外观、结构、包装、颜色、材质和关键细节真实一致，不要改变商品本身。',
-    '目标详情风格图只用于迁移详情页版式、分区节奏、背景质感、光线氛围、色彩倾向、道具关系和文字排版，不要复制风格图中的商品或品牌元素。',
-    '画面应像电商详情页中的一屏核心卖点图：有清晰主视觉、短卖点文案、局部细节或场景辅助展示，层级清楚，适合用户继续向下浏览。',
-    `商品信息和详情图诉求：${trimmedDescription}`,
-    '文字只使用用户明确提供的短句，按目标风格图的文字区域选择性排版；没有足够文案时减少文字，不要编造品牌、功效、认证、价格、二维码或平台界面元素。',
-    '输出应像真实商业精修后的电商详情图，干净、高级、信息明确，避免长段文字、低清、错字、水印和无关 Logo。',
-  ].join('\n')
-}
+type StyleEnhancement = {
+  name: string;
+  description: string;
+  promptFragment: string;
+};
 
-function buildCommerceEditPrompt(prompt: string, productImageCount: number, kind: 'main' | 'detail') {
-  if (productImageCount <= 1) return prompt
-  const styleLabel = kind === 'detail' ? '目标详情风格图' : '目标风格图'
-  return [
-    '【参考图输入说明】',
-    `第一张参考图是同一商品的 ${productImageCount} 个白底角度合成参考板，用于理解商品真实外观、结构、包装文字、材质和细节。`,
-    `第二张参考图是${styleLabel}，用于迁移构图、背景、光影、色彩、版式层级和画面氛围。`,
-    '生成时不要保留参考板的拼图排版、边框或分隔线，只提取商品主体并替换到目标风格图对应位置。',
-    '',
-    prompt,
-  ].join('\n')
-}
+type PromptAnalysisResult = {
+  safe: boolean;
+  score: number;
+  riskLevel: RiskLevel;
+  summary: string;
+  optimizedPrompt: string;
+  suggestedNegativePrompt?: string;
+  suggestedParams: SuggestedParams;
+  risks: PromptRisk[];
+  styleEnhancements: StyleEnhancement[];
+  analysisModel?: string;
+  source?: "ai" | "local";
+};
 
-type WorkflowNode = Node<
-  Record<string, unknown>,
-  WorkflowNodeType
->
+type PromptAnalysisState = {
+  status: "idle" | "analyzing" | "receiving" | "ready" | "error";
+  mode: AnalysisMode;
+  message: string;
+  result?: PromptAnalysisResult;
+  error?: string;
+  streamPreview?: string;
+  streamCharacters?: number;
+  streamChunks?: number;
+};
 
-type WorkflowNodeType = 'asset' | 'prompt' | 'style' | 'generate'
-type WorkflowEdge = Edge<Partial<BlueprintEdgeData>, 'blueprint'>
+type PromptVariant = "stable" | "creative" | "commercial";
+type AgentRunPhase = "collecting" | "planning" | "prompting" | "prechecking" | "countdown" | "generating" | "reviewing" | "done";
 
-type PaneMenu = {
-  x: number
-  y: number
-  position: { x: number; y: number }
-} | null
+type AgentField = {
+  id: string;
+  label: string;
+  type: "text" | "textarea" | "select";
+  placeholder?: string;
+  options?: string[];
+  defaultValue?: string;
+  required?: boolean;
+};
 
-type AppView = 'home' | 'advanced' | 'commerce' | 'console' | 'gallery' | 'workflow'
-type AdvancedBackground = 'auto' | 'opaque' | 'transparent'
-type AdvancedCreativity = 'strict' | 'balanced' | 'exploratory'
-type AdvancedStyleWeight = 'weak' | 'medium' | 'strong'
-type AdvancedSketchWeight = 'reference' | 'strict' | 'layout'
+type IndustryAgent = {
+  id: string;
+  name: string;
+  tag: string;
+  icon: string;
+  scenario: string;
+  description: string;
+  recommendedRatio: string;
+  defaultCount: number;
+  defaultQuality: string;
+  defaultSubject: string;
+  defaultGoal: string;
+  defaultScene: string;
+  defaultAudience: string;
+  clickHint: string;
+  emptyStateHint: string;
+  defaultValues: Record<string, string>;
+  promptBlueprint: string;
+  negativePrompt: string;
+  fields: AgentField[];
+  supplements: string[];
+  promptStructures: Record<PromptVariant, string>;
+  qualityChecklist: string[];
+};
 
-type WorkflowCanvas = {
-  id: string
-  name: string
-  updatedAt: number
-  nodes: WorkflowNode[]
-  edges: WorkflowEdge[]
-  prompt: string
-  promptOptimizationPreset: PromptOptimizationPreset
-  generationMode: 'text' | 'image'
-  referenceImages: ReferenceImage[]
-  latestImageId?: string
-  generationTaskId?: string
-  generationTaskStatus?: ImageGenerationTaskStatus
-  generationTaskUpdatedAt?: number
-}
+type AgentPlan = {
+  agentId: string;
+  agentName: string;
+  scenario: string;
+  brief: string;
+  promptVariants: Record<PromptVariant, string>;
+  recommendedParams: Partial<ImageParams>;
+  negativePrompt: string;
+  risks: PromptRisk[];
+  notes: string[];
+};
 
-type StateUpdater<T> = T | ((current: T) => T)
+type AgentContext = {
+  plan: AgentPlan;
+  variant: PromptVariant;
+};
 
-const WORKFLOW_CANVASES_STORAGE_KEY = 'gpt-image-tools.workflow-canvases.v1'
-const ACTIVE_CANVAS_STORAGE_KEY = 'gpt-image-tools.active-canvas.v1'
-const CANVAS_DRAWER_AUTO_OPEN_QUERY = '(min-width: 1120px)'
+type AnalysisCountdown = {
+  runId: string;
+  secondsLeft: number;
+  prompt: string;
+  params: ImageParams;
+  referenceImages: UploadedReference[];
+  result?: PromptAnalysisResult;
+  agentContext?: AgentContext;
+  label: string;
+};
 
-const initialWorkflowNodes: WorkflowNode[] = [
-  { id: 'asset-1', type: 'asset', position: { x: -520, y: -130 }, data: {} },
-  { id: 'prompt-1', type: 'prompt', position: { x: -520, y: 255 }, data: {} },
-  { id: 'generate-1', type: 'generate', position: { x: 25, y: 45 }, data: {} },
-]
+type AgentModeIntentType = "single_image" | "multi_image_batch" | "brochure_project" | "page_refine" | "unknown";
+type AgentModeCostLevel = "low" | "medium" | "high";
+type AgentModeStatus = "idle" | "analyzing" | "receiving" | "needs_confirmation" | "planned" | "executing" | "error";
 
-const initialWorkflowEdges: WorkflowEdge[] = [
+type AgentModeJobSpec = {
+  id: string;
+  title: string;
+  prompt: string;
+  objective?: string;
+  negativePrompt?: string;
+  aspectRatio?: string;
+  size?: string;
+  resolution?: ImageResolution;
+  quality?: string;
+  count?: number;
+};
+
+type AgentModeBrochurePage = {
+  pageNo: number;
+  role: string;
+  title: string;
+  objective: string;
+};
+
+type AgentModeBrochureProject = {
+  title: string;
+  companyName?: string;
+  industry?: string;
+  purpose?: string;
+  pageCount: number;
+  summary: string;
+  outline: AgentModeBrochurePage[];
+  styleDirections: string[];
+  requestPrompt?: string;
+};
+
+type AgentModeAnalysisResult = {
+  intentType: AgentModeIntentType;
+  confidence: number;
+  reasoningSummary: string;
+  estimatedCostLevel: AgentModeCostLevel;
+  requiresConfirmation: boolean;
+  autoExecute: boolean;
+  jobs: AgentModeJobSpec[];
+  brochureProject?: AgentModeBrochureProject;
+  analysisModel?: string;
+  source?: "ai" | "local";
+};
+
+type AgentModeState = {
+  status: AgentModeStatus;
+  message: string;
+  requestId?: string;
+  error?: string;
+  result?: AgentModeAnalysisResult;
+  streamPreview?: string;
+  streamCharacters?: number;
+  streamChunks?: number;
+  requestPrompt?: string;
+};
+
+type PreviewItem = {
+  id: string;
+  requestId?: string;
+  url?: string;
+  protocol?: ImageProtocol;
+  prompt: string;
+  model: string;
+  status: "success" | "error";
+  params: ImageParams;
+  width?: number;
+  height?: number;
+  startedAt?: number;
+  finishedAt?: number;
+  durationMs?: number;
+  errorDetail?: ErrorDetail;
+  agentId?: string;
+  agentName?: string;
+  agentScenario?: string;
+  promptVariant?: PromptVariant;
+  submittedReferenceImages?: SubmittedReference[];
+};
+
+type AppPage = "home" | "studio" | "square" | "admin" | "canvas";
+
+type SquareFeedTab = "latest" | "hot" | "top_day" | "top_week" | "top_month";
+
+type SquareFeedItem = {
+  id: string;
+  imageId: string;
+  requestId?: string;
+  thumbnailUrl: string;
+  prompt: string;
+  caption: string;
+  model: string;
+  params: Partial<ImageParams> & Record<string, unknown>;
+  width?: number;
+  height?: number;
+  aspectRatio?: string;
+  sourceType: string;
+  reasonPlan?: unknown;
+  recommenderLabel: string;
+  pageLabel?: string;
+  likeCount: number;
+  createdAt: number;
+  updatedAt: number;
+  rankScore: number;
+  likedByRequester?: boolean;
+};
+
+type SquareFeedResponse = {
+  ok: boolean;
+  tab: SquareFeedTab;
+  items: SquareFeedItem[];
+  nextCursor: string;
+  hasMore: boolean;
+  error?: string;
+};
+
+type SquareQuotaResponse = {
+  ok: boolean;
+  dailyRecommendUsed: number;
+  dailyRecommendLeft: number;
+  dailyLikeUsed: number;
+  dailyLikeLeft: number;
+  shelfCount: number;
+  shelfLimit: number;
+  dayKey?: string;
+  error?: string;
+};
+
+type SquareRecommendResponse = {
+  ok: boolean;
+  status?: string;
+  action?: "added" | "replaced" | "rejected";
+  item?: SquareFeedItem;
+  remainingDailyQuota?: number;
+  remainingShelfSlots?: number;
+  replacedItemId?: string;
+  reasonCode?: string;
+  error?: string;
+};
+
+type SquareLikeResponse = {
+  ok: boolean;
+  status?: "liked" | "unliked" | "rejected";
+  action?: "liked" | "unliked" | "noop" | "rejected";
+  likeCount?: number;
+  remainingLikeQuota?: number;
+  reasonCode?: string;
+  error?: string;
+};
+
+type SquareRecommendStatus = {
+  status: "submitting" | "success" | "error";
+  message: string;
+  itemId?: string;
+};
+
+type SquareAdminTrend = {
+  dateKey: string;
+  recommendAttempts: number;
+  added: number;
+  replaced: number;
+  rejected: number;
+  likes: number;
+  unlikes: number;
+};
+
+type SquareAdminReason = {
+  reasonCode: string;
+  count: number;
+};
+
+type SquareAdminRiskEvent = {
+  id: string;
+  requestId: string;
+  apiKeyHash: string;
+  itemId?: string;
+  imageId?: string;
+  event: string;
+  reasonCode: string;
+  severity: "low" | "medium" | "high";
+  ipHash: string;
+  uaHash: string;
+  timestamp: number;
+  detail?: unknown;
+};
+
+type SquareAdminOverview = {
+  activeItems: number;
+  totalItems: number;
+  totalRecommendAttempts: number;
+  totalLikes: number;
+  replacementRate: number;
+  likeRate: number;
+  trend: SquareAdminTrend[];
+  rejectedReasonTop: SquareAdminReason[];
+  riskEvents: SquareAdminRiskEvent[];
+};
+
+type AdminUserView = {
+  username: string;
+  mustChangePassword: boolean;
+};
+
+type AdminRequestLog = {
+  requestId: string;
+  requestType?: "image_generation" | "prompt_analysis" | "agent_analysis";
+  batchId?: string;
+  batchIndex?: number;
+  batchTotal?: number;
+  clientId: string;
+  clientUserAgent: string;
+  clientIpHash: string;
+  protocol: ImageProtocol;
+  apiBaseUrl: string;
+  apiKeyPresent?: boolean;
+  apiKeyLength?: number;
+  apiKeyPrefix?: string;
+  apiKeySuffix?: string;
+  endpoint: string;
+  model: string;
+  prompt: string;
+  negativePrompt?: string;
+  aspectRatio?: string;
+  size?: string;
+  resolution?: string;
+  quality?: string;
+  outputFormat?: string;
+  seed?: string;
+  agentId?: string;
+  agentName?: string;
+  agentScenario?: string;
+  promptVariant?: string;
+  referenceCount: number;
+  upstreamPayloadKeys?: string[];
+  upstreamReferenceCount?: number;
+  upstreamReferenceMode?: string;
+  upstreamSize?: string;
+  requestParams?: unknown;
+  upstreamRequest?: unknown;
+  responseBody?: unknown;
+  status: "running" | "success" | "error";
+  httpStatus?: number;
+  errorMessage?: string;
+  errorType?: string;
+  errorCode?: string;
+  errorRaw?: string;
+  createdAt: number;
+  startedAt?: number;
+  finishedAt?: number;
+  durationMs?: number;
+  imageSaved: false;
+};
+
+type AdminStats = {
+  total: number;
+  success: number;
+  error: number;
+  running: number;
+  successRate: number;
+  avgDurationMs: number;
+  modelCounts: Record<string, number>;
+  errorCounts: Record<string, number>;
+};
+
+// ── Canvas Mode Types ──
+
+type CanvasNodeStatus = "generating" | "success" | "error";
+
+type CanvasNode = {
+  id: string;
+  type: "image";
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  prompt: string;
+  model: string;
+  protocol: ImageProtocol;
+  params: ImageParams;
+  status: CanvasNodeStatus;
+  error?: string;
+  parentId?: string;
+  referenceNodeId?: string;
+  createdAt: number;
+  duration?: number;
+  imageWidth?: number;
+  imageHeight?: number;
+  objectUrl?: string;
+};
+
+type CanvasEdge = {
+  id: string;
+  fromNodeId: string;
+  toNodeId: string;
+};
+
+type CanvasViewport = {
+  x: number;
+  y: number;
+  zoom: number;
+};
+
+type CanvasPanelMode = "generate" | "optimize";
+
+const DB_NAME = "sumapi-image-studio";
+const STORE_NAME = "history";
+const HISTORY_PAGE_SIZE = 20;
+const SQUARE_PAGE_SIZE = 20;
+const REFERENCE_LIMIT = 6;
+const MAX_REFERENCE_SIZE = 10 * 1024 * 1024;
+const MAX_REFERENCE_REQUEST_BYTES = 512 * 1024;
+const REFERENCE_REQUEST_MAX_EDGE = 1536;
+const MIN_REFERENCE_EDGE = 128;
+const LARGE_REFERENCE_EDGE = 4096;
+const PROMPT_TEXTAREA_MAX_HEIGHT = 220;
+const FRONTEND_VERSION_CHECK_INTERVAL_MS = 5 * 60 * 1000;
+const API_KEY_MIN_LENGTH = 8;
+const AGENT_MODE_STORAGE_KEY = "sumapiImageAgentModeEnabled";
+const AGENT_MODE_NAME = "Agent 模式 A";
+const CANVAS_STATE_STORE = "canvas-state";
+const CANVAS_IMAGES_STORE = "canvas-images";
+const CANVAS_STATE_KEY = "current";
+const CANVAS_SAVE_DEBOUNCE_MS = 500;
+const CANVAS_DEFAULT_NODE_WIDTH = 280;
+const SQUARE_FEED_TABS: Array<{ value: SquareFeedTab; label: string; icon: typeof Clock3 }> = [
+  { value: "latest", label: "最新", icon: Clock3 },
+  { value: "hot", label: "热门", icon: Flame },
+  { value: "top_day", label: "精选", icon: Star },
+  { value: "top_week", label: "本周", icon: BarChart3 },
+  { value: "top_month", label: "本月", icon: BarChart3 },
+];
+const CURRENT_FRONTEND_VERSION = typeof __FRONTEND_BUILD_VERSION__ === "string"
+  ? __FRONTEND_BUILD_VERSION__
+  : "dev";
+const SUMAPI_DEFAULT_API_URL = "https://api.clawopen.top/";
+const ALLOWED_API_ENDPOINTS = [
   {
-    id: 'asset-1-prompt-1',
-    type: 'blueprint',
-    source: 'asset-1',
-    target: 'prompt-1',
-    sourceHandle: 'reference',
-    targetHandle: 'reference-1',
-    className: 'edge-blue',
-    data: { label: '参考图 -> 文字描述' },
+    value: SUMAPI_DEFAULT_API_URL,
+    label: "SumAPI",
+    description: "固定使用 SumAPI 默认中转地址",
+  },
+] as const;
+const DEFAULT_API_URL = ALLOWED_API_ENDPOINTS[0].value;
+const DEFAULT_PROTOCOL: ImageProtocol = "custom-openai";
+const DEFAULT_IMAGE_RESOLUTION: ImageResolution = "1K";
+const GPT_IMAGE_2_MODEL = "gpt-image-2";
+const GPT_IMAGE_2_PRO_MODEL = "gpt-image-2-pro";
+const GPT_IMAGE_2_FAMILY_MODEL = "gpt-5.4-image-2";
+const GEMINI_3_PRO_IMAGE_MODEL = "gemini-3-pro-image-preview";
+const SUPPORTED_REFERENCE_TYPES = new Set(["image/png", "image/jpeg", "image/webp"]);
+
+const ASPECT_RATIOS = [
+  { value: "1:1", label: "1:1 方图 · 1024x1024", hint: "GPT Image 官方方图尺寸" },
+  { value: "4:5", label: "4:5 竖版社媒", hint: "小红书、信息流、电商卡片" },
+  { value: "5:4", label: "5:4 横版产品", hint: "商品展示、横版构图" },
+  { value: "3:4", label: "3:4 竖版照片", hint: "人像、封面、海报草图" },
+  { value: "4:3", label: "4:3 经典横图", hint: "摄影、PPT、内容插图" },
+  { value: "2:3", label: "2:3 竖图 · 1024x1536", hint: "GPT Image 官方竖图尺寸" },
+  { value: "3:2", label: "3:2 横图 · 1536x1024", hint: "GPT Image 官方横图尺寸" },
+  { value: "9:16", label: "9:16 手机竖屏", hint: "短视频封面、Story、壁纸" },
+  { value: "16:9", label: "16:9 宽屏", hint: "视频封面、网页头图、桌面壁纸" },
+  { value: "21:9", label: "21:9 超宽屏", hint: "横幅、电影感场景" },
+  { value: "9:21", label: "9:21 长竖屏", hint: "长屏海报、移动端素材" },
+  { value: "4:1", label: "4:1 横幅", hint: "Banner、页面横幅" },
+  { value: "1:4", label: "1:4 长图", hint: "竖向长图、信息流素材" },
+  { value: "8:1", label: "8:1 超横幅", hint: "超宽展示屏、高级模式" },
+  { value: "1:8", label: "1:8 超长图", hint: "特殊竖向长图、高级模式" },
+] as const;
+
+const ALL_ASPECT_RATIOS = ASPECT_RATIOS.map((ratio) => ratio.value);
+const GPT_IMAGE_SUPPORTED_ASPECT_RATIOS = ["1:1", "2:3", "3:2"] as const;
+const GPT_IMAGE_2_PRO_SUPPORTED_ASPECT_RATIOS = ["1:1", "4:5", "5:4", "3:4", "4:3", "2:3", "3:2", "9:16", "16:9", "21:9"] as const;
+const GEMINI_3_PRO_SUPPORTED_ASPECT_RATIOS = ["1:1", "2:3", "3:2", "3:4", "4:3", "4:5", "5:4", "9:16", "16:9", "21:9"] as const;
+
+const IMAGEN_ASPECT_RATIOS = ["1:1", "3:4", "4:3", "9:16", "16:9"];
+const STABILITY_ASPECT_RATIOS = ["16:9", "1:1", "21:9", "2:3", "3:2", "4:5", "5:4", "9:16", "9:21"];
+const OPENAI_ASPECT_RATIOS = [...GPT_IMAGE_SUPPORTED_ASPECT_RATIOS];
+
+const SIZE_BY_RATIO: Record<string, string> = {
+  "1:1": "1024x1024",
+  "4:5": "1024x1280",
+  "5:4": "1280x1024",
+  "3:4": "1152x1536",
+  "4:3": "1536x1152",
+  "2:3": "1024x1536",
+  "3:2": "1536x1024",
+  "9:16": "1024x1792",
+  "16:9": "1792x1024",
+  "21:9": "2016x864",
+  "9:21": "864x2016",
+  "4:1": "2048x512",
+  "1:4": "512x2048",
+  "8:1": "2048x256",
+  "1:8": "256x2048",
+};
+
+const PRO_2K_SIZE_BY_RATIO: Record<string, string> = {
+  "1:1": "2048x2048",
+  "4:5": "2048x2560",
+  "5:4": "2560x2048",
+  "3:4": "2304x3072",
+  "4:3": "3072x2304",
+  "2:3": "2048x3072",
+  "3:2": "3072x2048",
+  "9:16": "2160x3840",
+  "16:9": "3840x2160",
+  "21:9": "3840x1646",
+};
+
+const PRO_4K_SIZE_BY_RATIO: Record<string, string> = {
+  "1:1": "3840x3840",
+  "4:5": "3072x3840",
+  "5:4": "3840x3072",
+  "3:4": "2880x3840",
+  "4:3": "3840x2880",
+  "2:3": "2560x3840",
+  "3:2": "3840x2560",
+  "9:16": "2160x3840",
+  "16:9": "3840x2160",
+  "21:9": "3840x1646",
+};
+
+const GEMINI_3_PRO_SIZE_BY_RATIO: Record<string, string> = {
+  "1:1": "1024x1024",
+  "2:3": "832x1248",
+  "3:2": "1248x832",
+  "3:4": "896x1200",
+  "4:3": "1200x896",
+  "4:5": "864x1088",
+  "5:4": "1088x864",
+  "9:16": "768x1344",
+  "16:9": "1344x768",
+  "21:9": "1536x672",
+};
+
+const IMAGE_RESOLUTIONS: Array<{ value: ImageResolution; label: string; hint: string; multiplier: number }> = [
+  { value: "1K", label: "1K 标准", hint: "速度优先，适合批量预览", multiplier: 1 },
+  { value: "2K", label: "2K 高清", hint: "更清晰，适合交付候选", multiplier: 2 },
+  { value: "4K", label: "4K 超清", hint: "高成本，取决于模型支持", multiplier: 4 },
+];
+
+const PROTOCOLS: Array<{
+  value: ImageProtocol;
+  label: string;
+  shortLabel: string;
+  description: string;
+  defaultBaseUrl: string;
+  defaultModels: string[];
+  supportedAspectRatios: string[];
+  supportsReferenceImages: boolean;
+  supportsNegativePrompt: boolean;
+  supportsQuality: boolean;
+  supportsOutputFormat: boolean;
+}> = [
+  {
+    value: "custom-openai",
+    label: "OpenAI 兼容",
+    shortLabel: "兼容协议",
+    description: "适合第三方中转或自建 OpenAI 风格图片接口",
+    defaultBaseUrl: DEFAULT_API_URL,
+    defaultModels: [GPT_IMAGE_2_MODEL, GPT_IMAGE_2_PRO_MODEL, GPT_IMAGE_2_FAMILY_MODEL],
+    supportedAspectRatios: ALL_ASPECT_RATIOS,
+    supportsReferenceImages: true,
+    supportsNegativePrompt: true,
+    supportsQuality: true,
+    supportsOutputFormat: true,
   },
   {
-    id: 'prompt-1-generate-1',
-    type: 'blueprint',
-    source: 'prompt-1',
-    target: 'generate-1',
-    sourceHandle: 'prompt',
-    targetHandle: 'prompt',
-    animated: true,
-    className: 'edge-violet',
-    data: { label: '提示词 -> 图片生成' },
+    value: "openai-images",
+    label: "OpenAI Images",
+    shortLabel: "OpenAI",
+    description: "OpenAI 风格 Images API，宽高比会转换为 size 参数",
+    defaultBaseUrl: DEFAULT_API_URL,
+    defaultModels: [GPT_IMAGE_2_MODEL, GPT_IMAGE_2_PRO_MODEL, GPT_IMAGE_2_FAMILY_MODEL],
+    supportedAspectRatios: OPENAI_ASPECT_RATIOS,
+    supportsReferenceImages: true,
+    supportsNegativePrompt: true,
+    supportsQuality: true,
+    supportsOutputFormat: true,
   },
-]
+  {
+    value: "openai-responses",
+    label: "OpenAI Responses",
+    shortLabel: "Responses",
+    description: "适合对话式生成和后续多轮改图",
+    defaultBaseUrl: DEFAULT_API_URL,
+    defaultModels: ["gpt-4.1", "gpt-4.1-mini"],
+    supportedAspectRatios: OPENAI_ASPECT_RATIOS,
+    supportsReferenceImages: false,
+    supportsNegativePrompt: true,
+    supportsQuality: true,
+    supportsOutputFormat: true,
+  },
+  {
+    value: "gemini-native",
+    label: "Gemini Native",
+    shortLabel: "Gemini",
+    description: "Google Gemini 原生 generateContent 生图/改图",
+    defaultBaseUrl: DEFAULT_API_URL,
+    defaultModels: [GEMINI_3_PRO_IMAGE_MODEL, "gemini-2.5-flash-image", "gemini-2.0-flash-preview-image-generation"],
+    supportedAspectRatios: [...GEMINI_3_PRO_SUPPORTED_ASPECT_RATIOS],
+    supportsReferenceImages: true,
+    supportsNegativePrompt: true,
+    supportsQuality: false,
+    supportsOutputFormat: true,
+  },
+  {
+    value: "gemini-openai",
+    label: "Gemini OpenAI 兼容",
+    shortLabel: "Gemini 兼容",
+    description: "Gemini 的 OpenAI 兼容接口，适合快速迁移",
+    defaultBaseUrl: DEFAULT_API_URL,
+    defaultModels: ["gemini-2.5-flash-image"],
+    supportedAspectRatios: OPENAI_ASPECT_RATIOS,
+    supportsReferenceImages: false,
+    supportsNegativePrompt: true,
+    supportsQuality: false,
+    supportsOutputFormat: true,
+  },
+  {
+    value: "google-imagen",
+    label: "Google Imagen",
+    shortLabel: "Imagen",
+    description: "Imagen 系列文生图，比例范围较明确",
+    defaultBaseUrl: DEFAULT_API_URL,
+    defaultModels: ["imagen-4.0-generate-001", "imagen-4.0-ultra-generate-001", "imagen-3.0-generate-002"],
+    supportedAspectRatios: IMAGEN_ASPECT_RATIOS,
+    supportsReferenceImages: false,
+    supportsNegativePrompt: true,
+    supportsQuality: false,
+    supportsOutputFormat: true,
+  },
+  {
+    value: "stability-core",
+    label: "Stability Core",
+    shortLabel: "Stability",
+    description: "Stability AI Stable Image Core/Ultra 风格接口",
+    defaultBaseUrl: DEFAULT_API_URL,
+    defaultModels: ["stable-image-core"],
+    supportedAspectRatios: STABILITY_ASPECT_RATIOS,
+    supportsReferenceImages: false,
+    supportsNegativePrompt: true,
+    supportsQuality: false,
+    supportsOutputFormat: true,
+  },
+];
 
-function resolveUpdater<T>(updater: StateUpdater<T>, current: T): T {
-  return typeof updater === 'function'
-    ? (updater as (currentValue: T) => T)(current)
-    : updater
+const PROMPT_STARTERS = [
+  {
+    label: "超写实人像",
+    tag: "头像写真",
+    prompt: "8K 超写实近景人像肖像，女性，白皙皮肤，五官与参考照片 100% 一致，柔和侧逆光打在脸上，背景虚化，皮肤纹理与毛发细节清晰可见，电影级光影和肤色过渡，高质感摄影棚风格，4K 细节，适合头像与人像写真展示。",
+  },
+  {
+    label: "水墨双龙",
+    tag: "东方概念",
+    prompt: "阴阳概念，两条中国龙龙对战，一条白龙一条黑龙，极简水墨画风格，黑色墨迹绘制在白色背景上，带有和纸纹理，大号红色印章签名，禅意风格，居中构图",
+  },
+  {
+    label: "建筑文字剖面",
+    tag: "信息图",
+    prompt: "2x2 网格布局，每一格是一栋著名建筑的垂直剖面示意图，不画真实造型，而是用建筑结构与材料术语堆叠成楼层文字方块：地基、柱网、楼板、幕墙、机电系统等，从下到上依次排列。整体采用极简信息图风格，白底黑字，少量线条勾勒楼层分隔，排版干净、对比清晰，可读性强，适合作为建筑结构可视化概念插画。",
+  },
+  {
+    label: "蓝图到现实",
+    tag: "建筑渲染",
+    prompt: "创建一张纵向分屏建筑可视化图，上半部分是深色主题的精细建筑平立面蓝图，包含清晰线稿、标注和结构细节，下半部分是与蓝图完全对应的写实现代住宅外观 3D 渲染，真实光影和材质，干净背景，整体呈现“蓝图到现实”的一体化对比效果。",
+  },
+  {
+    label: "人物侧脸海报",
+    tag: "IP 视觉",
+    prompt: "核心结构：人物侧脸外轮廓 + 内部世界观填充，适合文学/IP/人物传记海报。\n风格方向：电影海报 + 东方现实主义，强调光影、空间纵深和宿命感。\n质感控制：侧逆光、体积光、轻雾、胶片颗粒，让画面更像正式视觉物料。\n可复用点：把主题换成任意小说、历史人物、城市故事或品牌叙事，都能做系列封面。",
+  },
+  {
+    label: "历史学家玩具",
+    tag: "3D 手办",
+    prompt: "2×2 网格布局，每格展示一个基于“历史学家”职业的可爱玩具人物立牌。输入为一个著名历史学家，分析其典型特征并转化为 Q 版或 chibi 风格：大头小身、夸张表情和代表性服饰或道具（如书卷、古地图、羽毛笔）。整体为 3D 扭蛋场景风格，塑料质感的小公仔站在透明底座上，画面为分层拆解的 split-view，展示人物、底座和扭蛋背景机台，柔和打光，高细节，卡通但带一点收藏手办质感。",
+  },
+  {
+    label: "文本封面主视觉",
+    tag: "社媒封面",
+    prompt: "核心任务：把一句话或大段文本转成“封面主视觉”，适合小红书、X、公众号、Telegram 封面。\n设计思路：苹果设计师思维 + 海报大师思维 + 高桥流，强调大字、留白、冲击力和信息压缩。\n关键能力：让模型“智能梳理文本”，避免把长文逐字堆到图里。\n可复用点：适合金句、信息差、课程标题、文章封面、播客标题、社群公告。",
+  },
+  {
+    label: "社交媒体成瘾",
+    tag: "社论漫画",
+    prompt: "为「社交媒体上瘾」这个主题创作一幅正方形、单格的社论漫画。先推理出最有力、最讽刺的视觉隐喻（例如赌场、仓鼠轮、正在下沉的船、飙车赛道等），再据此构图。画面应一眼就能看出是在批判社交媒体成瘾：人物被界面和通知牵制，氛围略带黑色幽默，细节简洁但寓意清晰，适合社论版头图使用。",
+  },
+];
+
+const ANALYSIS_STEPS = [
+  "正在理解画面主体",
+  "正在检查生图兼容性",
+  "正在预判失败风险",
+  "正在推荐比例与参数",
+  "正在增强风格表达",
+];
+
+const STYLE_ENHANCEMENT_PRESETS: StyleEnhancement[] = [
+  {
+    name: "电影感",
+    description: "更强的镜头、光影和空间纵深",
+    promptFragment: "电影级构图，柔和侧逆光，体积光，浅景深，细腻胶片颗粒，画面具有空间纵深和叙事感。",
+  },
+  {
+    name: "商业摄影",
+    description: "适合产品、人像与高质感展示",
+    promptFragment: "高质感商业摄影棚风格，干净背景，精准布光，真实材质，高细节，主体边缘清晰。",
+  },
+  {
+    name: "社媒封面",
+    description: "更适合小红书、公众号和信息流",
+    promptFragment: "社交媒体封面主视觉，强标题感构图，留白明确，高对比，信息层级清晰，移动端可读性强。",
+  },
+  {
+    name: "极简信息图",
+    description: "适合结构解释、知识卡片与图解",
+    promptFragment: "极简信息图风格，白底黑字，少量辅助线条，模块化排版，层级分明，可读性强。",
+  },
+  {
+    name: "东方水墨",
+    description: "更适合国风、禅意和概念插画",
+    promptFragment: "东方水墨画风格，宣纸纹理，留白构图，墨色层次丰富，克制的红色印章点缀，禅意氛围。",
+  },
+  {
+    name: "3D 手办",
+    description: "适合玩具、公仔、IP 角色",
+    promptFragment: "3D 收藏手办质感，Q 版比例，塑料材质，透明底座，柔和棚拍打光，高细节，干净背景。",
+  },
+];
+
+const PROMPT_VARIANT_LABELS: Record<PromptVariant, string> = {
+  stable: "稳定版",
+  creative: "创意版",
+  commercial: "商业版",
+};
+
+const COMMON_AGENT_NEGATIVE_PROMPT = "低清晰度，主体变形，错误文字，杂乱背景，比例失真，廉价模板感，过度锐化，AI伪影";
+
+const INDUSTRY_AGENTS: IndustryAgent[] = [
+  {
+    id: "ecommerce-product",
+    name: "电商商品图",
+    tag: "商业高频",
+    icon: "商",
+    scenario: "商品主图 / 场景图 / 详情页配图",
+    description: "把商品卖点、材质和平台构图转成商业摄影方案。",
+    recommendedRatio: "1:1",
+    defaultCount: 4,
+    defaultQuality: "high",
+    defaultSubject: "现代消费电子产品",
+    defaultGoal: "生成可直接用于商品主图、场景图和详情页首屏的高质感商业摄影图。",
+    defaultScene: "纯净棚拍电商主图，干净浅灰背景，商品完整居中。",
+    defaultAudience: "电商运营、品牌营销和正在浏览商品详情页的潜在买家。",
+    clickHint: "打开电商商品图工作流",
+    emptyStateHint: "不填写也会默认生成现代消费电子产品的电商主图方案。",
+    defaultValues: {
+      productName: "现代消费电子产品",
+      material: "磨砂金属与细腻织物纹理",
+      sellingPoint: "高质感、主体清晰、材质真实、平台可直接使用",
+      scene: "纯净棚拍",
+      platform: "电商主图",
+      blank: "不需要",
+    },
+    promptBlueprint: "商品主体 + 材质细节 + 平台用途 + 商业棚拍布光 + 干净背景 + 商品占比 + 可交付电商视觉",
+    negativePrompt: `${COMMON_AGENT_NEGATIVE_PROMPT}，商品变形，过度反光，低质感，道具喧宾夺主`,
+    fields: [
+      { id: "productName", label: "商品名称", type: "text", required: true, placeholder: "例如：黑色智能音箱" },
+      { id: "material", label: "材质 / 颜色", type: "text", placeholder: "磨砂黑金属、织物网面" },
+      { id: "sellingPoint", label: "核心卖点", type: "textarea", placeholder: "音质、质感、便携、礼品感等" },
+      { id: "scene", label: "使用场景", type: "select", options: ["纯净棚拍", "居家桌面", "礼盒场景", "户外生活方式", "高级灰背景"], defaultValue: "纯净棚拍" },
+      { id: "platform", label: "目标平台", type: "select", options: ["电商主图", "电商详情页", "品牌官网", "广告投放", "私域海报"], defaultValue: "电商主图" },
+      { id: "blank", label: "留白位置", type: "select", options: ["不需要", "上方留白", "左侧留白", "右侧留白", "底部留白"], defaultValue: "不需要" },
+    ],
+    supplements: ["商业摄影布光", "商品占比明确", "材质细节清晰", "背景干净", "适合电商合规构图"],
+    promptStructures: {
+      stable: "主体为现代消费电子产品，产品完整清晰，占据画面中心，干净浅灰背景，柔和双侧棚拍布光，真实材质纹理，边缘清晰，轻微自然投影。",
+      creative: "保持商品结构真实，加入高级生活方式陈列、氛围光和轻叙事背景，让商品更有记忆点但不喧宾夺主。",
+      commercial: "强调广告可交付质感，卖点可视化，背景克制，构图适合电商主图、详情页首屏和品牌页面。",
+    },
+    qualityChecklist: ["商品完整清晰", "主体占比明确", "材质真实", "背景干净", "适合电商平台"],
+  },
+  {
+    id: "xiaohongshu-cover",
+    name: "小红书封面",
+    tag: "社媒增长",
+    icon: "封",
+    scenario: "笔记封面 / 种草图 / 干货图",
+    description: "自动补全移动端识别、标题留白和种草氛围。",
+    recommendedRatio: "4:5",
+    defaultCount: 4,
+    defaultQuality: "high",
+    defaultSubject: "精致生活方式场景与种草产品",
+    defaultGoal: "生成手机端高识别、可叠加标题的小红书封面。",
+    defaultScene: "干净生活方式画面，主体居中，上方保留标题区域。",
+    defaultAudience: "小红书内容创作者、品牌种草运营和移动端浏览用户。",
+    clickHint: "打开小红书封面工作流",
+    emptyStateHint: "不填写也会默认生成精致生活方式种草封面。",
+    defaultValues: {
+      topic: "春日通勤包里有什么",
+      audience: "年轻职场女性",
+      subject: "精致桌面、通勤包和生活方式产品",
+      emotion: "精致种草",
+      titleSpace: "上方留白",
+      style: "生活方式摄影",
+    },
+    promptBlueprint: "内容主题 + 移动端强识别 + 视觉中心 + 标题留白 + 情绪关键词 + 种草氛围 + 干净层级",
+    negativePrompt: `${COMMON_AGENT_NEGATIVE_PROMPT}，杂乱排版，畸形人物，过度磨皮，主体不清晰，标题区域拥挤`,
+    fields: [
+      { id: "topic", label: "笔记主题", type: "text", required: true, placeholder: "例如：早八通勤包里有什么" },
+      { id: "audience", label: "目标人群", type: "text", placeholder: "大学生、职场新人、精致妈妈" },
+      { id: "subject", label: "画面主体", type: "text", placeholder: "人物、产品、桌面、场景" },
+      { id: "emotion", label: "情绪关键词", type: "select", options: ["高级松弛", "强烈反差", "治愈温暖", "干货清晰", "精致种草"], defaultValue: "精致种草" },
+      { id: "titleSpace", label: "标题留白", type: "select", options: ["上方留白", "左上留白", "右上留白", "中间标题区", "不需要文字区"], defaultValue: "上方留白" },
+      { id: "style", label: "风格方向", type: "select", options: ["生活方式摄影", "强标题封面", "产品种草", "极简干货", "胶片氛围"], defaultValue: "生活方式摄影" },
+    ],
+    supplements: ["手机屏幕强识别", "视觉中心明确", "标题留白", "高点击率构图", "信息层级清晰"],
+    promptStructures: {
+      stable: "主体明确居中，上方保留标题留白，柔和自然光，高级干净配色，画面有种草感和真实生活氛围，移动端一眼可读。",
+      creative: "增强颜色反差、情绪表达和封面记忆点，保留标题安全区，适合探索高点击率封面方向。",
+      commercial: "保持高级生活方式质感和品牌可信度，构图可叠加标题，色彩统一，适合品牌种草和内容投放。",
+    },
+    qualityChecklist: ["手机端可读", "视觉中心明确", "标题留白清楚", "种草感强", "背景不杂乱"],
+  },
+  {
+    id: "short-video-cover",
+    name: "短视频封面",
+    tag: "高点击",
+    icon: "视",
+    scenario: "抖音 / TikTok / Reels / Shorts 封面",
+    description: "把视频主题提炼成一秒能看懂的竖屏首帧。",
+    recommendedRatio: "9:16",
+    defaultCount: 4,
+    defaultQuality: "high",
+    defaultSubject: "大主体人物或核心物品",
+    defaultGoal: "生成 1 秒内可读的竖屏短视频首帧封面。",
+    defaultScene: "强视觉中心、顶部标题区、竖屏安全构图。",
+    defaultAudience: "抖音、TikTok、Reels、Shorts 的快速滑动用户。",
+    clickHint: "打开短视频封面工作流",
+    emptyStateHint: "不填写也会默认生成强对比竖屏短视频封面。",
+    defaultValues: {
+      videoTopic: "3 个让房间显贵的软装技巧",
+      platform: "抖音",
+      subject: "博主与室内空间对比",
+      conflict: "普通房间到高级感空间的前后对比",
+      titleArea: "上方标题区",
+      emotion: "强冲击",
+    },
+    promptBlueprint: "视频主题 + 大主体 + 冲突点 + 强对比 + 字幕安全区 + 快速识别 + 竖屏构图",
+    negativePrompt: `${COMMON_AGENT_NEGATIVE_PROMPT}，主体太小，低对比，背景干扰，表情僵硬，画面拖沓`,
+    fields: [
+      { id: "videoTopic", label: "视频主题", type: "text", required: true, placeholder: "例如：3 个让房间显贵的软装技巧" },
+      { id: "platform", label: "平台", type: "select", options: ["抖音", "TikTok", "Reels", "Shorts", "视频号"], defaultValue: "抖音" },
+      { id: "subject", label: "主体人物 / 产品", type: "text", placeholder: "博主、产品、场景或道具" },
+      { id: "conflict", label: "冲突点", type: "textarea", placeholder: "前后对比、常见误区、意外结果" },
+      { id: "titleArea", label: "字幕安全区", type: "select", options: ["上方标题区", "中间大标题", "下方字幕区", "左右留白"], defaultValue: "上方标题区" },
+      { id: "emotion", label: "情绪强度", type: "select", options: ["强冲击", "惊讶表情", "专业可信", "轻松幽默", "克制高级"], defaultValue: "强冲击" },
+    ],
+    supplements: ["9:16 竖屏构图", "大主体", "强对比", "字幕安全区", "快速识别"],
+    promptStructures: {
+      stable: "9:16 竖屏首帧图，主体足够大，表情或核心物品醒目，强对比背景，顶部保留标题安全区，画面在 1 秒内能看懂主题。",
+      creative: "加强冲突、表情张力和视觉对比，让封面更有停留感和点击欲望，同时保持字幕区域清晰。",
+      commercial: "保持专业质感和品牌可信度，适合课程、知识、产品视频封面，画面醒目但不过度夸张。",
+    },
+    qualityChecklist: ["1 秒内看懂主题", "主体足够大", "标题安全区清楚", "情绪明确", "背景不干扰"],
+  },
+  {
+    id: "brand-poster",
+    name: "品牌海报",
+    tag: "主视觉",
+    icon: "品",
+    scenario: "活动海报 / 发布会图 / 官网头图",
+    description: "建立主视觉、调性、色彩秩序和文案区域。",
+    recommendedRatio: "4:5",
+    defaultCount: 4,
+    defaultQuality: "high",
+    defaultSubject: "现代生活方式品牌主视觉",
+    defaultGoal: "生成活动、发布会或官网可用的高级商业主视觉。",
+    defaultScene: "品牌发布海报，主视觉居中，文案区域干净留白。",
+    defaultAudience: "品牌市场团队、活动运营和官网访客。",
+    clickHint: "打开品牌海报工作流",
+    emptyStateHint: "不填写也会默认生成极简高级品牌发布主视觉。",
+    defaultValues: {
+      brand: "现代生活方式品牌",
+      campaign: "新品发布主视觉",
+      tone: "极简高级",
+      visual: "产品与抽象光影装置",
+      color: "黑白银与淡绿色点缀",
+      copyArea: "上方留白",
+    },
+    promptBlueprint: "品牌调性 + 活动主题 + 主视觉元素 + 留白区域 + 色彩秩序 + 商业海报质感",
+    negativePrompt: `${COMMON_AGENT_NEGATIVE_PROMPT}，廉价模板感，视觉中心混乱，色彩脏，过度装饰`,
+    fields: [
+      { id: "brand", label: "品牌名称", type: "text", placeholder: "可选，不需要生成文字时也可只填调性" },
+      { id: "campaign", label: "活动主题", type: "text", required: true, placeholder: "新品发布、节日营销、品牌升级" },
+      { id: "tone", label: "品牌调性", type: "select", options: ["极简高级", "科技未来", "年轻潮流", "温暖生活", "东方美学"], defaultValue: "极简高级" },
+      { id: "visual", label: "主视觉元素", type: "text", placeholder: "产品、符号、装置、自然元素" },
+      { id: "color", label: "色彩方向", type: "text", placeholder: "黑白银、薄荷绿、暖金色" },
+      { id: "copyArea", label: "文案区域", type: "select", options: ["上方留白", "左侧留白", "右侧留白", "底部留白", "中心主标题"], defaultValue: "上方留白" },
+    ],
+    supplements: ["品牌调性统一", "主视觉中心", "留白区域", "商业海报质感", "色彩秩序"],
+    promptStructures: {
+      stable: "高级商业主视觉，画面有明确主视觉中心，统一色彩秩序，干净留白区域可放文案，适合活动页、发布会、官网头图。",
+      creative: "加入更有记忆点的视觉隐喻、装置感和空间层次，形成可作为发布会主 KV 的强视觉。",
+      commercial: "强调可交付商业海报，色彩统一，视觉秩序清楚，画面高级、克制、适合官网和广告投放。",
+    },
+    qualityChecklist: ["主视觉明确", "留白可放文案", "品牌调性统一", "色彩干净", "商业交付感强"],
+  },
+  {
+    id: "interior-space",
+    name: "室内空间",
+    tag: "设计灵感",
+    icon: "室",
+    scenario: "室内效果图 / 软装方案 / 空间灵感",
+    description: "补全空间层次、材质、镜头焦段和真实自然光。",
+    recommendedRatio: "4:3",
+    defaultCount: 4,
+    defaultQuality: "high",
+    defaultSubject: "现代极简客厅空间",
+    defaultGoal: "生成真实可信的室内设计参考图和软装方案图。",
+    defaultScene: "80 平现代公寓客厅，清晨自然光，材质真实，空间层次清楚。",
+    defaultAudience: "室内设计师、装修业主、家居品牌和方案汇报用户。",
+    clickHint: "打开室内空间工作流",
+    emptyStateHint: "不填写也会默认生成现代极简客厅设计参考图。",
+    defaultValues: {
+      spaceType: "客厅",
+      scale: "80 平现代公寓",
+      style: "现代极简",
+      materials: "木饰面、亚麻、浅色石材",
+      light: "清晨自然光",
+      camera: "人眼平视",
+    },
+    promptBlueprint: "空间类型 + 面积尺度 + 设计风格 + 主材 + 自然光 + 镜头角度 + 合理透视 + 真实摄影感",
+    negativePrompt: `${COMMON_AGENT_NEGATIVE_PROMPT}，空间透视错误，家具变形，材质虚假，过曝，布局杂乱`,
+    fields: [
+      { id: "spaceType", label: "空间类型", type: "select", options: ["客厅", "卧室", "餐厅", "书房", "办公室", "商业空间"], defaultValue: "客厅" },
+      { id: "scale", label: "面积 / 尺度", type: "text", placeholder: "例如：80 平现代公寓" },
+      { id: "style", label: "风格", type: "select", options: ["现代极简", "奶油风", "侘寂", "中古风", "自然原木", "科技办公"], defaultValue: "现代极简" },
+      { id: "materials", label: "主材", type: "text", placeholder: "木饰面、微水泥、石材、亚麻" },
+      { id: "light", label: "光线", type: "select", options: ["清晨自然光", "午后侧光", "柔和夜景灯光", "大面积落地窗", "商业摄影灯光"], defaultValue: "清晨自然光" },
+      { id: "camera", label: "镜头角度", type: "select", options: ["广角空间", "人眼平视", "角落斜拍", "细节特写", "中景生活感"], defaultValue: "人眼平视" },
+    ],
+    supplements: ["空间层次", "真实材质", "自然光", "透视合理", "家具布局"],
+    promptStructures: {
+      stable: "现代客厅真实室内摄影，自然光进入空间，合理透视，家具布局舒适，木饰面、亚麻与浅色石材材质真实，空间层次清楚。",
+      creative: "强化风格叙事、材质对比和生活痕迹，提供更有灵感感的空间方案。",
+      commercial: "强调设计方案图可交付感，干净高级，适合提案、官网和案例展示。",
+    },
+    qualityChecklist: ["透视自然", "家具比例合理", "材质真实", "光线舒适", "空间有层次"],
+  },
+  {
+    id: "portrait-photo",
+    name: "人像写真",
+    tag: "人物形象",
+    icon: "人",
+    scenario: "头像 / 半身写真 / 商务形象照",
+    description: "自动补全妆造、姿态、光线、背景和镜头语言。",
+    recommendedRatio: "3:4",
+    defaultCount: 4,
+    defaultQuality: "high",
+    defaultSubject: "自然半身人像",
+    defaultGoal: "生成自然专业的人像写真、头像和商务形象候选图。",
+    defaultScene: "窗边浅色室内，柔和侧逆光，背景干净，浅景深。",
+    defaultAudience: "个人形象用户、品牌创始人、内容创作者和摄影工作室。",
+    clickHint: "打开人像写真工作流",
+    emptyStateHint: "不填写也会默认生成自然半身人像写真。",
+    defaultValues: {
+      portraitType: "自然写真",
+      temperament: "年轻、温柔、专业、松弛",
+      styling: "淡妆、白色针织衫、干净发型",
+      scene: "窗边浅色室内",
+      light: "柔和侧逆光",
+      pose: "自然微笑，看向镜头，放松坐姿",
+    },
+    promptBlueprint: "人像类型 + 气质 + 妆造服装 + 场景 + 光线 + 表情姿态 + 镜头语言 + 真实肤色",
+    negativePrompt: `${COMMON_AGENT_NEGATIVE_PROMPT}，畸形五官，畸形手部，过度磨皮，表情僵硬，背景杂乱`,
+    fields: [
+      { id: "portraitType", label: "人像类型", type: "select", options: ["自然写真", "商务形象", "头像", "杂志大片", "生活方式"], defaultValue: "自然写真" },
+      { id: "temperament", label: "年龄气质", type: "text", placeholder: "年轻、成熟、温柔、专业、松弛" },
+      { id: "styling", label: "妆造 / 服装", type: "textarea", placeholder: "淡妆、白衬衫、针织衫、干净发型" },
+      { id: "scene", label: "场景", type: "text", placeholder: "窗边、街角、棚拍灰背景、咖啡馆" },
+      { id: "light", label: "光线", type: "select", options: ["柔和侧逆光", "自然窗光", "棚拍柔光", "日落暖光", "电影感暗调"], defaultValue: "柔和侧逆光" },
+      { id: "pose", label: "表情姿态", type: "text", placeholder: "自然微笑、看向镜头、侧脸、放松坐姿" },
+    ],
+    supplements: ["肤色真实", "柔和光线", "浅景深", "自然表情", "背景干净"],
+    promptStructures: {
+      stable: "自然半身人像写真，柔和侧逆光，真实肤色，浅景深，表情放松，背景干净，适合头像和写真交付。",
+      creative: "加入更强杂志感镜头、胶片质感和叙事氛围，适合探索视觉风格。",
+      commercial: "强调专业可信的形象照质感，光线高级，构图稳重，适合商务和品牌展示。",
+    },
+    qualityChecklist: ["五官自然", "肤色真实", "手部不异常", "表情放松", "光线高级"],
+  },
+  {
+    id: "food-photo",
+    name: "餐饮美食",
+    tag: "菜单转化",
+    icon: "食",
+    scenario: "菜品图 / 外卖主图 / 餐厅宣传图",
+    description: "补全食物质感、摆盘、蒸汽和商业美食摄影语言。",
+    recommendedRatio: "1:1",
+    defaultCount: 4,
+    defaultQuality: "high",
+    defaultSubject: "番茄牛腩饭",
+    defaultGoal: "生成菜单、外卖主图和餐厅宣传可用的商业美食图。",
+    defaultScene: "干净浅色桌面，菜品清晰，热气蒸腾，食欲感强。",
+    defaultAudience: "餐饮商家、外卖运营、菜单设计和餐厅推广用户。",
+    clickHint: "打开餐饮美食工作流",
+    emptyStateHint: "不填写也会默认生成番茄牛腩饭商业菜单图。",
+    defaultValues: {
+      dish: "番茄牛腩饭",
+      cuisine: "中式轻食",
+      ingredients: "牛肉块、番茄浓汁、新鲜香草",
+      plating: "外卖主图",
+      background: "干净浅色桌面",
+      freshness: "热气蒸腾",
+    },
+    promptBlueprint: "菜品名称 + 菜系 + 食材亮点 + 摆盘 + 背景 + 新鲜感 + 商业美食摄影 + 食欲质感",
+    negativePrompt: `${COMMON_AGENT_NEGATIVE_PROMPT}，食物不新鲜，颜色失真，油腻脏乱，餐具变形，塑料质感，过度假`,
+    fields: [
+      { id: "dish", label: "菜品名称", type: "text", required: true, placeholder: "例如：番茄牛腩饭" },
+      { id: "cuisine", label: "菜系", type: "text", placeholder: "中式、日式、意式、轻食" },
+      { id: "ingredients", label: "食材亮点", type: "textarea", placeholder: "牛肉块、番茄浓汁、新鲜香草" },
+      { id: "plating", label: "摆盘风格", type: "select", options: ["外卖主图", "高级餐厅摆盘", "家庭餐桌", "微距特写", "节日套餐"], defaultValue: "外卖主图" },
+      { id: "background", label: "背景", type: "select", options: ["干净浅色桌面", "木质餐桌", "深色高级背景", "厨房现场", "节日氛围"], defaultValue: "干净浅色桌面" },
+      { id: "freshness", label: "新鲜感", type: "select", options: ["热气蒸腾", "清爽新鲜", "酱汁光泽", "酥脆质感", "克制自然"], defaultValue: "热气蒸腾" },
+    ],
+    supplements: ["食物质感", "微距细节", "新鲜色泽", "餐桌氛围", "商业美食摄影"],
+    promptStructures: {
+      stable: "商业菜单图，菜品清晰有食欲，色泽自然，柔和侧光，热气蒸腾，干净摆盘，适合菜单或外卖主图。",
+      creative: "加入更强氛围光、蒸汽和食材特写，让画面更有香气和记忆点。",
+      commercial: "强调餐饮品牌交付质感，摆盘高级，背景克制，适合广告和宣传图。",
+    },
+    qualityChecklist: ["食物有食欲", "色泽自然", "构图干净", "摆盘清楚", "适合菜单或外卖"],
+  },
+  {
+    id: "saas-promo",
+    name: "App / SaaS 宣传图",
+    tag: "科技营销",
+    icon: "软",
+    scenario: "官网头图 / App 展示 / 功能介绍图",
+    description: "把功能卖点变成设备 mockup、数据感和官网视觉。",
+    recommendedRatio: "16:9",
+    defaultCount: 4,
+    defaultQuality: "high",
+    defaultSubject: "AI 图像工作台产品展示",
+    defaultGoal: "生成官网头图、产品展示图和功能介绍主视觉。",
+    defaultScene: "桌面网页设备 mockup，干净白色背景，科技光影和产品界面层级。",
+    defaultAudience: "SaaS 团队、设计团队、运营团队和企业采购用户。",
+    clickHint: "打开 App / SaaS 宣传图工作流",
+    emptyStateHint: "不填写也会默认生成 AI 图像工作台官网宣传图。",
+    defaultValues: {
+      productType: "AI 图像工作台",
+      coreFeature: "批量生图、行业 Agent、提示词优化、本地图库",
+      audience: "设计团队、运营与企业客户",
+      device: "桌面网页",
+      style: "Apple 官网感",
+      background: "干净白色",
+    },
+    promptBlueprint: "产品类型 + 核心功能 + 目标用户 + 设备 mockup + UI 层级 + 科技光影 + 官网留白",
+    negativePrompt: `${COMMON_AGENT_NEGATIVE_PROMPT}，伪界面混乱，文字错误，层级不清，廉价科技感，过度复杂`,
+    fields: [
+      { id: "productType", label: "产品类型", type: "text", required: true, placeholder: "AI 图库、CRM、数据看板、效率工具" },
+      { id: "coreFeature", label: "核心功能", type: "textarea", placeholder: "批量生图、智能分析、团队管理、自动化报表" },
+      { id: "audience", label: "目标用户", type: "text", placeholder: "设计团队、运营、企业客户、开发者" },
+      { id: "device", label: "展示设备", type: "select", options: ["桌面网页", "手机 App", "平板设备", "多设备组合", "抽象界面层"], defaultValue: "桌面网页" },
+      { id: "style", label: "UI 风格", type: "select", options: ["Apple 官网感", "ChatGPT 极简", "企业级 SaaS", "深色科技", "明亮数据感"], defaultValue: "Apple 官网感" },
+      { id: "background", label: "背景风格", type: "select", options: ["干净白色", "柔和渐变光", "深色发布会", "真实办公场景", "抽象数据空间"], defaultValue: "干净白色" },
+    ],
+    supplements: ["产品界面展示", "设备 mockup", "清晰层级", "科技光影", "官网留白"],
+    promptStructures: {
+      stable: "官网头图风格，真实设备 mockup，产品界面层级清晰，数据感和科技光影适度，干净白色背景，留白充足。",
+      creative: "加入抽象数据流、光影空间和发布会感，让科技产品更有视觉冲击。",
+      commercial: "强调 B2B 可交付营销图，真实可信，留白充足，适合官网和销售资料。",
+    },
+    qualityChecklist: ["产品功能清晰", "设备 mockup 真实", "UI 层级明确", "留白充足", "适合官网营销"],
+  },
+];
+
+function createAgentDefaults(agent: IndustryAgent) {
+  return agent.fields.reduce<Record<string, string>>((values, field) => {
+    values[field.id] = agent.defaultValues[field.id] || field.defaultValue || "";
+    return values;
+  }, {});
 }
 
-function createLocalId(prefix: string) {
-  const randomId =
-    typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
-      ? crypto.randomUUID()
-      : Math.random().toString(36).slice(2)
-
-  return `${prefix}-${Date.now()}-${randomId}`
-}
-
-function getWorkflowNodeReferenceImages(node?: Pick<WorkflowNode, 'data'> | null) {
-  const value = node?.data?.referenceImages
-  return Array.isArray(value) ? ensureReferenceTitles(value as ReferenceImage[]).slice(0, 1) : []
-}
-
-function normalizeAssetNodeReferenceImages(images: ReferenceImage[]) {
-  return ensureReferenceTitles(images).slice(0, 1)
-}
-
-function getWorkflowNodeSelectedStyleId(node?: Pick<WorkflowNode, 'data'> | null) {
-  const value = node?.data?.selectedStyleId
-  return typeof value === 'string' ? value : ''
-}
-
-function getWorkflowNodePrompt(node?: Pick<WorkflowNode, 'data'> | null) {
-  const value = node?.data?.prompt
-  return typeof value === 'string' ? value : ''
-}
-
-function getWorkflowNodePromptOptimizationPreset(node?: Pick<WorkflowNode, 'data'> | null) {
-  return normalizePromptOptimizationPreset(node?.data?.promptOptimizationPreset)
-}
-
-function getWorkflowNodeLatestImageId(node?: Pick<WorkflowNode, 'data'> | null) {
-  const value = node?.data?.latestImageId
-  return typeof value === 'string' ? value : ''
-}
-
-function getWorkflowNodeCustomOutputTitle(node?: Pick<WorkflowNode, 'data'> | null) {
-  const value = node?.data?.outputTitle
-  return typeof value === 'string' ? normalizeReferenceTitle(value) : ''
-}
-
-function defaultGenerateOutputTitle(nodeId: string) {
-  return normalizeReferenceTitle(`生成图-${nodeId}`) || '生成图'
-}
-
-function getWorkflowNodeOutputTitle(node: Pick<WorkflowNode, 'id' | 'data'>) {
-  return getWorkflowNodeCustomOutputTitle(node) || defaultGenerateOutputTitle(node.id)
-}
-
-function workflowNodeDataForStorage(node: WorkflowNode) {
-  if (node.type === 'asset') {
-    const referenceImages = getWorkflowNodeReferenceImages(node).map(stripReferenceImageDataUrl)
-    return referenceImages.length > 0 ? { referenceImages } : {}
-  }
-  if (node.type === 'style') {
-    const selectedStyleId = getWorkflowNodeSelectedStyleId(node)
-    return selectedStyleId ? { selectedStyleId } : {}
-  }
-  if (node.type === 'prompt') {
-    const prompt = getWorkflowNodePrompt(node)
-    const promptOptimizationPreset = getWorkflowNodePromptOptimizationPreset(node)
-    return {
-      ...(prompt ? { prompt } : {}),
-      ...(promptOptimizationPreset !== DEFAULT_PROMPT_OPTIMIZATION_PRESET
-        ? { promptOptimizationPreset }
-        : {}),
-    }
-  }
-  if (node.type === 'generate') {
-    const latestImageId = getWorkflowNodeLatestImageId(node)
-    const outputTitle = getWorkflowNodeCustomOutputTitle(node)
-    return {
-      ...(latestImageId ? { latestImageId } : {}),
-      ...(outputTitle ? { outputTitle } : {}),
-    }
-  }
-  return {}
-}
-
-function stripReferenceImageDataUrl(image: ReferenceImage): Omit<ReferenceImage, 'dataUrl'> {
-  const { dataUrl: _dataUrl, ...rest } = image
-  return rest
-}
-
-function serializeWorkflowCanvases(canvases: WorkflowCanvas[]) {
-  return canvases.map((canvas) => ({
-    ...canvas,
-    nodes: canvas.nodes.map((node) => {
-      return {
-        ...node,
-        data: workflowNodeDataForStorage(node),
-      }
-    }),
-  }))
-}
-
-function extractReferenceImageBlobs(canvases: WorkflowCanvas[]) {
-  const records: Array<{ id: string; dataUrl: string }> = []
-
-  canvases.forEach((canvas) => {
-    canvas.nodes.forEach((node) => {
-      if (node.type !== 'asset') return
-      getWorkflowNodeReferenceImages(node).forEach((image) => {
-        if (!image.dataUrl) return
-        records.push({ id: image.id, dataUrl: image.dataUrl })
-      })
+function compactAgentValues(agent: IndustryAgent, values: Record<string, string>) {
+  return agent.fields
+    .map((field) => {
+      const value = (values[field.id] || agent.defaultValues[field.id] || field.defaultValue || "").trim();
+      return value ? `${field.label}：${value}` : "";
     })
-  })
-
-  return records
+    .filter(Boolean);
 }
 
-function hydrateWorkflowCanvases(
-  canvases: WorkflowCanvas[],
-  blobs: Array<{ id: string; dataUrl: string }>
-) {
-  if (blobs.length === 0) return canvases
-
-  const blobById = new Map(blobs.map((blob) => [blob.id, blob.dataUrl]))
-
-  return canvases.map((canvas) => ({
-    ...canvas,
-    nodes: canvas.nodes.map((node) => {
-      if (node.type !== 'asset') return node
-
-      const referenceImages = getWorkflowNodeReferenceImages(node).map((image) => ({
-        ...image,
-        dataUrl: image.dataUrl || blobById.get(image.id) || '',
-      }))
-
-      return {
-        ...node,
-        data: referenceImages.length > 0 ? { referenceImages } : {},
-      }
-    }),
-  }))
+function hasAgentUserOverrides(agent: IndustryAgent, values: Record<string, string>) {
+  return agent.fields.some((field) => {
+    const value = (values[field.id] || "").trim();
+    const defaultValue = (agent.defaultValues[field.id] || field.defaultValue || "").trim();
+    return value.length > 0 && value !== defaultValue;
+  });
 }
 
-function cloneWorkflowNodes(
-  nodes: WorkflowNode[],
-  legacyReferenceImages: ReferenceImage[] = [],
-  legacyPrompt = '',
-  legacyPromptOptimizationPreset: PromptOptimizationPreset = DEFAULT_PROMPT_OPTIMIZATION_PRESET
-) {
-  const normalizedLegacyReferenceImages = ensureReferenceTitles(legacyReferenceImages)
-  let hasStoredAssetReferences = false
-  let hasStoredPrompt = false
-  let hasStoredPromptOptimizationPreset = false
-  let firstPromptIndex = -1
+function buildAgentPrompt(agent: IndustryAgent, values: Record<string, string>, variant: PromptVariant) {
+  const details = compactAgentValues(agent, values);
+  return [
+    `行业类型：${agent.name}，${agent.scenario}`,
+    `业务目标：${agent.defaultGoal}`,
+    `主体：${agent.defaultSubject}`,
+    `使用场景：${agent.defaultScene}`,
+    `目标受众：${agent.defaultAudience}`,
+    `业务信息：${details.join("；")}。`,
+    `平台/比例约束：${agent.recommendedRatio}，画面可直接用于${agent.scenario}。`,
+    `构图：主体清晰，视觉中心明确，保留必要文案区或平台安全区。`,
+    `光线：真实自然，符合${agent.name}的专业摄影语言。`,
+    `背景：干净、有层次，不干扰主体。`,
+    `镜头/材质/细节：${agent.supplements.join("，")}。`,
+    `提示词蓝图：${agent.promptBlueprint}`,
+    `版本策略：${agent.promptStructures[variant]}`,
+    `负面控制：${agent.negativePrompt}`,
+    `交付标准：${agent.qualityChecklist.join("；")}。高细节，真实光影，专业商业视觉，可交付成片。`,
+  ].join("\n");
+}
 
-  const clonedNodes = nodes.map((node, index) => {
-    let data: Record<string, unknown> = {}
+function buildAgentPlan(agent: IndustryAgent, values: Record<string, string>): AgentPlan {
+  const filledValues = compactAgentValues(agent, values);
+  const hasOverrides = hasAgentUserOverrides(agent, values);
+  const brief = [
+    `画面目标：${agent.defaultGoal}`,
+    `默认主体：${agent.defaultSubject}。`,
+    `默认场景：${agent.defaultScene}`,
+    filledValues.length ? `业务信息：${filledValues.join("；")}。` : "业务信息：用户未填写，系统按行业默认值补全。",
+    `构图方案：推荐 ${agent.recommendedRatio}，主体明确，保留必要文案或平台安全区。`,
+    `风格关键词：${agent.supplements.join("，")}。`,
+    `质量检查：${agent.qualityChecklist.join("；")}。`,
+  ].join("\n");
 
-    if (node.type === 'asset') {
-      const referenceImages = normalizeAssetNodeReferenceImages(getWorkflowNodeReferenceImages(node))
-      if (referenceImages.length > 0) {
-        hasStoredAssetReferences = true
-        data = { referenceImages }
-      }
-    } else if (node.type === 'style') {
-      const selectedStyleId = getWorkflowNodeSelectedStyleId(node)
-      data = selectedStyleId ? { selectedStyleId } : {}
-    } else if (node.type === 'prompt') {
-      if (firstPromptIndex < 0) firstPromptIndex = index
-      const prompt = getWorkflowNodePrompt(node)
-      const promptOptimizationPreset = getWorkflowNodePromptOptimizationPreset(node)
-      if (prompt) hasStoredPrompt = true
-      if (promptOptimizationPreset !== DEFAULT_PROMPT_OPTIMIZATION_PRESET) {
-        hasStoredPromptOptimizationPreset = true
-      }
-      data = {
-        ...(prompt ? { prompt } : {}),
-        ...(promptOptimizationPreset !== DEFAULT_PROMPT_OPTIMIZATION_PRESET
-          ? { promptOptimizationPreset }
-          : {}),
-      }
-    } else if (node.type === 'generate') {
-      const latestImageId = getWorkflowNodeLatestImageId(node)
-      const outputTitle = getWorkflowNodeCustomOutputTitle(node)
-      data = {
-        ...(latestImageId ? { latestImageId } : {}),
-        ...(outputTitle ? { outputTitle } : {}),
-      }
-    }
-
-    return {
-      ...node,
-      position: { ...node.position },
-      data,
-    }
-  })
-
-  if (
-    firstPromptIndex >= 0 &&
-    (legacyPrompt || legacyPromptOptimizationPreset !== DEFAULT_PROMPT_OPTIMIZATION_PRESET)
-  ) {
-    clonedNodes[firstPromptIndex] = {
-      ...clonedNodes[firstPromptIndex],
-      data: {
-        ...clonedNodes[firstPromptIndex].data,
-        ...(!hasStoredPrompt && legacyPrompt ? { prompt: legacyPrompt } : {}),
-        ...(!hasStoredPromptOptimizationPreset &&
-        legacyPromptOptimizationPreset !== DEFAULT_PROMPT_OPTIMIZATION_PRESET
-          ? { promptOptimizationPreset: legacyPromptOptimizationPreset }
-          : {}),
+  return {
+    agentId: agent.id,
+    agentName: agent.name,
+    scenario: agent.scenario,
+    brief,
+    promptVariants: {
+      stable: buildAgentPrompt(agent, values, "stable"),
+      creative: buildAgentPrompt(agent, values, "creative"),
+      commercial: buildAgentPrompt(agent, values, "commercial"),
+    },
+    recommendedParams: {
+      aspectRatio: agent.recommendedRatio,
+      size: resolveSize(agent.recommendedRatio),
+      batchCount: agent.defaultCount,
+      quality: agent.defaultQuality,
+      negativePrompt: agent.negativePrompt,
+    },
+    negativePrompt: agent.negativePrompt,
+    risks: [
+      {
+        level: "low",
+        title: "文字渲染需后期确认",
+        description: "如果画面中需要精确标题或品牌字样，建议生成后用设计工具补字。",
+        fix: "把模型负责的内容聚焦到画面、留白和视觉层级。",
       },
-    }
-  }
+    ],
+    notes: [
+      hasOverrides ? "已根据你的补充重新规划。" : agent.emptyStateHint,
+      `已按「${agent.name}」补全行业摄影语言、比例、负面提示词和质量检查项。`,
+      "选择 variant 后系统会把提示词填入输入框，你可以继续编辑再点生成。",
+    ],
+  };
+}
 
-  if (normalizedLegacyReferenceImages.length > 0 && !hasStoredAssetReferences) {
-    const assetIndices = clonedNodes
-      .map((node, index) => (node.type === 'asset' ? index : -1))
-      .filter((index) => index >= 0)
+const dateTimeFormatter = new Intl.DateTimeFormat("zh-CN", {
+  month: "2-digit",
+  day: "2-digit",
+  hour: "2-digit",
+  minute: "2-digit",
+});
 
-    assetIndices.forEach((assetIndex, index) => {
-      const image = normalizedLegacyReferenceImages[index]
-      if (!image) return
+const fullDateTimeFormatter = new Intl.DateTimeFormat("zh-CN", {
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+  hour: "2-digit",
+  minute: "2-digit",
+  second: "2-digit",
+});
 
-      clonedNodes[assetIndex] = {
-        ...clonedNodes[assetIndex],
-        data: { referenceImages: [image] },
+const LOCAL_LOG_STORAGE_KEY = "sumapiImageLocalRequestLogs";
+const LOCAL_LOG_LIMIT = 200;
+const LOG_TEXT_LIMIT = 800;
+
+function uid() {
+  return crypto.randomUUID();
+}
+
+function getClientId() {
+  const storageKey = "sumapiImageClientId";
+  const existing = localStorage.getItem(storageKey);
+  if (existing) return existing;
+  const next = uid();
+  localStorage.setItem(storageKey, next);
+  return next;
+}
+
+function pageFromHash(): AppPage {
+  if (window.location.hash === "#studio") return "studio";
+  if (window.location.hash === "#square") return "square";
+  if (window.location.hash === "#canvas") return "canvas";
+  if (window.location.hash.startsWith("#admin")) return "admin";
+  return "home";
+}
+
+function clampNumber(value: number, min: number, max: number) {
+  return Math.max(min, Math.min(max, value));
+}
+
+function formatDuration(ms = 0) {
+  const totalSeconds = Math.max(0, Math.floor(ms / 1000));
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
+}
+
+function formatDate(value?: number) {
+  if (!value) return "-";
+  return dateTimeFormatter.format(new Date(value));
+}
+
+function formatFullDate(value?: number) {
+  if (!value) return "-";
+  return fullDateTimeFormatter.format(new Date(value));
+}
+
+function formatFileDate(value = Date.now()) {
+  const date = new Date(value);
+  const pad = (item: number) => String(item).padStart(2, "0");
+  return `${date.getFullYear()}${pad(date.getMonth() + 1)}${pad(date.getDate())}-${pad(date.getHours())}${pad(date.getMinutes())}`;
+}
+
+function formatBytes(value: number) {
+  if (value < 1024 * 1024) return `${Math.round(value / 1024)} KB`;
+  return `${(value / 1024 / 1024).toFixed(1)} MB`;
+}
+
+function formatCompactDuration(ms = 0) {
+  if (ms < 1000) return `${Math.max(0, Math.round(ms))}ms`;
+  return `${(ms / 1000).toFixed(ms < 10_000 ? 1 : 0)}s`;
+}
+
+function normalizeImageType(file: File) {
+  const type = file.type === "image/jpg" ? "image/jpeg" : file.type;
+  if (type) return type;
+  const name = file.name.toLowerCase();
+  if (name.endsWith(".png")) return "image/png";
+  if (name.endsWith(".jpg") || name.endsWith(".jpeg")) return "image/jpeg";
+  if (name.endsWith(".webp")) return "image/webp";
+  return "application/octet-stream";
+}
+
+function formatReferenceType(type: string) {
+  if (type === "image/jpeg") return "JPEG";
+  if (type === "image/png") return "PNG";
+  if (type === "image/webp") return "WebP";
+  return type.replace(/^image\//, "").toUpperCase() || "文件";
+}
+
+function referenceDimensionLabel(image: UploadedReference) {
+  return image.width && image.height ? `${image.width} x ${image.height}` : "尺寸未知";
+}
+
+function isReferenceUsable(image: UploadedReference) {
+  return Boolean(image.dataUrl) && image.status !== "error";
+}
+
+function normalizeStoredReferenceImages(value: unknown): UploadedReference[] {
+  if (!Array.isArray(value)) return [];
+  return value.reduce<UploadedReference[]>((images, item, index) => {
+    if (!item || typeof item !== "object") return images;
+    const record = item as Partial<UploadedReference>;
+    const dataUrl = typeof record.dataUrl === "string" ? record.dataUrl : "";
+    if (!dataUrl) return images;
+    const status = record.status === "error" || record.status === "warning" || record.status === "ready"
+      ? record.status
+      : "ready";
+    images.push({
+      id: typeof record.id === "string" ? record.id : `reference-${index + 1}`,
+      name: typeof record.name === "string" && record.name ? record.name : `参考图 ${index + 1}`,
+      type: typeof record.type === "string" && record.type ? record.type : "image/png",
+      size: typeof record.size === "number" && Number.isFinite(record.size) ? record.size : 0,
+      dataUrl,
+      thumbnailDataUrl: typeof record.thumbnailDataUrl === "string" && record.thumbnailDataUrl
+        ? record.thumbnailDataUrl
+        : dataUrl,
+      width: typeof record.width === "number" ? record.width : undefined,
+      height: typeof record.height === "number" ? record.height : undefined,
+      status,
+      message: typeof record.message === "string" ? record.message : undefined,
+    });
+    return images;
+  }, []);
+}
+
+function referenceImagesForHistory(images: UploadedReference[]) {
+  return normalizeStoredReferenceImages(images).map((image) => ({ ...image }));
+}
+
+function dataUrlByteLength(dataUrl: string) {
+  const base64 = dataUrl.split(",")[1] || "";
+  return Math.round((base64.length * 3) / 4);
+}
+
+function mimeFromDataUrl(dataUrl: string, fallback = "image/png") {
+  return dataUrl.match(/^data:([^;]+);base64,/)?.[1] || fallback;
+}
+
+function withImageExtension(name: string, mime: string) {
+  const ext = mime === "image/jpeg" ? "jpg" : mime.replace(/^image\//, "") || "png";
+  const base = name.replace(/\.(png|jpe?g|webp)$/i, "") || "reference";
+  return `${base}.${ext}`;
+}
+
+function renderReferenceForRequest(imageDataUrl: string, maxEdge: number, mime: string, quality: number): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    image.onload = () => {
+      const longestEdge = Math.max(image.naturalWidth, image.naturalHeight);
+      const scale = longestEdge > 0 ? Math.min(1, maxEdge / longestEdge) : 1;
+      const width = Math.max(1, Math.round(image.naturalWidth * scale));
+      const height = Math.max(1, Math.round(image.naturalHeight * scale));
+      const canvas = document.createElement("canvas");
+      canvas.width = width;
+      canvas.height = height;
+      const context = canvas.getContext("2d", { alpha: true });
+      if (!context) {
+        reject(new Error("无法压缩参考图"));
+        return;
       }
-    })
-  }
-
-  return clonedNodes
+      context.imageSmoothingEnabled = true;
+      context.imageSmoothingQuality = "high";
+      context.drawImage(image, 0, 0, width, height);
+      resolve(canvas.toDataURL(mime, quality));
+    };
+    image.onerror = () => reject(new Error("无法读取参考图"));
+    image.src = imageDataUrl;
+  });
 }
 
-function cloneWorkflowEdges(edges: WorkflowEdge[]) {
-  return edges.map((edge) => ({
-    ...edge,
-    data: { ...edge.data },
-  }))
-}
-
-function isCanvasGenerating(canvas: WorkflowCanvas) {
-  return canvas.generationTaskStatus === 'queued' || canvas.generationTaskStatus === 'running'
-}
-
-function normalizeReferenceTitle(value: string) {
-  return value
-    .trim()
-    .replace(/^@+/, '')
-    .replace(/\.[^.]+$/, '')
-    .replace(/\s+/g, '-')
-    .replace(/[，。,.!！?？;；:：、()[\]{}<>《》"'“”‘’]/g, '')
-    .slice(0, 24)
-}
-
-function referenceTitleFromFileName(name: string, index: number) {
-  return normalizeReferenceTitle(name) || `参考图${index + 1}`
-}
-
-function escapeRegExp(value: string) {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-}
-
-function ensureReferenceTitles(images: ReferenceImage[]) {
-  return images.map((image, index) => ({
-    ...image,
-    title: normalizeReferenceTitle(image.title || image.name) || `参考图${index + 1}`,
-  }))
-}
-
-function referenceTitleKey(title: string) {
-  return normalizeReferenceTitle(title).toLocaleLowerCase()
-}
-
-function referenceImageOwnerId(imageId: string) {
-  return `asset:${imageId}`
-}
-
-function generateOutputOwnerId(nodeId: string) {
-  return `generate:${nodeId}`
-}
-
-function createUniqueReferenceTitle(baseTitle: string, entries: Array<{ title: string }>) {
-  const normalizedBase = normalizeReferenceTitle(baseTitle) || '图片'
-  const usedKeys = new Set(entries.map((entry) => referenceTitleKey(entry.title)).filter(Boolean))
-  if (!usedKeys.has(referenceTitleKey(normalizedBase))) return normalizedBase
-
-  for (let index = 2; index < 1000; index += 1) {
-    const suffix = `-${index}`
-    const candidate = `${normalizedBase.slice(0, Math.max(1, 24 - suffix.length))}${suffix}`
-    if (candidate && !usedKeys.has(referenceTitleKey(candidate))) return candidate
-  }
-
-  const suffix = `-${Date.now()}`
-  return `${normalizedBase.slice(0, Math.max(1, 24 - suffix.length))}${suffix}`
-}
-
-function getCanvasReferenceNameEntries(canvas?: Pick<WorkflowCanvas, 'nodes'> | null) {
-  if (!canvas) return []
-
-  const entries: Array<{
-    ownerId: string
-    nodeId: string
-    kind: 'asset' | 'generate'
-    title: string
-  }> = []
-
-  canvas.nodes.forEach((node) => {
-    if (node.type === 'asset') {
-      getWorkflowNodeReferenceImages(node).forEach((image) => {
-        const title = normalizeReferenceTitle(image.title || image.name)
-        if (!title) return
-        entries.push({
-          ownerId: referenceImageOwnerId(image.id),
-          nodeId: node.id,
-          kind: 'asset',
-          title,
-        })
-      })
-      return
-    }
-
-    if (node.type === 'generate') {
-      entries.push({
-        ownerId: generateOutputOwnerId(node.id),
-        nodeId: node.id,
-        kind: 'generate',
-        title: getWorkflowNodeOutputTitle(node),
-      })
-    }
-  })
-
-  return entries
-}
-
-function isReferenceTitleTaken(
-  canvas: Pick<WorkflowCanvas, 'nodes'> | null | undefined,
-  title: string,
-  ownerId: string
-) {
-  const key = referenceTitleKey(title)
-  if (!key) return false
-  return getCanvasReferenceNameEntries(canvas).some(
-    (entry) => entry.ownerId !== ownerId && referenceTitleKey(entry.title) === key
-  )
-}
-
-function getDuplicateCanvasReferenceTitles(canvas?: Pick<WorkflowCanvas, 'nodes'> | null) {
-  const seen = new Map<string, string>()
-  const duplicates = new Set<string>()
-
-  getCanvasReferenceNameEntries(canvas).forEach((entry) => {
-    const key = referenceTitleKey(entry.title)
-    if (!key) return
-    const existing = seen.get(key)
-    if (existing) duplicates.add(existing)
-    else seen.set(key, entry.title)
-  })
-
-  return [...duplicates]
-}
-
-function getCanvasReferenceImages(canvas?: Pick<WorkflowCanvas, 'nodes'> | null) {
-  if (!canvas) return []
-
-  const seen = new Set<string>()
-  const images: ReferenceImage[] = []
-  canvas.nodes.forEach((node) => {
-    if (node.type !== 'asset') return
-    getWorkflowNodeReferenceImages(node).forEach((image) => {
-      if (seen.has(image.id)) return
-      seen.add(image.id)
-      images.push(image)
-    })
-  })
-
-  return images
-}
-
-function getPromptAssetReferenceImages(
-  promptNodeId: string,
-  canvas: Pick<WorkflowCanvas, 'nodes' | 'edges'> | null | undefined
-) {
-  if (!canvas) return []
-
-  const connectedAssetNodeIds = new Set(
-    canvas.edges
-      .filter(
-        (edge) =>
-          edge.target === promptNodeId &&
-          edge.sourceHandle === 'reference' &&
-          (edge.targetHandle === 'reference' || edge.targetHandle?.startsWith('reference-')) &&
-          canvas.nodes.find((node) => node.id === edge.source)?.type === 'asset'
-      )
-      .map((edge) => edge.source)
-  )
-
-  const seen = new Set<string>()
-  const images: ReferenceImage[] = []
-  canvas.nodes.forEach((node) => {
-    if (node.type !== 'asset' || !connectedAssetNodeIds.has(node.id)) return
-    getWorkflowNodeReferenceImages(node).forEach((image) => {
-      if (seen.has(image.id)) return
-      seen.add(image.id)
-      images.push(image)
-    })
-  })
-
-  return images
-}
-
-function getPromptGeneratedReferenceImages(
-  promptNodeId: string,
-  canvas: Pick<WorkflowCanvas, 'nodes' | 'edges'> | null | undefined,
-  images: LocalImageRecord[]
-) {
-  if (!canvas) return []
-
-  const connectedGenerateNodeIds = new Set(
-    canvas.edges
-      .filter(
-        (edge) =>
-          edge.target === promptNodeId &&
-          edge.sourceHandle === 'generated-image' &&
-          (edge.targetHandle === 'reference' || edge.targetHandle?.startsWith('reference-')) &&
-          canvas.nodes.find((node) => node.id === edge.source)?.type === 'generate'
-      )
-      .map((edge) => edge.source)
-  )
-
-  return canvas.nodes
-    .filter((node) => node.type === 'generate' && connectedGenerateNodeIds.has(node.id))
-    .map((node) => {
-      const title = getWorkflowNodeOutputTitle(node)
-      const latestImage = images.find((image) => image.id === getWorkflowNodeLatestImageId(node))
-      return {
-        id: `generated-${node.id}`,
-        name: `${title}.png`,
-        title,
-        type: 'image/png',
-        dataUrl: latestImage?.src || '',
-      }
-    })
-}
-
-function getPromptMentionReferenceImages(
-  promptNodeId: string,
-  canvas: Pick<WorkflowCanvas, 'nodes' | 'edges'> | null | undefined,
-  images: LocalImageRecord[]
-) {
-  return [
-    ...getPromptAssetReferenceImages(promptNodeId, canvas),
-    ...getPromptGeneratedReferenceImages(promptNodeId, canvas, images),
-  ]
-}
-
-function getCanvasSelectedStyleIds(canvas?: Pick<WorkflowCanvas, 'nodes' | 'edges'> | null) {
-  if (!canvas) return []
-  const styleNodeIds = new Set(
-    canvas.nodes.filter((node) => node.type === 'style').map((node) => node.id)
-  )
-  const connectedStyleNodeIds = new Set(
-    canvas.edges
-      .filter(
-        (edge) =>
-          edge.sourceHandle === 'style' &&
-          edge.targetHandle === 'style' &&
-          styleNodeIds.has(edge.source)
-      )
-      .map((edge) => edge.source)
-  )
-  const scopedNodeIds = connectedStyleNodeIds.size > 0 ? connectedStyleNodeIds : styleNodeIds
-  const selectedIds: string[] = []
-  canvas.nodes.forEach((node) => {
-    if (node.type !== 'style' || !scopedNodeIds.has(node.id)) return
-    const selectedStyleId = getWorkflowNodeSelectedStyleId(node)
-    if (selectedStyleId && !selectedIds.includes(selectedStyleId)) selectedIds.push(selectedStyleId)
-  })
-  return selectedIds
-}
-
-function getPromptSelectedStyleIds(
-  promptNodeId: string,
-  canvas?: Pick<WorkflowCanvas, 'nodes' | 'edges'> | null
-) {
-  if (!canvas) return []
-  const connectedStyleNodeIds = new Set(
-    canvas.edges
-      .filter(
-        (edge) =>
-          edge.target === promptNodeId &&
-          edge.sourceHandle === 'style' &&
-          edge.targetHandle === 'style'
-      )
-      .map((edge) => edge.source)
-  )
-  if (connectedStyleNodeIds.size === 0) return getCanvasSelectedStyleIds(canvas)
-
-  const selectedIds: string[] = []
-  canvas.nodes.forEach((node) => {
-    if (node.type !== 'style' || !connectedStyleNodeIds.has(node.id)) return
-    const selectedStyleId = getWorkflowNodeSelectedStyleId(node)
-    if (selectedStyleId && !selectedIds.includes(selectedStyleId)) selectedIds.push(selectedStyleId)
-  })
-  return selectedIds
-}
-
-function normalizeWorkflowEdges(edges: WorkflowEdge[], nodes: WorkflowNode[]) {
-  const promptNode = nodes.find((node) => node.type === 'prompt')
-  const seen = new Set<string>()
-  const normalizedEdges: WorkflowEdge[] = []
-
-  edges.forEach((edge) => {
-    let nextEdge = { ...edge, data: { ...edge.data } }
-
-    if (
-      nextEdge.sourceHandle === 'reference' &&
-      nextEdge.targetHandle === 'image' &&
-      promptNode
-    ) {
-      nextEdge = {
-        ...nextEdge,
-        id: `${nextEdge.source}-reference-${promptNode.id}-reference`,
-        target: promptNode.id,
-        targetHandle: PROMPT_REFERENCE_HANDLE_IDS[0] || 'reference-1',
-        className: 'edge-blue',
-        data: { ...nextEdge.data, label: '参考图 -> 文字描述' },
-      }
-    }
-
-    if (
-      nextEdge.sourceHandle === 'reference' &&
-      nextEdge.targetHandle === 'reference' &&
-      promptNode
-    ) {
-      nextEdge = {
-        ...nextEdge,
-        target: promptNode.id,
-        targetHandle: PROMPT_REFERENCE_HANDLE_IDS[0] || 'reference-1',
-        className: 'edge-blue',
-        data: { ...nextEdge.data, label: '参考图 -> 文字描述' },
-      }
-    }
-
-    if (nextEdge.targetHandle === 'image') return
-
-    const key = `${nextEdge.source}-${nextEdge.sourceHandle}-${nextEdge.target}-${nextEdge.targetHandle}`
-    if (seen.has(key)) return
-    seen.add(key)
-    normalizedEdges.push(nextEdge)
-  })
-
-  return normalizedEdges
-}
-
-function normalizePromptOptimizationPreset(value: unknown): PromptOptimizationPreset {
-  return promptOptimizationPresets.some((preset) => preset.value === value)
-    ? (value as PromptOptimizationPreset)
-    : DEFAULT_PROMPT_OPTIMIZATION_PRESET
-}
-
-function createWorkflowCanvas(index: number, base?: WorkflowCanvas): WorkflowCanvas {
-  const id = createLocalId('canvas')
-  const now = Date.now()
-  const baseNodes = cloneWorkflowNodes(
-    base?.nodes || initialWorkflowNodes,
-    base?.referenceImages || [],
-    base?.prompt || '',
-    base?.promptOptimizationPreset || DEFAULT_PROMPT_OPTIMIZATION_PRESET
-  )
-
-  return {
-    id,
-    name: base ? `${base.name} 副本` : `画布 ${index}`,
-    updatedAt: now,
-    nodes: baseNodes,
-    edges: normalizeWorkflowEdges(
-      cloneWorkflowEdges(base?.edges || initialWorkflowEdges),
-      baseNodes
-    ),
-    prompt: base?.prompt || '',
-    promptOptimizationPreset: base?.promptOptimizationPreset || DEFAULT_PROMPT_OPTIMIZATION_PRESET,
-    generationMode: base?.generationMode || 'text',
-    referenceImages: [],
-    latestImageId: base?.latestImageId,
-  }
-}
-
-function normalizeStoredCanvases(value: unknown): WorkflowCanvas[] {
-  if (!Array.isArray(value)) return []
-
-  const canvases: WorkflowCanvas[] = []
-
-  value.forEach((item, index) => {
-    if (!item || typeof item !== 'object') return
-    const canvas = item as Partial<WorkflowCanvas>
-    if (typeof canvas.id !== 'string' || typeof canvas.name !== 'string') return
-
-    const legacyReferenceImages = Array.isArray(canvas.referenceImages)
-      ? ensureReferenceTitles(canvas.referenceImages as ReferenceImage[])
-      : []
-    const normalizedNodes = Array.isArray(canvas.nodes)
-      ? cloneWorkflowNodes(
-          canvas.nodes as WorkflowNode[],
-          legacyReferenceImages,
-          typeof canvas.prompt === 'string' ? canvas.prompt : '',
-          normalizePromptOptimizationPreset(canvas.promptOptimizationPreset)
-        )
-      : cloneWorkflowNodes(
-          initialWorkflowNodes,
-          legacyReferenceImages,
-          typeof canvas.prompt === 'string' ? canvas.prompt : '',
-          normalizePromptOptimizationPreset(canvas.promptOptimizationPreset)
-        )
-    const rawEdges = Array.isArray(canvas.edges)
-      ? cloneWorkflowEdges(canvas.edges as WorkflowEdge[])
-      : cloneWorkflowEdges(initialWorkflowEdges)
-
-    canvases.push({
-      id: canvas.id,
-      name: canvas.name || `画布 ${index + 1}`,
-      updatedAt: typeof canvas.updatedAt === 'number' ? canvas.updatedAt : Date.now(),
-      nodes: normalizedNodes,
-      edges: normalizeWorkflowEdges(rawEdges, normalizedNodes),
-      prompt: typeof canvas.prompt === 'string' ? canvas.prompt : '',
-      promptOptimizationPreset: normalizePromptOptimizationPreset(
-        canvas.promptOptimizationPreset
-      ),
-      generationMode: canvas.generationMode === 'image' ? 'image' : 'text',
-      referenceImages: [],
-      latestImageId:
-        typeof canvas.latestImageId === 'string' ? canvas.latestImageId : undefined,
-      generationTaskId: undefined,
-      generationTaskStatus: undefined,
-      generationTaskUpdatedAt: undefined,
-    })
-  })
-
-  return canvases
-}
-
-function loadWorkflowCanvases() {
-  try {
-    const raw = window.localStorage.getItem(WORKFLOW_CANVASES_STORAGE_KEY)
-    const stored = raw ? normalizeStoredCanvases(JSON.parse(raw)) : []
-    return stored.length > 0 ? stored : [createWorkflowCanvas(1)]
-  } catch {
-    return [createWorkflowCanvas(1)]
-  }
-}
-
-function loadActiveCanvasId() {
-  try {
-    return window.localStorage.getItem(ACTIVE_CANVAS_STORAGE_KEY) || ''
-  } catch {
-    return ''
-  }
-}
-
-function imageModelScore(model: ModelOption) {
-  const id = model.id.toLowerCase()
-  if (id === DEFAULT_MODEL) return 0
-  if (id.includes('gpt-image')) return 1
-  if (id.includes('dall-e')) return 2
-  if (id.includes('imagen')) return 3
-  if (id.includes('flux')) return 4
-  if (id.includes('image')) return 5
-  return 20
-}
-
-function extractReferenceMentions(prompt: string, knownTitles: string[] = []) {
-  const orderedTitles = [...new Set(knownTitles.map((title) => normalizeReferenceTitle(title)).filter(Boolean))].sort(
-    (a, b) => b.length - a.length
-  )
-
-  if (orderedTitles.length > 0) {
-    const mentions: string[] = []
-    const pattern = new RegExp(`@(${orderedTitles.map(escapeRegExp).join('|')})`, 'g')
-    let match: RegExpExecArray | null
-    while ((match = pattern.exec(prompt)) !== null) {
-      const title = normalizeReferenceTitle(match[1] || '')
-      if (title && !mentions.includes(title)) mentions.push(title)
-    }
-    if (mentions.length > 0) return mentions
-  }
-
-  const mentions: string[] = []
-  const pattern = /@([^\s@，。,.!！?？;；:：、()[\]{}<>《》"'“”‘’]+)/g
-  let match: RegExpExecArray | null
-  while ((match = pattern.exec(prompt)) !== null) {
-    const title = normalizeReferenceTitle(match[1] || '')
-    if (title && !mentions.includes(title)) mentions.push(title)
-  }
-  return mentions
-}
-
-function resolvePromptReferenceImages(prompt: string, images: ReferenceImage[]) {
-  const mentions = extractReferenceMentions(
-    prompt,
-    images.map((image) => image.title || image.name)
-  )
-  if (mentions.length === 0) return { mentions, images: [], missing: [] }
-
-  const matchedImages: ReferenceImage[] = []
-  const missing: string[] = []
-  mentions.forEach((mention) => {
-    const image = images.find((item) => normalizeReferenceTitle(item.title || item.name) === mention)
-    if (image) matchedImages.push(image)
-    else missing.push(mention)
-  })
-
-  return { mentions, images: matchedImages, missing }
-}
-
-function normalizeOptimizedPromptMentions(prompt: string, images: ReferenceImage[]) {
-  const orderedTitles = [...new Set(images.map((image) => normalizeReferenceTitle(image.title || image.name)).filter(Boolean))].sort(
-    (a, b) => b.length - a.length
-  )
-  if (orderedTitles.length === 0) return prompt.trim()
-
-  let next = prompt
-  orderedTitles.forEach((title) => {
-    const mention = `@${title}`
-    const pattern = new RegExp(escapeRegExp(mention), 'g')
-    next = next.replace(pattern, ` ${mention} `)
-  })
-
-  return next
-    .replace(/[ \t]{2,}/g, ' ')
-    .replace(/\s+([，。,.!！?？;；:：、()[\]{}<>《》"'“”‘’])/g, '$1')
-    .replace(/([，。,.!！?？;；:：、()[\]{}<>《》"'“”‘’])\s+/g, '$1 ')
-    .trim()
-}
-
-function blobFromDataUrl(src: string) {
-  const match = src.match(/^data:([^;,]+)?(;base64)?,(.*)$/)
-  if (!match) return null
-
-  const mimeType = match[1] || 'application/octet-stream'
-  const isBase64 = Boolean(match[2])
-  const payload = match[3] || ''
-  const binary = isBase64 ? atob(payload) : decodeURIComponent(payload)
-  const bytes = Uint8Array.from(binary, (char) => char.charCodeAt(0))
-  return new Blob([bytes], { type: mimeType })
-}
-
-function downloadDataUrl(src: string, filename: string) {
-  const link = document.createElement('a')
-  const blob = blobFromDataUrl(src)
-  const url = blob ? URL.createObjectURL(blob) : src
-
-  link.href = url
-  link.download = filename
-  link.rel = 'noopener'
-  link.style.display = 'none'
-  document.body.appendChild(link)
-  link.click()
-  link.remove()
-
-  if (blob) {
-    window.setTimeout(() => URL.revokeObjectURL(url), 1000)
-  }
-}
-
-function downloadJsonFile(data: unknown, filename: string) {
-  const blob = new Blob([JSON.stringify(data, null, 2)], {
-    type: 'application/json',
-  })
-  const url = URL.createObjectURL(blob)
-  const link = document.createElement('a')
-  link.href = url
-  link.download = filename
-  link.click()
-  URL.revokeObjectURL(url)
-}
-
-function newImageId(index: number) {
-  return createLocalId(`image-${index}`)
-}
-
-function fileToDataUrl(file: File) {
-  return new Promise<string>((resolve, reject) => {
-    const reader = new FileReader()
-    reader.onload = () => resolve(String(reader.result))
-    reader.onerror = () => reject(reader.error)
-    reader.readAsDataURL(file)
-  })
-}
-
-function blobToDataUrl(blob: Blob) {
-  return new Promise<string>((resolve, reject) => {
-    const reader = new FileReader()
-    reader.onload = () => resolve(String(reader.result))
-    reader.onerror = () => reject(reader.error)
-    reader.readAsDataURL(blob)
-  })
-}
-
-async function imageSourceToDataUrl(src: string) {
-  if (src.startsWith('data:')) return src
-
-  try {
-    const response = await fetch(src)
-    if (!response.ok) throw new Error(`Failed to download image: ${response.status}`)
-    return blobToDataUrl(await response.blob())
-  } catch (error) {
-    throw new Error(
-      `无法读取图库图片。浏览器不能跨域下载该图片 URL，请优先使用 b64_json 响应格式。${error instanceof Error ? ` 原因：${error.message}` : ''}`
-    )
-  }
-}
-
-function mimeTypeFromDataUrl(dataUrl: string) {
-  return dataUrl.match(/^data:([^;,]+)/)?.[1] || 'image/png'
-}
-
-function imageExtensionFromMimeType(type: string) {
-  if (type === 'image/jpeg') return 'jpg'
-  return type.split('/')[1]?.replace(/[^\w.+-]/g, '') || 'png'
-}
-
-function loadLocalImage(url: string) {
-  return new Promise<HTMLImageElement>((resolve, reject) => {
-    const image = new Image()
-    image.onload = () => resolve(image)
-    image.onerror = () => reject(new Error('图片读取失败'))
-    image.src = url
-  })
-}
-
-async function fileToCommerceReferenceDataUrl(file: File) {
-  if (!file.type.startsWith('image/')) return fileToDataUrl(file)
-
-  const url = URL.createObjectURL(file)
-  try {
-    const image = await loadLocalImage(url)
-    const maxSide = Math.max(image.naturalWidth, image.naturalHeight)
-    const scale = maxSide > COMMERCE_REFERENCE_MAX_SIDE ? COMMERCE_REFERENCE_MAX_SIDE / maxSide : 1
-    const width = Math.max(1, Math.round(image.naturalWidth * scale))
-    const height = Math.max(1, Math.round(image.naturalHeight * scale))
-    const canvas = document.createElement('canvas')
-    canvas.width = width
-    canvas.height = height
-    const context = canvas.getContext('2d')
-    if (!context) return fileToDataUrl(file)
-
-    context.fillStyle = '#ffffff'
-    context.fillRect(0, 0, width, height)
-    context.drawImage(image, 0, 0, width, height)
-    return canvas.toDataURL('image/jpeg', COMMERCE_REFERENCE_JPEG_QUALITY)
-  } catch {
-    return fileToDataUrl(file)
-  } finally {
-    URL.revokeObjectURL(url)
-  }
-}
-
-function drawImageContained(
-  context: CanvasRenderingContext2D,
-  image: HTMLImageElement,
-  x: number,
-  y: number,
-  width: number,
-  height: number
-) {
-  const imageRatio = image.naturalWidth / image.naturalHeight
-  const frameRatio = width / height
-  const drawWidth = imageRatio > frameRatio ? width : height * imageRatio
-  const drawHeight = imageRatio > frameRatio ? width / imageRatio : height
-  const drawX = x + (width - drawWidth) / 2
-  const drawY = y + (height - drawHeight) / 2
-  context.drawImage(image, drawX, drawY, drawWidth, drawHeight)
-}
-
-async function buildCommerceProductReferenceImage(images: ReferenceImage[]) {
-  if (images.length <= 1) return images[0]
-
-  const loadedImages = await Promise.all(images.map((image) => loadLocalImage(image.dataUrl)))
-  const canvas = document.createElement('canvas')
-  canvas.width = COMMERCE_PRODUCT_SHEET_SIZE
-  canvas.height = COMMERCE_PRODUCT_SHEET_SIZE
-
-  const context = canvas.getContext('2d')
-  if (!context) return images[0]
-
-  context.fillStyle = '#ffffff'
-  context.fillRect(0, 0, canvas.width, canvas.height)
-
-  const columns = images.length <= 2 ? images.length : 2
-  const rows = Math.ceil(images.length / columns)
-  const padding = 44
-  const gap = 28
-  const labelHeight = 48
-  const cellWidth = (canvas.width - padding * 2 - gap * (columns - 1)) / columns
-  const cellHeight = (canvas.height - padding * 2 - gap * (rows - 1)) / rows
-
-  context.font = '26px Arial, sans-serif'
-  context.textAlign = 'left'
-  context.textBaseline = 'middle'
-
-  loadedImages.forEach((image, index) => {
-    const column = index % columns
-    const row = Math.floor(index / columns)
-    const x = padding + column * (cellWidth + gap)
-    const y = padding + row * (cellHeight + gap)
-
-    context.fillStyle = '#f7f8fb'
-    context.fillRect(x, y, cellWidth, cellHeight)
-    context.strokeStyle = '#d7dbe5'
-    context.lineWidth = 2
-    context.strokeRect(x, y, cellWidth, cellHeight)
-
-    context.fillStyle = '#3d4557'
-    context.fillText(`product angle ${index + 1}`, x + 18, y + labelHeight / 2)
-    drawImageContained(context, image, x + 18, y + labelHeight, cellWidth - 36, cellHeight - labelHeight - 18)
-  })
-
-  return {
-    id: createLocalId('commerce-product-sheet'),
-    name: 'commerce-product-reference-sheet.jpg',
-    title: `商品多角度参考图（${images.length} 张）`,
-    type: 'image/jpeg',
-    dataUrl: canvas.toDataURL('image/jpeg', COMMERCE_REFERENCE_JPEG_QUALITY),
-  }
-}
-
-function taskStatusLabel(status: ImageGenerationTask['status']) {
-  if (status === 'queued') return '生图请求已排队'
-  if (status === 'running') return '正在生成图片...'
-  if (status === 'completed') return '图片已生成，正在保存到本地'
-  if (status === 'expired') return '生图请求已过期'
-  return '生图失败'
-}
-
-const GENERATION_RETRY_MESSAGE = '生成失败，请重新尝试。'
-
-function generationErrorMessage(error: unknown) {
-  const message = error instanceof Error ? error.message : String(error || '')
-  if (
-    /Image (generation|edit) failed|Failed to fetch|HTTP 5\d\d|后台生图|浏览器没有拿到接口响应|生图服务|生图失败|网关|invalid size/i.test(
-      message
-    )
-  ) {
-    return GENERATION_RETRY_MESSAGE
-  }
-  return message || GENERATION_RETRY_MESSAGE
-}
-
-function logGenerationError(scope: string, error: unknown) {
-  console.warn(`${scope} failed`)
-}
-
-function promptWithStyles(
-  prompt: string,
-  selectedStyles: StyleOption[],
-  styleWeight: AdvancedStyleWeight = 'medium'
-) {
-  if (selectedStyles.length === 0) return prompt
-  const weightInstructions: Record<AdvancedStyleWeight, string> = {
-    weak: '风格权重：弱。只提取轻量的色彩、光线和质感倾向，优先保留用户原始画面意图。',
-    medium: '风格权重：中。平衡迁移风格协议中的构图节奏、光线氛围、背景质感和色彩倾向。',
-    strong:
-      '风格权重：强。显著应用风格协议的视觉语言、光影、质感和色彩系统，但不要改变用户要求的主体身份和核心内容。',
-  }
-  const styleProtocols = selectedStyles
-    .map(
-      (style, index) =>
-        `风格 ${index + 1}：${style.category} / ${style.name}\n${JSON.stringify(style.styleJson, null, 2)}`
-    )
-    .join('\n\n')
-  return `${prompt}\n\n请按以下风格协议生成图像。风格协议只用于控制视觉效果，不要在画面中渲染 JSON 或参数文字；如果有参考图，请保持参考图主体内容不变，只应用风格转换。\n${weightInstructions[styleWeight]}\n${styleProtocols}`
-}
-
-function promptWithNegativePrompt(prompt: string, negativePrompt: string) {
-  const value = negativePrompt.trim()
-  if (!value) return prompt
-  return `${prompt}\n\n【负面提示词】\n避免出现：${value}。`
-}
-
-function promptWithBackground(prompt: string, background: AdvancedBackground) {
-  const instructions: Record<AdvancedBackground, string> = {
-    auto: '背景策略：auto。根据主体和用途自动选择最合适的背景复杂度，背景服务主体，不抢画面重心。',
-    opaque: '背景策略：opaque。生成不透明背景，背景干净完整，有真实光影和空间关系。',
-    transparent: '背景策略：transparent。生成透明背景或适合抠图的干净主体边缘，不要添加不必要的实景背景。',
-  }
-  return `${prompt}\n\n【背景】\n${instructions[background]}`
-}
-
-function promptWithCreativity(prompt: string, creativity: AdvancedCreativity) {
-  const instructions: Record<AdvancedCreativity, string> = {
-    strict: '创意强度：严格。严格遵循用户描述，不自行添加新主体、新道具或复杂背景。',
-    balanced: '创意强度：平衡。在保留用户核心意图的基础上，适度优化构图、光线、质感和完成度。',
-    exploratory:
-      '创意强度：发散。围绕用户主题做更有表现力的视觉演绎，可增强场景、光影和风格，但不要偏离主体诉求。',
-  }
-  return `${prompt}\n\n【创意强度】\n${instructions[creativity]}`
-}
-
-export function App() {
-  const [currentView, setCurrentView] = useState<AppView>('home')
-  const [textBaseUrl, setTextBaseUrl] = useState(DEFAULT_TEXT_BASE_URL)
-  const [imageBaseUrl, setImageBaseUrl] = useState(DEFAULT_IMAGE_BASE_URL)
-  const [apiKey, setApiKey] = useState('')
-  const [codexApiKey, setCodexApiKey] = useState('')
-  const [imageRetryCount, setImageRetryCount] = useState(DEFAULT_IMAGE_RETRY_COUNT)
-  const [persistApiKey, setPersistApiKey] = useState(false)
-  const [hasLoadedSettings, setHasLoadedSettings] = useState(false)
-  const [themeMode, setThemeMode] = useState<ThemeMode>('light')
-  const [resolvedTheme, setResolvedTheme] = useState<'light' | 'dark'>('light')
-  const [models, setModels] = useState<ModelOption[]>([])
-  const [styles, setStyles] = useState<StyleOption[]>([])
-  const [styleSummaries, setStyleSummaries] = useState<StyleOption[]>([])
-  const [styleCategories, setStyleCategories] = useState<StyleCategory[]>([])
-  const [isLoadingStyles, setIsLoadingStyles] = useState(false)
-  const [model, setModel] = useState(DEFAULT_MODEL)
-  const [textModel, setTextModel] = useState(DEFAULT_TEXT_MODEL)
-  const [size, setSize] = useState('1024x1024')
-  const [sizeMode, setSizeMode] = useState<'preset' | 'custom'>('preset')
-  const [customSizeWidth, setCustomSizeWidth] = useState('1024')
-  const [customSizeHeight, setCustomSizeHeight] = useState('1024')
-  const [quality, setQuality] = useState('auto')
-  const [count, setCount] = useState(1)
-  const [responseFormat, setResponseFormat] = useState<'url' | 'b64_json'>('b64_json')
-  const [inputFidelity, setInputFidelity] = useState<'low' | 'high'>('high')
-  const [advancedModel, setAdvancedModel] = useState(DEFAULT_MODEL)
-  const [advancedSize, setAdvancedSize] = useState('1024x1024')
-  const [advancedSizeMode, setAdvancedSizeMode] = useState<'preset' | 'custom'>('preset')
-  const [advancedCustomSizeWidth, setAdvancedCustomSizeWidth] = useState('1024')
-  const [advancedCustomSizeHeight, setAdvancedCustomSizeHeight] = useState('1024')
-  const [advancedQuality, setAdvancedQuality] = useState('auto')
-  const [advancedCount, setAdvancedCount] = useState(1)
-  const [advancedResponseFormat, setAdvancedResponseFormat] =
-    useState<'url' | 'b64_json'>('b64_json')
-  const [advancedInputFidelity, setAdvancedInputFidelity] = useState<'low' | 'high'>('high')
-  const [advancedNegativePrompt, setAdvancedNegativePrompt] = useState('')
-  const [advancedBackground, setAdvancedBackground] = useState<AdvancedBackground>('auto')
-  const [advancedCreativity, setAdvancedCreativity] = useState<AdvancedCreativity>('balanced')
-  const [advancedStyleWeight, setAdvancedStyleWeight] = useState<AdvancedStyleWeight>('medium')
-  const [advancedSketchWeight, setAdvancedSketchWeight] = useState<AdvancedSketchWeight>('reference')
-  const [simplePrompt, setSimplePrompt] = useState('')
-  const [simpleReferenceImages, setSimpleReferenceImages] = useState<ReferenceImage[]>([])
-  const [advancedPrompt, setAdvancedPrompt] = useState('')
-  const [simplePromptOptimizationPreset, setSimplePromptOptimizationPreset] =
-    useState<PromptOptimizationPreset>(DEFAULT_PROMPT_OPTIMIZATION_PRESET)
-  const [advancedPromptOptimizationPreset, setAdvancedPromptOptimizationPreset] =
-    useState<PromptOptimizationPreset>(DEFAULT_PROMPT_OPTIMIZATION_PRESET)
-  const [advancedSketchDescription, setAdvancedSketchDescription] = useState('')
-  const [advancedSketchImageDataUrl, setAdvancedSketchImageDataUrl] = useState('')
-  const [isAdvancedSketchDirty, setIsAdvancedSketchDirty] = useState(false)
-  const [isAnalyzingAdvancedSketch, setIsAnalyzingAdvancedSketch] = useState(false)
-  const [advancedStyleCategory, setAdvancedStyleCategory] = useState('')
-  const [advancedSelectedStyleId, setAdvancedSelectedStyleId] = useState('')
-  const [commerceProductImages, setCommerceProductImages] = useState<ReferenceImage[]>([])
-  const [commerceStyleImage, setCommerceStyleImage] = useState<ReferenceImage | null>(null)
-  const [commerceDescription, setCommerceDescription] = useState('')
-  const [commerceGenerateKind, setCommerceGenerateKind] = useState<'main' | 'detail'>('main')
-  const [commerceCategoryMode, setCommerceCategoryMode] = useState<'preset' | 'custom'>('preset')
-  const [commerceCategoryLevel1, setCommerceCategoryLevel1] = useState('')
-  const [commerceCategoryLevel2, setCommerceCategoryLevel2] = useState('')
-  const [commerceCategoryLevel3, setCommerceCategoryLevel3] = useState('')
-  const [commerceCustomCategory, setCommerceCustomCategory] = useState('')
-  const [canvases, setCanvases] = useState<WorkflowCanvas[]>(loadWorkflowCanvases)
-  const [activeCanvasId, setActiveCanvasId] = useState(loadActiveCanvasId)
-  const [renamingCanvasId, setRenamingCanvasId] = useState<string | null>(null)
-  const [renamingCanvasName, setRenamingCanvasName] = useState('')
-  const [isLoadingModels, setIsLoadingModels] = useState(false)
-  const [isQuickGenerating, setIsQuickGenerating] = useState(false)
-  const [isAdvancedGenerating, setIsAdvancedGenerating] = useState(false)
-  const [isCommerceGenerating, setIsCommerceGenerating] = useState(false)
-  const [isOptimizingSimplePrompt, setIsOptimizingSimplePrompt] = useState(false)
-  const [isOptimizingNegativePrompt, setIsOptimizingNegativePrompt] = useState(false)
-  const [optimizingPromptNodeIds, setOptimizingPromptNodeIds] = useState<Set<string>>(
-    () => new Set()
-  )
-  const [images, setImages] = useState<LocalImageRecord[]>([])
-  const [previewImage, setPreviewImage] = useState<LocalImageRecord | null>(null)
-  const [previewImageDimensions, setPreviewImageDimensions] = useState<{
-    width: number
-    height: number
-  } | null>(null)
-  const [galleryReferencePickerNodeId, setGalleryReferencePickerNodeId] = useState('')
-  const [selectingGalleryReferenceImageId, setSelectingGalleryReferenceImageId] = useState('')
-  const [status, setStatus] = useState('未连接')
-  const [error, setError] = useState('')
-  const [notice, setNotice] = useState<{ id: number; message: string } | null>(null)
-  const [generationSuccess, setGenerationSuccess] = useState<{
-    title: string
-    message: string
-  } | null>(null)
-  const [paneMenu, setPaneMenu] = useState<PaneMenu>(null)
-  const [isSidebarDrawerOpen, setIsSidebarDrawerOpen] = useState(false)
-  const [isCanvasDrawerOpen, setIsCanvasDrawerOpen] = useState(() =>
-    typeof window === 'undefined' ? true : window.matchMedia(CANVAS_DRAWER_AUTO_OPEN_QUERY).matches
-  )
-  const [flowInstance, setFlowInstance] =
-    useState<ReactFlowInstance<WorkflowNode, WorkflowEdge> | null>(null)
-  const loadedStyleCategoriesRef = useRef(new Set<string>())
-  const loadingStyleCategoriesRef = useRef(new Set<string>())
-  const lastSavedReferenceImageBlobSignatureRef = useRef('')
-  const hasManuallyToggledCanvasDrawerRef = useRef(false)
-  const canvasListRenameInputRef = useRef<HTMLInputElement | null>(null)
-  const advancedSketchCanvasRef = useRef<HTMLCanvasElement | null>(null)
-  const isDrawingAdvancedSketchRef = useRef(false)
-  const lastAdvancedSketchPointRef = useRef<{ x: number; y: number } | null>(null)
-  const commerceCategoryLevel1Node = commerceCategoryTree.find((item) => item.name === commerceCategoryLevel1)
-  const commerceCategoryLevel2Options = commerceCategoryLevel1Node?.children || []
-  const commerceCategoryLevel2Node = commerceCategoryLevel2Options.find((item) => item.name === commerceCategoryLevel2)
-  const commerceCategoryLevel3Options = commerceCategoryLevel2Node?.children || []
-  const selectedCommerceCategoryPath = [
-    commerceCategoryLevel1,
-    commerceCategoryLevel2,
-    commerceCategoryLevel3,
-  ].filter(Boolean).join(' / ')
-  const effectiveCommerceCategoryPath =
-    commerceCategoryMode === 'custom' ? commerceCustomCategory.trim() : selectedCommerceCategoryPath
-  const previewImageMimeType = previewImage
-    ? previewImage.mimeType || dataUrlMimeType(previewImage.src)
-    : 'image/png'
-  const previewImageByteSize = previewImage
-    ? previewImage.byteSize ?? estimateDataUrlBytes(previewImage.src)
-    : undefined
-  const previewImageAspectRatio = previewImage
-    ? ratioLabelForSize(
-        previewImageDimensions
-          ? `${previewImageDimensions.width}x${previewImageDimensions.height}`
-          : previewImage.size
-      ) || '-'
-    : '-'
-
-  const activeCanvas = useMemo(
-    () => canvases.find((canvas) => canvas.id === activeCanvasId) || canvases[0],
-    [activeCanvasId, canvases]
-  )
-  const nodes = activeCanvas?.nodes || []
-  const edges = activeCanvas?.edges || []
-  const generationMode = activeCanvas?.generationMode || 'text'
-  const referenceImages = useMemo(() => getCanvasReferenceImages(activeCanvas), [activeCanvas])
-  const activeCanvasGenerating = activeCanvas ? isCanvasGenerating(activeCanvas) : false
-  const referenceImageBlobs = useMemo(
-    () => extractReferenceImageBlobs(canvases),
-    [canvases]
-  )
-  const referenceImageBlobSignature = useMemo(
-    () => referenceImageBlobs.map((blob) => `${blob.id}:${blob.dataUrl}`).join('|'),
-    [referenceImageBlobs]
-  )
-  const styleOptions = useMemo(() => {
-    const loadedById = new Map(styles.map((style) => [style.id, style]))
-    return styleSummaries.map((style) => loadedById.get(style.id) || style)
-  }, [styleSummaries, styles])
-
-  const advancedVisibleStyles = useMemo(
-    () =>
-      advancedStyleCategory
-        ? styleOptions.filter((style) => style.category === advancedStyleCategory)
-        : [],
-    [advancedStyleCategory, styleOptions]
-  )
-  const advancedSelectedStyle = useMemo(
-    () => styleOptions.find((style) => style.id === advancedSelectedStyleId) || null,
-    [advancedSelectedStyleId, styleOptions]
-  )
-  const advancedStyleKeywords = advancedSelectedStyle?.keywords?.slice(0, 6) || []
-  const isConfigured = Boolean(imageBaseUrl.trim() && apiKey.trim() && model.trim())
-  const updateActiveCanvas = useCallback(
-    (updater: (canvas: WorkflowCanvas) => WorkflowCanvas) => {
-      setCanvases((currentCanvases) =>
-        currentCanvases.map((canvas) =>
-          canvas.id === activeCanvas?.id
-            ? { ...updater(canvas), updatedAt: Date.now() }
-            : canvas
-        )
-      )
-    },
-    [activeCanvas?.id]
-  )
-
-  const setNodes = useCallback(
-    (updater: StateUpdater<WorkflowNode[]>) => {
-      updateActiveCanvas((canvas) => ({
-        ...canvas,
-        nodes: resolveUpdater(updater, canvas.nodes),
-      }))
-    },
-    [updateActiveCanvas]
-  )
-
-  const setEdges = useCallback(
-    (updater: StateUpdater<WorkflowEdge[]>) => {
-      updateActiveCanvas((canvas) => ({
-        ...canvas,
-        edges: resolveUpdater(updater, canvas.edges),
-      }))
-    },
-    [updateActiveCanvas]
-  )
-
-  const setPromptNodePrompt = useCallback(
-    (nodeId: string, updater: StateUpdater<string>) => {
-      setNodes((currentNodes) =>
-        currentNodes.map((node) => {
-          if (node.id !== nodeId || node.type !== 'prompt') return node
-
-          const nextPrompt = resolveUpdater(updater, getWorkflowNodePrompt(node))
-          return {
-            ...node,
-            data: {
-              ...node.data,
-              prompt: nextPrompt,
-            },
-          }
-        })
-      )
-    },
-    [setNodes]
-  )
-
-  const setPromptNodeOptimizationPreset = useCallback(
-    (nodeId: string, nextPreset: PromptOptimizationPreset) => {
-      setNodes((currentNodes) =>
-        currentNodes.map((node) =>
-          node.id === nodeId && node.type === 'prompt'
-            ? {
-                ...node,
-                data: {
-                  ...node.data,
-                  promptOptimizationPreset: nextPreset,
-                },
-              }
-            : node
-        )
-      )
-    },
-    [setNodes]
-  )
-
-  const setGenerationMode = useCallback(
-    (nextMode: 'text' | 'image') => {
-      updateActiveCanvas((canvas) => ({ ...canvas, generationMode: nextMode }))
-    },
-    [updateActiveCanvas]
-  )
-
-  const setAssetNodeReferenceImages = useCallback(
-    (nodeId: string, updater: StateUpdater<ReferenceImage[]>) => {
-      updateActiveCanvas((canvas) => ({
-        ...canvas,
-        referenceImages: [],
-        nodes: canvas.nodes.map((node) => {
-          if (node.id !== nodeId || node.type !== 'asset') return node
-
-          const currentImages = getWorkflowNodeReferenceImages(node)
-          const nextImages = normalizeAssetNodeReferenceImages(resolveUpdater(updater, currentImages))
-
-          return {
-            ...node,
-            data: nextImages.length > 0 ? { referenceImages: nextImages } : {},
-          }
-        }),
-      }))
-    },
-    [updateActiveCanvas]
-  )
-
-  const setStyleNodeSelection = useCallback(
-    (nodeId: string, selectedStyleId: string) => {
-      updateActiveCanvas((canvas) => ({
-        ...canvas,
-        nodes: canvas.nodes.map((node) =>
-          node.id === nodeId && node.type === 'style'
-            ? {
-                ...node,
-                data: selectedStyleId ? { selectedStyleId } : {},
-              }
-            : node
-        ),
-      }))
-      const style = styleOptions.find((item) => item.id === selectedStyleId)
-      setStatus(style ? `已选择风格：${style.name}` : '风格已清空')
-    },
-    [styleOptions, updateActiveCanvas]
-  )
-
-  const loadStyleCategory = useCallback(
-    async (categoryName: string) => {
-      if (!categoryName) return
-      if (loadedStyleCategoriesRef.current.has(categoryName)) return
-      if (loadingStyleCategoriesRef.current.has(categoryName)) return
-
-      const category = styleCategories.find((item) => item.name === categoryName)
-      if (!category) return
-
-      loadingStyleCategoriesRef.current.add(categoryName)
-      setIsLoadingStyles(true)
-      try {
-        const result = await bridge.listStyleCategory(category)
-        const loadedStyles = result.styles
-        setStyles((current) => {
-          const nextById = new Map(current.map((style) => [style.id, style]))
-          loadedStyles.forEach((style) => nextById.set(style.id, style))
-          return [...nextById.values()]
-        })
-        setStyleSummaries((current) => {
-          const nextById = new Map(current.map((style) => [style.id, style]))
-          loadedStyles.forEach((style) => nextById.set(style.id, style))
-          return [...nextById.values()]
-        })
-        loadedStyleCategoriesRef.current.add(categoryName)
-      } catch (err) {
-        const message = err instanceof Error ? err.message : String(err)
-        setStatus(message)
-      } finally {
-        loadingStyleCategoriesRef.current.delete(categoryName)
-        setIsLoadingStyles(loadingStyleCategoriesRef.current.size > 0)
-      }
-    },
-    [styleCategories]
-  )
-
-  const onNodesChange = useCallback(
-    (changes: NodeChange<WorkflowNode>[]) => {
-      setNodes((currentNodes) => applyNodeChanges(changes, currentNodes))
-    },
-    [setNodes]
-  )
-
-  const onEdgesChange = useCallback(
-    (changes: EdgeChange<WorkflowEdge>[]) => {
-      setEdges((currentEdges) => applyEdgeChanges(changes, currentEdges))
-    },
-    [setEdges]
-  )
-
-  const sortedModels = useMemo(
-    () =>
-      [...models].sort((a, b) => {
-        const diff = imageModelScore(a) - imageModelScore(b)
-        return diff || a.id.localeCompare(b.id)
-      }),
-    [models]
-  )
-
-  useEffect(() => {
-    void getSettings()
-      .then((settings) => {
-        setTextBaseUrl(settings.textBaseUrl || settings.baseUrl || DEFAULT_TEXT_BASE_URL)
-        setImageBaseUrl(settings.imageBaseUrl || settings.baseUrl || DEFAULT_IMAGE_BASE_URL)
-        setImageRetryCount(normalizeImageRetryCount(settings.imageRetryCount))
-        setPersistApiKey(Boolean(settings.persistApiKey))
-        setThemeMode(settings.themeMode || 'system')
-        setTextModel(settings.textModel || DEFAULT_TEXT_MODEL)
-        if (settings.persistApiKey && settings.apiKey) setApiKey(settings.apiKey)
-        if (settings.persistApiKey && settings.codexApiKey) setCodexApiKey(settings.codexApiKey)
-      })
-      .finally(() => setHasLoadedSettings(true))
-    void refreshImages()
-  }, [])
-
-  useEffect(() => {
-    if (!hasLoadedSettings || isConfigured || currentView === 'console') return
-    setError('')
-    setCurrentView('console')
-  }, [currentView, hasLoadedSettings, isConfigured])
-
-  useEffect(() => {
-    if (!notice) return
-    const timer = window.setTimeout(() => setNotice(null), 7000)
-    return () => window.clearTimeout(timer)
-  }, [notice])
-
-  useEffect(() => {
-    if (isConfigured) setNotice(null)
-  }, [isConfigured])
-
-  useEffect(() => {
-    const mediaQuery = window.matchMedia(CANVAS_DRAWER_AUTO_OPEN_QUERY)
-    setIsCanvasDrawerOpen(mediaQuery.matches)
-
-    function syncCanvasDrawerState(event: MediaQueryListEvent) {
-      if (hasManuallyToggledCanvasDrawerRef.current) return
-      setIsCanvasDrawerOpen(event.matches)
-    }
-
-    mediaQuery.addEventListener('change', syncCanvasDrawerState)
-    return () => mediaQuery.removeEventListener('change', syncCanvasDrawerState)
-  }, [])
-
-  useEffect(() => {
-    if (!isSidebarDrawerOpen) return
-
-    function closeOnEscape(event: KeyboardEvent) {
-      if (event.key === 'Escape') setIsSidebarDrawerOpen(false)
-    }
-
-    window.addEventListener('keydown', closeOnEscape)
-    return () => window.removeEventListener('keydown', closeOnEscape)
-  }, [isSidebarDrawerOpen])
-
-  useEffect(() => {
-    let cancelled = false
-    setIsLoadingStyles(true)
-    void bridge.listStyles()
-      .then((library) => {
-        if (cancelled) return
-        setStyles([])
-        setStyleSummaries(
-          library.styles.map((style) => ({ ...style, styleJson: style.styleJson || {} }))
-        )
-        setStyleCategories(library.categories)
-      })
-      .catch((err) => {
-        if (cancelled) return
-        const message = err instanceof Error ? err.message : String(err)
-        setStatus(message)
-      })
-      .finally(() => {
-        if (!cancelled) setIsLoadingStyles(false)
-      })
-
-    return () => {
-      cancelled = true
-    }
-  }, [])
-
-  useEffect(() => {
-    if (!activeCanvas && canvases[0]) {
-      setActiveCanvasId(canvases[0].id)
-      return
-    }
-
-    if (activeCanvas && activeCanvas.id !== activeCanvasId) {
-      setActiveCanvasId(activeCanvas.id)
-    }
-  }, [activeCanvas, activeCanvasId, canvases])
-
-  useEffect(() => {
-    if (!renamingCanvasId) return
-    canvasListRenameInputRef.current?.focus()
-    canvasListRenameInputRef.current?.select()
-  }, [renamingCanvasId])
-
-  useEffect(() => {
-    if (currentView !== 'advanced') return
-    initializeAdvancedSketchCanvas()
-  }, [currentView])
-
-  useEffect(() => {
-    if (!advancedSelectedStyle) return
-    if (advancedSelectedStyle.category !== advancedStyleCategory) {
-      setAdvancedStyleCategory(advancedSelectedStyle.category)
-    }
-  }, [advancedSelectedStyle, advancedStyleCategory])
-
-  useEffect(() => {
-    if (!advancedStyleCategory) return
-    void loadStyleCategory(advancedStyleCategory)
-  }, [advancedStyleCategory, loadStyleCategory])
-
-  useEffect(() => {
-    if (!advancedSelectedStyleId) return
-    if (!styles.some((style) => style.id === advancedSelectedStyleId)) {
-      setAdvancedSelectedStyleId('')
-    }
-  }, [advancedSelectedStyleId, styles])
-
-  useEffect(() => {
-    try {
-      window.localStorage.setItem(
-        WORKFLOW_CANVASES_STORAGE_KEY,
-        JSON.stringify(serializeWorkflowCanvases(canvases))
-      )
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err)
-      if (/quota/i.test(message)) {
-        setStatus('画布已切换到磁盘缓存保存')
-      } else {
-        setError(message)
-      }
-    }
-  }, [canvases])
-
-  useEffect(() => {
-    let cancelled = false
-
-    void listReferenceImageBlobs()
-      .then((blobs) => {
-        if (cancelled || blobs.length === 0) return
-        setCanvases((current) => hydrateWorkflowCanvases(current, blobs))
-      })
-      .catch(() => {})
-
-    return () => {
-      cancelled = true
-    }
-  }, [])
-
-  useEffect(() => {
-    if (referenceImageBlobSignature === lastSavedReferenceImageBlobSignatureRef.current) return
-    lastSavedReferenceImageBlobSignatureRef.current = referenceImageBlobSignature
-    void saveReferenceImageBlobs(referenceImageBlobs)
-  }, [referenceImageBlobSignature, referenceImageBlobs])
-
-  useEffect(() => {
-    if (activeCanvas?.id) {
-      window.localStorage.setItem(ACTIVE_CANVAS_STORAGE_KEY, activeCanvas.id)
-    }
-  }, [activeCanvas?.id])
-
-  useEffect(() => {
-    const query = window.matchMedia('(prefers-color-scheme: dark)')
-    const applyTheme = () => {
-      const nextTheme =
-        themeMode === 'system' ? (query.matches ? 'dark' : 'light') : themeMode
-      setResolvedTheme(nextTheme)
-      document.documentElement.dataset.theme = nextTheme
-      document.documentElement.dataset.themeMode = themeMode
-    }
-
-    applyTheme()
-    query.addEventListener('change', applyTheme)
-    return () => query.removeEventListener('change', applyTheme)
-  }, [themeMode])
-
-  useEffect(() => {
-    if (!previewImage) return
-
-    function closeOnEscape(event: KeyboardEvent) {
-      if (event.key === 'Escape') setPreviewImage(null)
-    }
-
-    window.addEventListener('keydown', closeOnEscape)
-    return () => window.removeEventListener('keydown', closeOnEscape)
-  }, [previewImage])
-
-  useEffect(() => {
-    if (!flowInstance) return
-
-    let resizeTimer = 0
-    const refit = () => {
-      window.clearTimeout(resizeTimer)
-      resizeTimer = window.setTimeout(() => {
-        flowInstance.fitView({
-          padding: window.innerWidth > 1500 ? 0.18 : 0.1,
-          duration: 260,
-        })
-      }, 120)
-    }
-
-    refit()
-    window.addEventListener('resize', refit)
-    return () => {
-      window.clearTimeout(resizeTimer)
-      window.removeEventListener('resize', refit)
-    }
-  }, [activeCanvas?.id, flowInstance, resolvedTheme])
-
-  useEffect(() => {
-    let isCancelled = false
-    if (!previewImage) {
-      setPreviewImageDimensions(null)
-      return
-    }
-
-    if (previewImage.width && previewImage.height) {
-      setPreviewImageDimensions({ width: previewImage.width, height: previewImage.height })
-      return
-    }
-
-    setPreviewImageDimensions(null)
-    void getImageDimensions(previewImage.src)
-      .then((dimensions) => {
-        if (!isCancelled) setPreviewImageDimensions(dimensions)
-      })
-      .catch(() => {
-        if (!isCancelled) setPreviewImageDimensions(null)
-      })
-
-    return () => {
-      isCancelled = true
-    }
-  }, [previewImage])
-
-  async function refreshImages() {
-    setImages(await listImages())
-  }
-
-  function setCanvasGenerationTask(
-    canvasId: string,
-    task: Pick<ImageGenerationTask, 'taskId' | 'status' | 'updatedAt' | 'createdAt'> | null
-  ) {
-    setCanvases((currentCanvases) =>
-      currentCanvases.map((canvas) =>
-        canvas.id === canvasId
-          ? {
-              ...canvas,
-              generationTaskId:
-                task && (task.status === 'queued' || task.status === 'running')
-                  ? task.taskId
-                  : undefined,
-              generationTaskStatus:
-                task && (task.status === 'queued' || task.status === 'running')
-                  ? task.status
-                  : undefined,
-              generationTaskUpdatedAt:
-                task && (task.status === 'queued' || task.status === 'running')
-                  ? task.updatedAt || task.createdAt
-                  : undefined,
-              updatedAt: Date.now(),
-            }
-          : canvas
-      )
-    )
-  }
-
-  function clearCanvasGenerationTask(canvasId: string) {
-    setCanvasGenerationTask(canvasId, null)
-  }
-
-  async function buildLocalImageRecords(
-    images: Array<{ src: string; revisedPrompt?: string }>,
-    context: {
-      prompt: string
-      model: string
-      size: string
-      quality: string
-      mode: 'text' | 'image'
-      referenceImageNames?: string[]
-    }
-  ) {
-    const createdAt = Date.now()
-    return Promise.all(
-      images.map(async (item, index) => {
-        let dimensions: { width: number; height: number } | null = null
-        try {
-          dimensions = await getImageDimensions(item.src)
-        } catch {
-          dimensions = null
-        }
-
-        const mimeType = dataUrlMimeType(item.src)
-        return {
-          id: newImageId(index),
-          src: item.src,
-          prompt: context.prompt,
-          model: context.model,
-          size: context.size,
-          quality: context.quality,
-          createdAt,
-          revisedPrompt: item.revisedPrompt,
-          mode: context.mode,
-          referenceImageNames: context.referenceImageNames,
-          width: dimensions?.width,
-          height: dimensions?.height,
-          mimeType,
-          byteSize: estimateDataUrlBytes(item.src),
-        }
-      })
-    )
-  }
-
-  async function persistCompletedTaskResult(
-    taskId: string,
-    generatedImages: Array<{ src: string; revisedPrompt?: string }>,
-    context: {
-      prompt: string
-      model: string
-      size: string
-      quality: string
-      mode: 'text' | 'image'
-      referenceImageNames?: string[]
-      canvasId?: string
-      generateNodeId?: string
-    }
-  ) {
-    const records = await buildLocalImageRecords(generatedImages, context)
-    await saveImages(records)
-    if (context.canvasId && records[0]) {
-      setCanvases((currentCanvases) =>
-        currentCanvases.map((canvas) =>
-          canvas.id === context.canvasId
-            ? {
-                ...canvas,
-                latestImageId: records[0].id,
-                nodes: context.generateNodeId
-                  ? canvas.nodes.map((node) =>
-                      node.id === context.generateNodeId && node.type === 'generate'
-                        ? {
-                            ...node,
-                            data: {
-                              ...node.data,
-                              latestImageId: records[0].id,
-                            },
-                          }
-                        : node
-                    )
-                  : canvas.nodes,
-                generationTaskId: undefined,
-                generationTaskStatus: undefined,
-                generationTaskUpdatedAt: undefined,
-                updatedAt: Date.now(),
-              }
-            : canvas
-        )
-      )
-    }
-    await refreshImages()
-    return records
-  }
-
-  async function handleSaveSettings() {
-    await saveSettings({
-      baseUrl: imageBaseUrl,
-      textBaseUrl,
-      imageBaseUrl,
-      persistApiKey,
-      apiKey,
-      codexApiKey,
-      imageRetryCount,
-      textModel,
-      themeMode,
-    })
-    setStatus(persistApiKey ? '设置已保存' : '设置已保存，API Key 未落盘')
-  }
-
-  async function handleResetConnectionSettings() {
-    setError('')
-    setTextBaseUrl(DEFAULT_TEXT_BASE_URL)
-    setImageBaseUrl(DEFAULT_IMAGE_BASE_URL)
-    setApiKey('')
-    setCodexApiKey('')
-    setImageRetryCount(DEFAULT_IMAGE_RETRY_COUNT)
-    setPersistApiKey(false)
-    setModel(DEFAULT_MODEL)
-    setTextModel(DEFAULT_TEXT_MODEL)
-    setModels([])
-    await saveSettings({
-      baseUrl: DEFAULT_IMAGE_BASE_URL,
-      textBaseUrl: DEFAULT_TEXT_BASE_URL,
-      imageBaseUrl: DEFAULT_IMAGE_BASE_URL,
-      persistApiKey: false,
-      apiKey: '',
-      codexApiKey: '',
-      imageRetryCount: DEFAULT_IMAGE_RETRY_COUNT,
-      textModel: DEFAULT_TEXT_MODEL,
-      themeMode,
-    })
-    setStatus('连接配置已重设，API Key 已清除')
-  }
-
-  async function handleThemeChange(nextThemeMode: ThemeMode) {
-    setThemeMode(nextThemeMode)
-    await saveSettings({
-      baseUrl: imageBaseUrl,
-      textBaseUrl,
-      imageBaseUrl,
-      persistApiKey,
-      apiKey,
-      codexApiKey,
-      imageRetryCount,
-      textModel,
-      themeMode: nextThemeMode,
-    })
-    setStatus('主题已切换')
-  }
-
-  async function handleOpenConsole() {
-    await bridge.openExternal(CONSOLE_URL)
-  }
-
-  async function handleExportBackup() {
-    const backup = await exportBackup()
-    const date = new Date(backup.exportedAt).toISOString().slice(0, 10)
-    downloadJsonFile(backup, `gpt-image-tools-backup-${date}.json`)
-    setStatus('本地备份已导出')
-  }
-
-  async function handleImportBackup(file: File) {
-    try {
-      const text = await file.text()
-      const importedCount = await importBackup(JSON.parse(text))
-      const settings = await getSettings()
-      setTextBaseUrl(settings.textBaseUrl || settings.baseUrl || DEFAULT_TEXT_BASE_URL)
-      setImageBaseUrl(settings.imageBaseUrl || settings.baseUrl || DEFAULT_IMAGE_BASE_URL)
-      setImageRetryCount(normalizeImageRetryCount(settings.imageRetryCount))
-      setPersistApiKey(Boolean(settings.persistApiKey))
-      setThemeMode(settings.themeMode || 'system')
-      setTextModel(settings.textModel || DEFAULT_TEXT_MODEL)
-      setApiKey('')
-      setCodexApiKey('')
-      await refreshImages()
-      setStatus(`已导入 ${importedCount} 张图片，API Key 未从备份恢复`)
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err)
-      setError(message)
-      setStatus('导入备份失败')
-    }
-  }
-
-  async function addReferenceFiles(nodeId: string, files: FileList | File[]) {
-    const imageFiles = [...files].filter((file) => file.type.startsWith('image/'))
-    if (imageFiles.length === 0) return
-
-    const selectedFile = imageFiles[0]
-    if (!selectedFile) return
-    const baseTitle = referenceTitleFromFileName(selectedFile.name, 0)
-
-    const nextImage: ReferenceImage = {
-      id: createLocalId('reference'),
-      name: selectedFile.name,
-      title: createUniqueReferenceTitle(baseTitle, getCanvasReferenceNameEntries(activeCanvas)),
-      type: selectedFile.type || 'image/png',
-      dataUrl: await fileToDataUrl(selectedFile),
-    }
-
-    setAssetNodeReferenceImages(nodeId, [nextImage])
-    setGenerationMode('image')
-    if (imageFiles.length > 1) {
-      setStatus('每个参考图节点只能放 1 张图片，已保留第一张')
-    }
-  }
-
-  async function handleSimpleReferenceFiles(files?: FileList | null) {
-    const imageFiles = [...(files || [])].filter((file) => file.type.startsWith('image/'))
-    if (imageFiles.length === 0) return
-
-    const nextImages: ReferenceImage[] = await Promise.all(
-      imageFiles.slice(0, 4).map(async (file, index) => ({
-        id: createLocalId(`quick-reference-${index}`),
-        name: file.name,
-        title: referenceTitleFromFileName(file.name, index),
-        type: file.type || 'image/png',
-        dataUrl: await fileToDataUrl(file),
-      }))
-    )
-
-    setSimpleReferenceImages(nextImages)
-    setStatus(
-      nextImages.length > 1
-        ? `已添加 ${nextImages.length} 张快速参考图，生成时会自动使用图生图`
-        : '已添加快速参考图，生成时会自动使用图生图'
-    )
-  }
-
-  function removeSimpleReferenceImage(id: string) {
-    setSimpleReferenceImages((current) => current.filter((image) => image.id !== id))
-  }
-
-  function clearSimpleReferenceImages() {
-    setSimpleReferenceImages([])
-  }
-
-  async function selectGalleryReferenceImage(nodeId: string, image: LocalImageRecord) {
-    if (selectingGalleryReferenceImageId) return
-
-    setSelectingGalleryReferenceImageId(image.id)
-    try {
-      const dataUrl = await imageSourceToDataUrl(image.src)
-      const type = mimeTypeFromDataUrl(dataUrl)
-      const baseTitle =
-        normalizeReferenceTitle(image.revisedPrompt || image.prompt) || '图库图片'
-      const nextImage: ReferenceImage = {
-        id: createLocalId('reference'),
-        name: `${baseTitle}.${imageExtensionFromMimeType(type)}`,
-        title: createUniqueReferenceTitle(
-          baseTitle,
-          getCanvasReferenceNameEntries(activeCanvas).filter(
-            (entry) => entry.nodeId !== nodeId
-          )
-        ),
-        type,
-        dataUrl,
-      }
-
-      setAssetNodeReferenceImages(nodeId, [nextImage])
-      setGenerationMode('image')
-      setGalleryReferencePickerNodeId('')
-      setStatus('已从图库选择参考图')
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err)
-      setError(message)
-      setStatus('选择图库参考图失败')
-    } finally {
-      setSelectingGalleryReferenceImageId('')
-    }
-  }
-
-  function removeReferenceImage(nodeId: string, id: string) {
-    const willRemoveLastReference =
-      referenceImages.length <= 1 && referenceImages.some((image) => image.id === id)
-    setAssetNodeReferenceImages(nodeId, (current) =>
-      current.filter((image) => image.id !== id)
-    )
-    if (willRemoveLastReference) setGenerationMode('text')
-  }
-
-  function updateReferenceImageTitle(nodeId: string, id: string, title: string) {
-    const currentNode = nodes.find(
-      (node) => node.id === nodeId && node.type === 'asset'
-    )
-    const currentImage = getWorkflowNodeReferenceImages(currentNode).find(
-      (image) => image.id === id
-    )
-    const nextTitle =
-      normalizeReferenceTitle(title) ||
-      normalizeReferenceTitle(currentImage?.name || '') ||
-      '参考图'
-    if (
-      activeCanvas &&
-      isReferenceTitleTaken(activeCanvas, nextTitle, referenceImageOwnerId(id))
-    ) {
-      setError(`画布内已存在图片名称：${nextTitle}`)
-      setStatus('图片名称不能重复')
-      return
-    }
-
-    setError('')
-    setAssetNodeReferenceImages(nodeId, (current) =>
-      current.map((image) =>
-        image.id === id ? { ...image, title: nextTitle } : image
-      )
-    )
-  }
-
-  function updateGenerateNodeOutputTitle(nodeId: string, title: string) {
-    const nextTitle = normalizeReferenceTitle(title) || defaultGenerateOutputTitle(nodeId)
-    if (
-      activeCanvas &&
-      isReferenceTitleTaken(activeCanvas, nextTitle, generateOutputOwnerId(nodeId))
-    ) {
-      setError(`画布内已存在图片名称：${nextTitle}`)
-      setStatus('图片名称不能重复')
-      return
-    }
-
-    setError('')
-    setNodes((currentNodes) =>
-      currentNodes.map((node) =>
-        node.id === nodeId && node.type === 'generate'
-          ? {
-              ...node,
-              data: {
-                ...node.data,
-                outputTitle: nextTitle,
-              },
-            }
-          : node
-      )
-    )
-  }
-
-  async function handleFetchModels() {
-    setError('')
-    setStatus('正在获取模型...')
-    setIsLoadingModels(true)
-
-    try {
-      const nextModels = await bridge.listModels({ baseUrl: imageBaseUrl, apiKey })
-      setModels(nextModels)
-
-      const preferred =
-        nextModels.find((item) => item.id === DEFAULT_MODEL) ||
-        [...nextModels].sort((a, b) => imageModelScore(a) - imageModelScore(b))[0]
-
-      if (preferred) setModel(preferred.id)
-      setStatus(`已获取 ${nextModels.length} 个模型`)
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err)
-      setError(message)
-      setStatus('获取模型失败')
-    } finally {
-      setIsLoadingModels(false)
-    }
-  }
-
-  async function handleOptimizePrompt(promptNodeId: string) {
-    const promptNode = nodes.find((node) => node.id === promptNodeId && node.type === 'prompt')
-    const currentPrompt = getWorkflowNodePrompt(promptNode).trim()
-    const promptOptimizationPreset = getWorkflowNodePromptOptimizationPreset(promptNode)
-    if (!currentPrompt) {
-      setError('请先输入需要优化的提示词')
-      return
-    }
-    if (!codexApiKey.trim()) {
-      setError('请先在控制台填写文本模型 API Key，或点击连接配置里的登录获取文本模型秘钥')
-      setStatus('缺少提示词优化秘钥')
-      return
-    }
-
-    setError('')
-    if (optimizingPromptNodeIds.has(promptNodeId)) return
-
-    setStatus('正在优化提示词...')
-    setOptimizingPromptNodeIds((current) => new Set(current).add(promptNodeId))
-
-    try {
-      const optimizedPrompt = await bridge.optimizePrompt({
-        baseUrl: textBaseUrl,
-        apiKey: codexApiKey,
-        model: textModel.trim() || DEFAULT_TEXT_MODEL,
-        prompt: currentPrompt,
-        mode: generationMode,
-        optimizationPreset: promptOptimizationPreset,
-      })
-      const promptReferenceImages = getPromptMentionReferenceImages(
-        promptNodeId,
-        activeCanvas,
-        images
-      )
-      setPromptNodePrompt(
-        promptNodeId,
-        normalizeOptimizedPromptMentions(optimizedPrompt, promptReferenceImages)
-      )
-      setStatus('提示词已优化')
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err)
-      setError(message)
-      setStatus('提示词优化失败')
-    } finally {
-      setOptimizingPromptNodeIds((current) => {
-        const next = new Set(current)
-        next.delete(promptNodeId)
-        return next
-      })
-    }
-  }
-
-  async function handleOptimizeSimplePrompt(target: 'simple' | 'advanced' = 'simple') {
-    const currentPrompt = (target === 'advanced' ? advancedPrompt : simplePrompt).trim()
-    if (!currentPrompt) {
-      setError('请先输入需要优化的图片描述')
-      return
-    }
-    if (!codexApiKey.trim()) {
-      setError('请先在控制台填写文本模型 API Key，或点击连接配置里的登录获取文本模型秘钥')
-      setStatus('缺少提示词优化秘钥')
-      return
-    }
-    if (isOptimizingSimplePrompt) return
-
-    setError('')
-    setStatus('正在优化提示词...')
-    setIsOptimizingSimplePrompt(true)
-
-    try {
-      const optimizedPrompt = await bridge.optimizePrompt({
-        baseUrl: textBaseUrl,
-        apiKey: codexApiKey,
-        model: textModel.trim() || DEFAULT_TEXT_MODEL,
-        prompt: currentPrompt,
-        mode: 'text',
-        optimizationPreset:
-          target === 'advanced'
-            ? advancedPromptOptimizationPreset
-            : simplePromptOptimizationPreset,
-      })
-      if (target === 'advanced') {
-        setAdvancedPrompt(optimizedPrompt)
-      } else {
-        setSimplePrompt(optimizedPrompt)
-      }
-      setStatus('提示词已优化')
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err)
-      setError(message)
-      setStatus('提示词优化失败')
-    } finally {
-      setIsOptimizingSimplePrompt(false)
-    }
-  }
-
-  async function handleOptimizeAdvancedNegativePrompt() {
-    const currentPrompt = advancedPrompt.trim()
-    if (!currentPrompt) {
-      setError('请先填写图片描述，再优化负面提示词')
-      setStatus('缺少图片描述')
-      return
-    }
-    if (!codexApiKey) {
-      setError('请先点击连接配置里的登录，获取 codex 满血高速 分组秘钥')
-      setStatus('缺少提示词优化秘钥')
-      return
-    }
-    if (isOptimizingNegativePrompt) return
-
-    setError('')
-    setStatus('正在优化负面提示词...')
-    setIsOptimizingNegativePrompt(true)
-
-    try {
-      const optimizedNegativePrompt = await bridge.optimizeNegativePrompt({
-        baseUrl: textBaseUrl,
-        apiKey: codexApiKey,
-        model: textModel.trim() || DEFAULT_TEXT_MODEL,
-        prompt: currentPrompt,
-        currentNegativePrompt: advancedNegativePrompt,
-      })
-      setAdvancedNegativePrompt(optimizedNegativePrompt)
-      setStatus('负面提示词已优化')
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err)
-      setError(message)
-      setStatus('负面提示词优化失败')
-    } finally {
-      setIsOptimizingNegativePrompt(false)
-    }
-  }
-
-  async function handleGenerate(targetGenerateNodeId?: string) {
-    const generatingCanvasId = activeCanvas?.id
-    const duplicateTitles = getDuplicateCanvasReferenceTitles(activeCanvas)
-    if (duplicateTitles.length > 0) {
-      setError(`画布内图片名称重复：${duplicateTitles.join('、')}`)
-      setStatus('请先修改重复的图片名称')
-      return
-    }
-    const generationSize = selectedGenerationSize()
-    if (!generationSize) {
-      setError(SAFE_SIZE_ERROR_MESSAGE)
-      return
-    }
-    setError('')
-    const generatedRecordsByNode = new Map<string, LocalImageRecord[]>()
-
-    const generateNodes = nodes.filter((node) => node.type === 'generate')
-    const targetNode =
-      (targetGenerateNodeId
-        ? generateNodes.find((node) => node.id === targetGenerateNodeId)
-        : generateNodes[0]) || null
-
-    try {
-      if (!targetNode) throw new Error('当前画布没有图片生成节点')
-
-      const executeGenerateNode = async (
-        generateNode: WorkflowNode,
-        visiting: Set<string>
-      ): Promise<LocalImageRecord[]> => {
-        const cachedRecords = generatedRecordsByNode.get(generateNode.id)
-        if (cachedRecords) return cachedRecords
-        if (visiting.has(generateNode.id)) {
-          throw new Error('流程图中存在图片生成循环连接，请断开循环后重试')
-        }
-
-        visiting.add(generateNode.id)
-        const promptEdge = edges.find(
-          (edge) =>
-            edge.target === generateNode.id &&
-            edge.targetHandle === 'prompt' &&
-            nodes.find((node) => node.id === edge.source)?.type === 'prompt'
-        )
-        const promptNode =
-          (promptEdge ? nodes.find((node) => node.id === promptEdge.source) : null) ||
-          nodes.find((node) => node.type === 'prompt') ||
-          null
-        if (!promptNode) throw new Error('请先创建文字描述节点并连接到图片生成节点')
-        const finalPrompt = getWorkflowNodePrompt(promptNode).trim()
-        if (!finalPrompt) throw new Error('请先输入提示词')
-
-        const styleNodes = nodes.filter((node) => node.type === 'style')
-        const selectedStyleIdsInCanvas = styleNodes
-          .map((node) => getWorkflowNodeSelectedStyleId(node))
-          .filter(Boolean)
-        const missingStyleCategoryNames = [
-          ...new Set(
-            selectedStyleIdsInCanvas
-              .map(
-                (styleId) =>
-                  styleSummaries.find((style) => style.id === styleId)?.category || ''
-              )
-              .filter(
-                (categoryName) =>
-                  categoryName && !loadedStyleCategoriesRef.current.has(categoryName)
-              )
-          ),
-        ]
-        for (const categoryName of missingStyleCategoryNames) {
-          await loadStyleCategory(categoryName)
-        }
-
-        const upstreamGenerateEdges = edges.filter(
-          (edge) =>
-            edge.target === promptNode.id &&
-            edge.sourceHandle === 'generated-image' &&
-            (edge.targetHandle === 'reference' || edge.targetHandle?.startsWith('reference-')) &&
-            nodes.find((node) => node.id === edge.source)?.type === 'generate'
-        )
-        const upstreamReferenceImages: ReferenceImage[] = []
-        for (const edge of upstreamGenerateEdges) {
-          const upstreamNode = nodes.find((node) => node.id === edge.source)
-          if (!upstreamNode) continue
-          setStatus(`正在先生成依赖图片：${upstreamNode.id}`)
-          const upstreamRecords = await executeGenerateNode(upstreamNode, visiting)
-          const firstRecord = upstreamRecords[0]
-          if (!firstRecord) continue
-          const outputTitle = getWorkflowNodeOutputTitle(upstreamNode)
-          upstreamReferenceImages.push({
-            id: `generated-${firstRecord.id}`,
-            name: `${outputTitle}.png`,
-            title: outputTitle,
-            type: 'image/png',
-            dataUrl: firstRecord.src,
-          })
-        }
-
-        const promptReferenceImages = getPromptAssetReferenceImages(promptNode.id, activeCanvas)
-        const availableReferenceImages = [
-          ...promptReferenceImages,
-          ...upstreamReferenceImages,
-        ]
-        const resolvedReferences = resolvePromptReferenceImages(finalPrompt, availableReferenceImages)
-        const hasGeneratedPromptConnection = upstreamGenerateEdges.length > 0
-        const mentionsGeneratedReference = resolvedReferences.images.some((image) =>
-          upstreamReferenceImages.some((referenceImage) => referenceImage.id === image.id)
-        )
-        if (mentionsGeneratedReference && !hasGeneratedPromptConnection) {
-          throw new Error('请先把图片生成节点连接到文字描述节点，再使用 @引用生成图')
-        }
-        if (resolvedReferences.missing.length > 0) {
-          throw new Error(`没有找到这些 @参考图：${resolvedReferences.missing.join('、')}`)
-        }
-
-        const selectedStyleIds = getPromptSelectedStyleIds(promptNode.id, activeCanvas)
-        const selectedStyles = selectedStyleIds
-          .map((styleId) => styles.find((style) => style.id === styleId))
-          .filter((style): style is StyleOption => Boolean(style))
-        if (selectedStyleIds.length > 0 && selectedStyles.length < selectedStyleIds.length) {
-          throw new Error('风格协议仍在加载，请稍后重试')
-        }
-        const submittedPrompt = promptWithStyles(finalPrompt, selectedStyles)
-        const flowReferenceImages = [...resolvedReferences.images, ...upstreamReferenceImages]
-          .filter((image, index, list) => list.findIndex((item) => item.id === image.id) === index)
-        const effectiveGenerationMode: 'text' | 'image' =
-          flowReferenceImages.length > 0 ? 'image' : 'text'
-        const referenceImageNames =
-          effectiveGenerationMode === 'image'
-            ? flowReferenceImages.map((image) => image.title || image.name)
-            : undefined
-        const generationContext = {
-          prompt: submittedPrompt,
-          model,
-          size: generationSize,
-          quality,
-          mode: effectiveGenerationMode,
-          referenceImageNames,
-          canvasId: generatingCanvasId || undefined,
-          generateNodeId: generateNode.id,
-        }
-
-        setStatus(
-          effectiveGenerationMode === 'image'
-            ? `正在执行 ${generateNode.id}，使用 ${flowReferenceImages.length} 张参考图${selectedStyles.length > 0 ? `和 ${selectedStyles.length} 个风格` : ''}...`
-            : selectedStyles.length > 0
-              ? `正在执行 ${generateNode.id}，使用 ${selectedStyles.length} 个风格...`
-              : `正在执行 ${generateNode.id}...`
-        )
-        let currentTaskId = ''
-        const result = await bridge.generateImages({
-          baseUrl: imageBaseUrl,
-          apiKey,
-          mode: effectiveGenerationMode,
-          model,
-          prompt: submittedPrompt,
-          size: generationSize,
-          quality,
-          count,
-          responseFormat,
-          inputFidelity,
-          retryCount: imageRetryCount,
-          referenceImages:
-            effectiveGenerationMode === 'image' ? flowReferenceImages : undefined,
-          onTaskUpdate: (task) => {
-            currentTaskId = task.taskId
-            if (generationContext.canvasId) {
-              if (task.status === 'queued' || task.status === 'running') {
-                setCanvasGenerationTask(generationContext.canvasId, task)
-              } else {
-                clearCanvasGenerationTask(generationContext.canvasId)
-              }
-            }
-            setStatus(taskStatusLabel(task.status))
-          },
-        })
-
-        if (!currentTaskId) {
-          throw new Error('任务提交成功，但没有返回任务 ID')
-        }
-        const records = await persistCompletedTaskResult(
-          currentTaskId,
-          result.images,
-          generationContext
-        )
-        generatedRecordsByNode.set(generateNode.id, records)
-        visiting.delete(generateNode.id)
-        return records
-      }
-
-      const records = await executeGenerateNode(targetNode, new Set())
-      setStatus(`已生成 ${records.length} 张图片，结果已保存到本地图库`)
-    } catch (err) {
-      logGenerationError('workflow generation', err)
-      setError(generationErrorMessage(err))
-      if (generatingCanvasId) clearCanvasGenerationTask(generatingCanvasId)
-      setStatus('生成失败')
-    }
-  }
-
-  function enterConfiguredView(view: AppView) {
-    if (view !== 'console' && !isConfigured) {
-      setError('')
-      setNotice({
-        id: window.performance.now(),
-        message: CONFIGURATION_NOTICE_MESSAGE,
-      })
-      setCurrentView('console')
-      return
-    }
-    setError('')
-    setNotice(null)
-    setCurrentView(view)
-  }
-
-  function enterSidebarView(view: AppView) {
-    enterConfiguredView(view)
-    setIsSidebarDrawerOpen(false)
-  }
-
-  function selectedGenerationSizeFor(
-    mode: 'preset' | 'custom',
-    presetSize: string,
-    customWidth: string,
-    customHeight: string,
-    activeModel = model
-  ) {
-    if (mode === 'preset') {
-      return isSafeImageSizeForModel(presetSize, activeModel) ? presetSize : DEFAULT_SAFE_IMAGE_SIZE
-    }
-
-    const width = Number(customWidth)
-    const height = Number(customHeight)
-    if (!Number.isInteger(width) || !Number.isInteger(height)) return ''
-    const customSize = `${width}x${height}`
-    return isSafeImageSizeForModel(customSize, activeModel) ? customSize : ''
-  }
-
-  function selectedGenerationSize() {
-    return selectedGenerationSizeFor(sizeMode, size, customSizeWidth, customSizeHeight, model)
-  }
-
-  function selectedAdvancedGenerationSize() {
-    return selectedGenerationSizeFor(
-      advancedSizeMode,
-      advancedSize,
-      advancedCustomSizeWidth,
-      advancedCustomSizeHeight,
-      advancedModel
-    )
-  }
-
-  function handleSizeSelect(
-    nextValue: string,
-    state = {
-      size,
-      setSize,
-      setSizeMode,
-      setCustomSizeWidth,
-      setCustomSizeHeight,
-    },
-    activeModel = model
-  ) {
-    if (nextValue === CUSTOM_SIZE_VALUE) {
-      const parsedSize = parseSizeValue(state.size)
-      if (parsedSize) {
-        state.setCustomSizeWidth(String(parsedSize.width))
-        state.setCustomSizeHeight(String(parsedSize.height))
-      }
-      state.setSizeMode('custom')
-      return
-    }
-
-    state.setSizeMode('preset')
-    state.setSize(isSafeImageSizeForModel(nextValue, activeModel) ? nextValue : DEFAULT_SAFE_IMAGE_SIZE)
-  }
-
-  function renderSizeField(
-    state = {
-      size,
-      sizeMode,
-      customSizeWidth,
-      customSizeHeight,
-      setSize,
-      setSizeMode,
-      setCustomSizeWidth,
-      setCustomSizeHeight,
-    },
-    activeModel = model
-  ) {
-    const availableSizeOptions = safeSizeOptionsForModel(activeModel)
-    const presetSelectValue = availableSizeOptions.some((option) => option.value === state.size)
-      ? state.size
-      : DEFAULT_SAFE_IMAGE_SIZE
-    const isOfficialOnlySizeMode = isGptImageModel(activeModel) && !isGptImage2FamilyModel(activeModel)
-    return (
-      <div className='field size-field'>
-        <label className='size-select-label'>
-          <span>尺寸</span>
-          <select
-            value={state.sizeMode === 'custom' ? CUSTOM_SIZE_VALUE : presetSelectValue}
-            onChange={(event) => handleSizeSelect(event.target.value, state, activeModel)}
-          >
-            {availableSizeOptions.map((item) => (
-              <option key={item.value} value={item.value}>
-                {sizeOptionLabel(item)}
-              </option>
-            ))}
-            <option value={CUSTOM_SIZE_VALUE}>自定义比例 · 手动输入</option>
-          </select>
-        </label>
-        {isOfficialOnlySizeMode ? (
-          <small className='custom-size-hint'>当前模型只开放官方三档；SumAPI 的 gpt-image-2 可用 2K/4K。</small>
-        ) : null}
-        {state.sizeMode === 'custom' ? (
-          <>
-            <div className='custom-size-grid'>
-              <label>
-                <span>宽</span>
-                <input
-                  type='number'
-                  min='64'
-                  max='8192'
-                  step='1'
-                  value={state.customSizeWidth}
-                  onChange={(event) => state.setCustomSizeWidth(event.target.value)}
-                  aria-label='自定义宽度'
-                />
-              </label>
-              <label>
-                <span>高</span>
-                <input
-                  type='number'
-                  min='64'
-                  max='8192'
-                  step='1'
-                  value={state.customSizeHeight}
-                  onChange={(event) => state.setCustomSizeHeight(event.target.value)}
-                  aria-label='自定义高度'
-                />
-              </label>
-            </div>
-            <small className='custom-size-hint'>仅放行安全预设中的精确尺寸。</small>
-          </>
-        ) : null}
-      </div>
-    )
-  }
-
-  function initializeAdvancedSketchCanvas() {
-    const canvas = advancedSketchCanvasRef.current
-    if (!canvas) return
-    const context = canvas.getContext('2d')
-    if (!context) return
-    canvas.width = ADVANCED_SKETCH_WIDTH
-    canvas.height = ADVANCED_SKETCH_HEIGHT
-    context.fillStyle = '#ffffff'
-    context.fillRect(0, 0, canvas.width, canvas.height)
-
-    if (advancedSketchImageDataUrl) {
-      const image = new Image()
-      image.onload = () => {
-        context.drawImage(image, 0, 0, canvas.width, canvas.height)
-      }
-      image.src = advancedSketchImageDataUrl
-    }
-  }
-
-  function saveAdvancedSketchSnapshot(canvas: HTMLCanvasElement) {
-    setAdvancedSketchImageDataUrl(canvas.toDataURL('image/png'))
-  }
-
-  function fillAdvancedSketchCanvasWhite() {
-    const canvas = advancedSketchCanvasRef.current
-    const context = canvas?.getContext('2d')
-    if (!canvas || !context) return
-    context.fillStyle = '#ffffff'
-    context.fillRect(0, 0, canvas.width, canvas.height)
-  }
-
-  function ensureAdvancedSketchCanvasReady() {
-    const canvas = advancedSketchCanvasRef.current
-    if (!canvas) return
-    if (canvas.width !== ADVANCED_SKETCH_WIDTH || canvas.height !== ADVANCED_SKETCH_HEIGHT) {
-      canvas.width = ADVANCED_SKETCH_WIDTH
-      canvas.height = ADVANCED_SKETCH_HEIGHT
-    }
-    if (!isAdvancedSketchDirty && !advancedSketchImageDataUrl) {
-      const context = canvas.getContext('2d')
-      if (!context) return
-      context.fillStyle = '#ffffff'
-      context.fillRect(0, 0, canvas.width, canvas.height)
-    }
-  }
-
-  function advancedSketchPoint(event: ReactPointerEvent<HTMLCanvasElement>) {
-    const canvas = event.currentTarget
-    const rect = canvas.getBoundingClientRect()
+async function prepareReferenceForRequest(image: UploadedReference) {
+  const originalBytes = dataUrlByteLength(image.dataUrl);
+  const longestEdge = Math.max(image.width || 0, image.height || 0);
+  if (originalBytes <= MAX_REFERENCE_REQUEST_BYTES && longestEdge <= REFERENCE_REQUEST_MAX_EDGE) {
     return {
-      x: ((event.clientX - rect.left) / rect.width) * canvas.width,
-      y: ((event.clientY - rect.top) / rect.height) * canvas.height,
-    }
+      name: image.name,
+      type: image.type,
+      dataUrl: image.dataUrl,
+      originalBytes,
+      requestBytes: originalBytes,
+      compressed: false,
+    };
   }
 
-  function drawAdvancedSketchLine(
-    context: CanvasRenderingContext2D,
-    from: { x: number; y: number },
-    to: { x: number; y: number }
-  ) {
-    context.strokeStyle = '#101828'
-    context.lineWidth = 5
-    context.lineCap = 'round'
-    context.lineJoin = 'round'
-    context.beginPath()
-    context.moveTo(from.x, from.y)
-    context.lineTo(to.x, to.y)
-    context.stroke()
-  }
-
-  function handleAdvancedSketchPointerDown(event: ReactPointerEvent<HTMLCanvasElement>) {
-    ensureAdvancedSketchCanvasReady()
-    const context = event.currentTarget.getContext('2d')
-    if (!context) return
-    event.currentTarget.setPointerCapture(event.pointerId)
-    const point = advancedSketchPoint(event)
-    isDrawingAdvancedSketchRef.current = true
-    lastAdvancedSketchPointRef.current = point
-    drawAdvancedSketchLine(context, point, point)
-    setIsAdvancedSketchDirty(true)
-    setAdvancedSketchDescription('')
-  }
-
-  function handleAdvancedSketchPointerMove(event: ReactPointerEvent<HTMLCanvasElement>) {
-    if (!isDrawingAdvancedSketchRef.current) return
-    const context = event.currentTarget.getContext('2d')
-    const previousPoint = lastAdvancedSketchPointRef.current
-    if (!context || !previousPoint) return
-    const nextPoint = advancedSketchPoint(event)
-    drawAdvancedSketchLine(context, previousPoint, nextPoint)
-    lastAdvancedSketchPointRef.current = nextPoint
-  }
-
-  function stopAdvancedSketchDrawing(event: ReactPointerEvent<HTMLCanvasElement>) {
-    isDrawingAdvancedSketchRef.current = false
-    lastAdvancedSketchPointRef.current = null
-    saveAdvancedSketchSnapshot(event.currentTarget)
-    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
-      event.currentTarget.releasePointerCapture(event.pointerId)
-    }
-  }
-
-  function handleClearAdvancedSketch() {
-    fillAdvancedSketchCanvasWhite()
-    setAdvancedSketchImageDataUrl('')
-    setIsAdvancedSketchDirty(false)
-    setAdvancedSketchDescription('')
-  }
-
-  function advancedSketchDataUrl() {
-    if (!isAdvancedSketchDirty) return ''
-    return advancedSketchCanvasRef.current?.toDataURL('image/png') || advancedSketchImageDataUrl
-  }
-
-  async function describeAdvancedSketch(prompt: string) {
-    const sketchDataUrl = advancedSketchDataUrl()
-    if (!sketchDataUrl) return ''
-    if (!codexApiKey) {
-      throw new Error('请先点击连接配置里的登录，获取用于识别草图的文本模型秘钥')
-    }
-
-    setStatus('正在识别分镜草图...')
-    setIsAnalyzingAdvancedSketch(true)
-    try {
-      const description = await bridge.describeSketch({
-        baseUrl: textBaseUrl,
-        apiKey: codexApiKey,
-        model: textModel.trim() || DEFAULT_TEXT_MODEL,
-        prompt,
-        sketchDataUrl,
-        sketchWeight: advancedSketchWeight,
-      })
-      setAdvancedSketchDescription(description)
-      return description
-    } finally {
-      setIsAnalyzingAdvancedSketch(false)
-    }
-  }
-
-  function promptWithAdvancedSketch(prompt: string, sketchDescription: string) {
-    const description = sketchDescription.trim()
-    if (!description) return prompt
-    return `${prompt}
-
-【分镜草图约束】
-${description}`
-  }
-
-  async function handleSimpleGenerate(options?: {
-    includeAdvancedSketch?: boolean
-    includeAdvancedStyle?: boolean
-  }) {
-    const includeAdvancedControls = Boolean(
-      options?.includeAdvancedSketch || options?.includeAdvancedStyle
-    )
-    const prompt = (includeAdvancedControls ? advancedPrompt : simplePrompt).trim()
-    if (!isConfigured) {
-      setError('')
-      setCurrentView('console')
-      return
-    }
-    const generationSize = includeAdvancedControls
-      ? selectedAdvancedGenerationSize()
-      : selectedGenerationSize()
-    if (!generationSize) {
-      setError(SAFE_SIZE_ERROR_MESSAGE)
-      return
-    }
-    if (!prompt) {
-      setError('请先输入图片描述')
-      return
-    }
-
-    setError('')
-    setGenerationSuccess(null)
-    const setGenerating = includeAdvancedControls ? setIsAdvancedGenerating : setIsQuickGenerating
-    setGenerating(true)
-    setStatus('正在生成图片...')
-
-    try {
-      const controlledPrompt = includeAdvancedControls
-        ? promptWithCreativity(
-            promptWithBackground(
-              promptWithNegativePrompt(prompt, advancedNegativePrompt),
-              advancedBackground
-            ),
-            advancedCreativity
-          )
-        : prompt
-      const sketchDescription = options?.includeAdvancedSketch
-        ? await describeAdvancedSketch(controlledPrompt)
-        : ''
-      const sketchPrompt = promptWithAdvancedSketch(controlledPrompt, sketchDescription)
-      const selectedStyles =
-        options?.includeAdvancedStyle && advancedSelectedStyle ? [advancedSelectedStyle] : []
-      const finalPrompt = promptWithStyles(sketchPrompt, selectedStyles, advancedStyleWeight)
-      const result = await bridge.generateImages({
-        baseUrl: imageBaseUrl,
-        apiKey,
-        mode:
-          !includeAdvancedControls && simpleReferenceImages.length > 0
-            ? 'image'
-            : 'text',
-        model: includeAdvancedControls ? advancedModel : model,
-        prompt: finalPrompt,
-        size: generationSize,
-        quality: includeAdvancedControls ? advancedQuality : quality,
-        count: includeAdvancedControls ? advancedCount : count,
-        responseFormat: includeAdvancedControls ? advancedResponseFormat : responseFormat,
-        background: includeAdvancedControls ? advancedBackground : undefined,
-        referenceImages:
-          !includeAdvancedControls && simpleReferenceImages.length > 0
-            ? simpleReferenceImages
-            : undefined,
-        retryCount: imageRetryCount,
-        onTaskUpdate: (task) => setStatus(taskStatusLabel(task.status)),
-      })
-      const records = await buildLocalImageRecords(result.images, {
-        prompt: finalPrompt,
-        model: includeAdvancedControls ? advancedModel : model,
-        size: generationSize,
-        quality: includeAdvancedControls ? advancedQuality : quality,
-        mode:
-          !includeAdvancedControls && simpleReferenceImages.length > 0
-            ? 'image'
-            : 'text',
-        referenceImageNames:
-          !includeAdvancedControls && simpleReferenceImages.length > 0
-            ? simpleReferenceImages.map((image) => image.title || image.name)
-            : undefined,
-      })
-      await saveImages(records)
-      await refreshImages()
-      setStatus(`已生成 ${records.length} 张图片`)
-      setGenerationSuccess({
-        title: '生成完成',
-        message: `${includeAdvancedControls ? '高级生成' : '快速生成'}已生成 ${records.length} 张图片，结果已保存到图库。`,
-      })
-    } catch (err) {
-      logGenerationError(includeAdvancedControls ? 'advanced generation' : 'quick generation', err)
-      setError(generationErrorMessage(err))
-      setGenerationSuccess(null)
-      setStatus('生成失败')
-    } finally {
-      setGenerating(false)
-    }
-  }
-
-  async function handleCommerceImageFiles(kind: 'product' | 'style', files?: FileList | null) {
-    const selectedFiles = Array.from(files || [])
-    if (selectedFiles.length === 0) return
-    const invalidFile = selectedFiles.find((file) => !file.type.startsWith('image/'))
-    if (invalidFile) {
-      setError('请上传图片文件')
-      return
-    }
-
-    const limitedFiles =
-      kind === 'product'
-        ? selectedFiles.slice(0, Math.max(0, MAX_COMMERCE_PRODUCT_IMAGES - commerceProductImages.length))
-        : selectedFiles.slice(0, 1)
-    if (kind === 'product' && limitedFiles.length < selectedFiles.length) {
-      setStatus(`商品白底图最多上传 ${MAX_COMMERCE_PRODUCT_IMAGES} 张，已保留前 ${limitedFiles.length} 张`)
-    }
-    if (limitedFiles.length === 0) return
-
-    const images: ReferenceImage[] = await Promise.all(
-      limitedFiles.map(async (file, index) => ({
-        id: createLocalId(`commerce-${kind}-${index}`),
-        name: file.name,
-        title:
-          kind === 'product'
-            ? `商品白底图 ${commerceProductImages.length + index + 1}`
-            : '目标风格图',
-        type: 'image/jpeg',
-        dataUrl: await fileToCommerceReferenceDataUrl(file),
-      }))
-    )
-
-    setError('')
-    if (kind === 'product') {
-      setCommerceProductImages((current) =>
-        [...current, ...images].slice(0, MAX_COMMERCE_PRODUCT_IMAGES).map((image, index) => ({
-          ...image,
-          title: `商品白底图 ${index + 1}`,
-        }))
-      )
-    } else {
-      setCommerceStyleImage(images[0])
-    }
-  }
-
-  async function handleCommerceGenerate(kind: 'main' | 'detail') {
-    const isDetail = kind === 'detail'
-    const outputLabel = isDetail ? '电商详情图' : '电商主图'
-    if (!isConfigured) {
-      setError('')
-      setCurrentView('console')
-      return
-    }
-    const generationSize = selectedGenerationSize()
-    if (!generationSize) {
-      setError(SAFE_SIZE_ERROR_MESSAGE)
-      return
-    }
-    if (commerceProductImages.length === 0) {
-      setError('请先上传至少 1 张商品白底图')
-      return
-    }
-    if (!commerceStyleImage) {
-      setError('请先上传目标风格图')
-      return
-    }
-    if (!effectiveCommerceCategoryPath) {
-      setError('请先选择完整的商品品类，或填写自定义商品品类')
-      return
-    }
-    if (!codexApiKey) {
-      setError(`请先点击连接配置里的登录，获取用于${isDetail ? '详情图' : '主图'}提示词预热的文本模型秘钥`)
-      setStatus('缺少提示词预热秘钥')
-      return
-    }
-    const description = commerceDescription.trim()
-
-    setError('')
-    setIsCommerceGenerating(true)
-    setStatus(`正在分析目标${isDetail ? '详情' : ''}风格图...`)
-
-    try {
-      let preparedPrompt = ''
+  let best = image.dataUrl;
+  const edges = [REFERENCE_REQUEST_MAX_EDGE, 1280, 1024];
+  const qualities = [0.82, 0.72, 0.62];
+  for (const edge of edges) {
+    for (const quality of qualities) {
       try {
-        const promptPayload = {
-          baseUrl: textBaseUrl,
-          apiKey: codexApiKey,
-          model: textModel.trim() || DEFAULT_TEXT_MODEL,
-          description,
-          categoryPath: effectiveCommerceCategoryPath,
-          productImages: commerceProductImages,
-          styleImage: commerceStyleImage,
+        const next = await renderReferenceForRequest(image.dataUrl, edge, "image/webp", quality);
+        if (dataUrlByteLength(next) < dataUrlByteLength(best)) best = next;
+        if (dataUrlByteLength(next) <= MAX_REFERENCE_REQUEST_BYTES) {
+          const type = mimeFromDataUrl(next, "image/webp");
+          return {
+            name: withImageExtension(image.name, type),
+            type,
+            dataUrl: next,
+            originalBytes,
+            requestBytes: dataUrlByteLength(next),
+            compressed: true,
+          };
         }
-        preparedPrompt = isDetail
-          ? await bridge.prepareCommerceDetailPrompt(promptPayload)
-          : await bridge.prepareCommerceMainPrompt(promptPayload)
-      } catch (promptError) {
-        const promptMessage = promptError instanceof Error ? promptError.message : String(promptError)
-        console.warn('Commerce prompt preparation failed, falling back to local prompt:', promptMessage)
-        setStatus('提示词预热失败，正在使用本地结构化提示词继续生成...')
+      } catch {
+        // Try the next compression setting.
       }
-      const basePrompt = preparedPrompt.trim() || (isDetail ? buildCommerceDetailPrompt(description, effectiveCommerceCategoryPath) : buildCommerceMainPrompt(description, effectiveCommerceCategoryPath))
-      const prompt = buildCommerceEditPrompt(basePrompt, commerceProductImages.length, kind)
-      setStatus(
-        commerceProductImages.length > 1
-          ? '提示词预热完成，正在合成商品多角度参考图...'
-          : `提示词预热完成，正在生成${outputLabel}...`
-      )
-      const productReferenceImage = await buildCommerceProductReferenceImage(commerceProductImages)
-      const referenceImages = [productReferenceImage, commerceStyleImage]
-      setStatus(`正在生成${outputLabel}...`)
-
-      const result = await bridge.generateImages({
-        baseUrl: imageBaseUrl,
-        apiKey,
-        mode: 'image',
-        model,
-        prompt,
-        size: generationSize,
-        quality,
-        count,
-        responseFormat,
-        inputFidelity,
-        retryCount: imageRetryCount,
-        referenceImages,
-        onTaskUpdate: (task) => setStatus(taskStatusLabel(task.status)),
-      })
-      const records = await buildLocalImageRecords(result.images, {
-        prompt,
-        model,
-        size: generationSize,
-        quality,
-        mode: 'image',
-        referenceImageNames: referenceImages.map((image) => image.title || image.name),
-      })
-      await saveImages(records)
-      await refreshImages()
-      setStatus(`已生成 ${records.length} 张${outputLabel}`)
-    } catch (err) {
-      logGenerationError('commerce generation', err)
-      setError(generationErrorMessage(err))
-      setStatus('生成失败')
-    } finally {
-      setIsCommerceGenerating(false)
     }
   }
 
-  async function handleDeleteImage(id: string) {
-    await deleteImage(id)
-    await refreshImages()
+  const type = mimeFromDataUrl(best, image.type);
+  return {
+    name: withImageExtension(image.name, type),
+    type,
+    dataUrl: best,
+    originalBytes,
+    requestBytes: dataUrlByteLength(best),
+    compressed: best !== image.dataUrl,
+  };
+}
+
+async function referenceImagesForRequest(images: UploadedReference[]) {
+  const prepared = await Promise.all(images.map(prepareReferenceForRequest));
+  return prepared.map((image) => ({
+    name: image.name,
+    type: image.type,
+    dataUrl: image.dataUrl,
+  }));
+}
+
+function preparedReferenceMetaForLog(images: Array<{ name: string; type: string; dataUrl: string }>) {
+  return images.map((image, index) => ({
+    index,
+    name: image.name,
+    type: image.type,
+    requestBytes: dataUrlByteLength(image.dataUrl),
+  }));
+}
+
+function sanitizeFilename(value: string) {
+  return value
+    .replace(/[\\/:*?"<>|]+/g, "-")
+    .replace(/\s+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "")
+    .slice(0, 80) || "image";
+}
+
+function recordFilename(record: Job) {
+  const size = record.width && record.height ? `${record.width}x${record.height}` : record.params.size || "image";
+  return `${formatFileDate(record.createdAt)}-${String(record.index).padStart(2, "0")}-${sanitizeFilename(record.model)}-${size}.${record.params.outputFormat}`;
+}
+
+function getProtocolDefinition(protocol: ImageProtocol) {
+  return PROTOCOLS.find((item) => item.value === protocol) || PROTOCOLS[0];
+}
+
+function isImageProtocol(value: string | null): value is ImageProtocol {
+  return PROTOCOLS.some((protocol) => protocol.value === value);
+}
+
+function normalizeApiBaseUrl(value: string | null | undefined) {
+  return DEFAULT_API_URL;
+}
+
+function getAspectDefinition(value: string) {
+  return ASPECT_RATIOS.find((ratio) => ratio.value === value) || ASPECT_RATIOS[0];
+}
+
+function normalizedImageModelId(model = "") {
+  return model.replace(/^models\//, "").trim().toLowerCase();
+}
+
+function isGptImage2Model(model = "") {
+  const normalized = normalizedImageModelId(model);
+  return normalized === GPT_IMAGE_2_MODEL || normalized === GPT_IMAGE_2_FAMILY_MODEL || normalized.includes("image-2");
+}
+
+function isGptImage2ProModel(model = "") {
+  return normalizedImageModelId(model) === GPT_IMAGE_2_PRO_MODEL;
+}
+
+function isGemini3ProImageModel(model = "") {
+  return normalizedImageModelId(model) === GEMINI_3_PRO_IMAGE_MODEL;
+}
+
+function protocolForImageModel(model: string, fallback: ImageProtocol = DEFAULT_PROTOCOL): ImageProtocol {
+  if (isGemini3ProImageModel(model)) return "gemini-native";
+  if (isGptImage2Model(model)) {
+    return fallback === "openai-images" ? "openai-images" : "custom-openai";
+  }
+  return fallback;
+}
+
+function protocolMatchesImageModel(protocol: ImageProtocol, model = "") {
+  if (!model) return true;
+  if (isGemini3ProImageModel(model)) return protocol === "gemini-native";
+  if (isGptImage2Model(model)) return protocol === "custom-openai" || protocol === "openai-images";
+  return true;
+}
+
+function imageModelLaneLabel(model: string) {
+  if (isGemini3ProImageModel(model)) return "Gemini 原生接口";
+  if (isGptImage2ProModel(model)) return "GPT Image 2 Pro 接口";
+  if (isGptImage2Model(model)) return "GPT Image 2 接口";
+  return "图片模型";
+}
+
+function getSupportedAspectRatios(protocol: ImageProtocol, model = "") {
+  if (isGemini3ProImageModel(model) && protocol === "gemini-native") {
+    return [...GEMINI_3_PRO_SUPPORTED_ASPECT_RATIOS];
+  }
+  if (isGptImage2Model(model)) {
+    return [...GPT_IMAGE_2_PRO_SUPPORTED_ASPECT_RATIOS];
+  }
+  return getProtocolDefinition(protocol).supportedAspectRatios;
+}
+
+function isAspectRatioSupported(protocol: ImageProtocol, aspectRatio: string, model = "") {
+  return getSupportedAspectRatios(protocol, model).includes(aspectRatio);
+}
+
+function isImageResolution(value: unknown): value is ImageResolution {
+  return value === "1K" || value === "2K" || value === "4K";
+}
+
+function safeImageResolution(value: unknown): ImageResolution {
+  return isImageResolution(value) ? value : DEFAULT_IMAGE_RESOLUTION;
+}
+
+function scaleSize(size: string, resolution: ImageResolution) {
+  const [width, height] = size.split("x").map((item) => Number(item));
+  const multiplier = IMAGE_RESOLUTIONS.find((item) => item.value === resolution)?.multiplier || 1;
+  if (!Number.isFinite(width) || !Number.isFinite(height) || multiplier === 1) return size;
+  const MAX_EDGE = 3840;
+  let w = Math.round(width * multiplier);
+  let h = Math.round(height * multiplier);
+  const longest = Math.max(w, h);
+  if (longest > MAX_EDGE) {
+    const factor = MAX_EDGE / longest;
+    w = Math.round(width * multiplier * factor);
+    h = Math.round(height * multiplier * factor);
+  }
+  return `${w}x${h}`;
+}
+
+function baseSizeForModel(aspectRatio: string, protocol: ImageProtocol, model = "") {
+  if (isGemini3ProImageModel(model) && protocol === "gemini-native") {
+    return GEMINI_3_PRO_SIZE_BY_RATIO[aspectRatio] || GEMINI_3_PRO_SIZE_BY_RATIO["1:1"];
+  }
+  return SIZE_BY_RATIO[aspectRatio] || SIZE_BY_RATIO["1:1"];
+}
+
+function resolveSize(aspectRatio: string, resolution: ImageResolution = DEFAULT_IMAGE_RESOLUTION) {
+  const baseSize = SIZE_BY_RATIO[aspectRatio] || SIZE_BY_RATIO["1:1"];
+  return scaleSize(baseSize, safeImageResolution(resolution));
+}
+
+function resolveRequestSize(
+  aspectRatio: string,
+  resolution: ImageResolution = DEFAULT_IMAGE_RESOLUTION,
+  protocol: ImageProtocol,
+  model = "",
+) {
+  const baseSize = baseSizeForModel(aspectRatio, protocol, model);
+  if (isGptImage2Model(model)) {
+    const res = safeImageResolution(resolution);
+    if (res === "4K") return PRO_4K_SIZE_BY_RATIO[aspectRatio] || PRO_4K_SIZE_BY_RATIO["1:1"];
+    if (res === "2K") return PRO_2K_SIZE_BY_RATIO[aspectRatio] || PRO_2K_SIZE_BY_RATIO["1:1"];
+    return baseSize;
+  }
+  return scaleSize(baseSize, safeImageResolution(resolution));
+}
+
+function normalizeResolutionForRequest(
+  resolution: ImageResolution,
+  protocol: ImageProtocol,
+  model = "",
+) {
+  return safeImageResolution(resolution);
+}
+
+function normalizeImageParams(params: Partial<ImageParams> = {}): ImageParams {
+  const aspectRatio = typeof params.aspectRatio === "string" ? params.aspectRatio : "1:1";
+  const resolution = safeImageResolution(params.resolution);
+  return {
+    aspectRatio,
+    resolution,
+    size: resolveSize(aspectRatio, resolution),
+    quality: typeof params.quality === "string" ? params.quality : "auto",
+    outputFormat: params.outputFormat === "jpeg" || params.outputFormat === "webp" ? params.outputFormat : "png",
+    batchCount: clampNumber(Number(params.batchCount || 4), 1, 20),
+    concurrency: clampNumber(Number(params.concurrency || 2), 1, 6),
+    retryLimit: Number.isFinite(Number(params.retryLimit)) ? clampNumber(Number(params.retryLimit), 0, 5) : 2,
+    seed: typeof params.seed === "string" ? params.seed : "",
+    negativePrompt: typeof params.negativePrompt === "string" ? params.negativePrompt : "",
+  };
+}
+
+function aspectRatioNumber(aspectRatio?: string) {
+  if (!aspectRatio) return 1;
+  const [width, height] = aspectRatio.split(":").map(Number);
+  if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) return 1;
+  return width / height;
+}
+
+function aspectRatioCss(width?: number, height?: number, fallbackAspectRatio = "1:1") {
+  if (width && height && width > 0 && height > 0) return `${width} / ${height}`;
+  const [fallbackWidth = 1, fallbackHeight = 1] = fallbackAspectRatio.split(":").map(Number);
+  if (!Number.isFinite(fallbackWidth) || !Number.isFinite(fallbackHeight) || fallbackWidth <= 0 || fallbackHeight <= 0) {
+    return "1 / 1";
+  }
+  return `${fallbackWidth} / ${fallbackHeight}`;
+}
+
+function aspectClass(width?: number, height?: number, fallbackAspectRatio = "1:1") {
+  const ratio = width && height && width > 0 && height > 0
+    ? width / height
+    : aspectRatioNumber(fallbackAspectRatio);
+  if (ratio >= 4) return "is-extreme-wide";
+  if (ratio >= 2.1) return "is-wide";
+  if (ratio <= 0.25) return "is-extreme-tall";
+  if (ratio <= 0.55) return "is-tall";
+  if (ratio > 1.15) return "is-landscape";
+  if (ratio < 0.87) return "is-portrait";
+  return "is-square";
+}
+
+function previewStyle(width?: number, height?: number, fallbackAspectRatio = "1:1"): CSSProperties {
+  return {
+    aspectRatio: aspectRatioCss(width, height, fallbackAspectRatio),
+  };
+}
+
+function formatProtocolCapability(protocol: ImageProtocol) {
+  const definition = getProtocolDefinition(protocol);
+  const capabilities = [
+    definition.supportsReferenceImages ? "支持参考图" : "不支持参考图",
+    definition.supportsQuality ? "支持质量" : "不支持质量",
+    definition.supportsOutputFormat ? "支持格式" : "不支持格式",
+  ];
+  return capabilities.join(" · ");
+}
+
+function apiConnectionKey(config: ApiConfig) {
+  return `${config.protocol}|${normalizeApiBaseUrl(config.baseUrl)}|${config.apiKey.trim()}`;
+}
+
+function errorStatus(detail: ErrorDetail) {
+  if (!detail || typeof detail !== "object") return undefined;
+  const record = detail as Record<string, unknown>;
+  if (typeof record.status === "number") return record.status;
+  const error = record.error;
+  if (error && typeof error === "object" && typeof (error as Record<string, unknown>).status === "number") {
+    return (error as Record<string, unknown>).status as number;
+  }
+  return undefined;
+}
+
+function isApiKeyAuthError(detail: ErrorDetail) {
+  const status = errorStatus(detail);
+  if (status === 401 || status === 403) return true;
+  const text = typeof detail === "string" ? detail : JSON.stringify(detail ?? "");
+  return /api key|apikey|unauthorized|forbidden|invalid key|invalid api|无权限|认证|鉴权/i.test(text);
+}
+
+function modelValidationErrorMessage(detail: ErrorDetail) {
+  return isApiKeyAuthError(detail)
+    ? "API Key 错误或无权限，请检查后重试"
+    : formatError(detail);
+}
+
+function formatError(detail: ErrorDetail) {
+  if (!detail) return "未知错误";
+  if (typeof detail === "string") return detail;
+  if (detail instanceof Error) return detail.message;
+  if (typeof detail !== "object") return String(detail);
+
+  const record = detail as Record<string, unknown>;
+  const parts: string[] = [];
+  if (typeof record.status === "number") parts.push(`HTTP ${record.status}`);
+
+  const error = record.error;
+  if (typeof error === "string") {
+    parts.push(error);
+  } else if (error && typeof error === "object") {
+    const errorRecord = error as Record<string, unknown>;
+    if (typeof errorRecord.message === "string") parts.push(errorRecord.message);
+    if (typeof errorRecord.type === "string") parts.push(errorRecord.type);
+    if (typeof errorRecord.code === "string") parts.push(errorRecord.code);
   }
 
-  async function handleClearImages() {
-    await clearImages()
-    await refreshImages()
+  if (parts.length > 0) return parts.join(" · ");
+  try {
+    return JSON.stringify(detail, null, 2).slice(0, 1200);
+  } catch {
+    return String(detail);
+  }
+}
+
+type HistoryPage = {
+  records: HistoryRecord[];
+  nextCursor?: number;
+  hasMore: boolean;
+};
+
+type PendingQueueItem = {
+  job: Job;
+  config: ApiConfig;
+};
+
+function historyRecordToJob(record: HistoryRecord): Job {
+  return {
+    id: record.id,
+    requestId: record.requestId,
+    batchId: record.batchId || record.id,
+    index: record.index || 1,
+    total: record.total || 1,
+    protocol: record.protocol || DEFAULT_PROTOCOL,
+    prompt: record.prompt,
+    model: record.model,
+    params: normalizeImageParams(record.params),
+    referenceImages: normalizeStoredReferenceImages(record.referenceImages),
+    submittedReferenceImages: record.submittedReferenceImages,
+    status: record.status,
+    createdAt: record.createdAt,
+    startedAt: record.startedAt,
+    finishedAt: record.finishedAt,
+    durationMs: record.durationMs,
+    imageBlob: record.imageBlob,
+    imageUrl: record.objectUrl,
+    width: record.width,
+    height: record.height,
+    revisedPrompt: record.revisedPrompt,
+    errorDetail: record.errorDetail,
+    agentId: record.agentId,
+    agentName: record.agentName,
+    agentScenario: record.agentScenario,
+    promptVariant: record.promptVariant,
+  };
+}
+
+function sortGenerationRecords(records: Job[]) {
+  return [...records].sort((a, b) => {
+    if (b.createdAt !== a.createdAt) return b.createdAt - a.createdAt;
+    if (a.index !== b.index) return a.index - b.index;
+    return b.id.localeCompare(a.id);
+  });
+}
+
+function sortHistoryRecords(records: HistoryRecord[]) {
+  return [...records].sort((a, b) => {
+    if (b.createdAt !== a.createdAt) return b.createdAt - a.createdAt;
+    return b.id.localeCompare(a.id);
+  });
+}
+
+function mergeHistoryRecords(current: HistoryRecord[], incoming: HistoryRecord[]) {
+  const seen = new Set(current.map((record) => record.id));
+  const next = [...current];
+  incoming.forEach((record) => {
+    if (seen.has(record.id)) {
+      const existing = current.find((item) => item.id === record.id);
+      if (record.objectUrl && record.objectUrl !== existing?.objectUrl) URL.revokeObjectURL(record.objectUrl);
+      return;
+    }
+    seen.add(record.id);
+    next.push(record);
+  });
+  return sortHistoryRecords(next);
+}
+
+function mergeHistoricalJobs(current: Job[], incoming: Job[]) {
+  const seen = new Set(current.map((record) => record.id));
+  const next = [...current];
+  incoming.forEach((record) => {
+    if (seen.has(record.id)) {
+      const existing = current.find((item) => item.id === record.id);
+      if (record.imageUrl && record.imageUrl !== existing?.imageUrl) URL.revokeObjectURL(record.imageUrl);
+      return;
+    }
+    seen.add(record.id);
+    next.push(record);
+  });
+  return sortGenerationRecords(next);
+}
+
+function openDb(): Promise<IDBDatabase> {
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.open(DB_NAME, 3);
+    request.onupgradeneeded = () => {
+      const db = request.result;
+      const store = db.objectStoreNames.contains(STORE_NAME)
+        ? request.transaction!.objectStore(STORE_NAME)
+        : db.createObjectStore(STORE_NAME, { keyPath: "id" });
+      if (!store.indexNames.contains("createdAt")) {
+        store.createIndex("createdAt", "createdAt");
+      }
+      if (!db.objectStoreNames.contains(CANVAS_STATE_STORE)) {
+        db.createObjectStore(CANVAS_STATE_STORE);
+      }
+      if (!db.objectStoreNames.contains(CANVAS_IMAGES_STORE)) {
+        db.createObjectStore(CANVAS_IMAGES_STORE);
+      }
+    };
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
+}
+
+async function getHistoryRecordsPage({
+  limit = HISTORY_PAGE_SIZE,
+  beforeCreatedAt,
+}: {
+  limit?: number;
+  beforeCreatedAt?: number;
+} = {}): Promise<HistoryPage> {
+  const db = await openDb();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(STORE_NAME, "readonly");
+    const store = tx.objectStore(STORE_NAME);
+    const toHistoryRecord = (record: StoredHistoryRecord): HistoryRecord => ({
+      ...record,
+      params: normalizeImageParams(record.params),
+      referenceImages: normalizeStoredReferenceImages(record.referenceImages),
+      objectUrl: record.imageBlob ? URL.createObjectURL(record.imageBlob) : undefined,
+    });
+    const finish = (records: StoredHistoryRecord[]) => {
+      const page = records.slice(0, limit).map(toHistoryRecord);
+      resolve({
+        records: page,
+        nextCursor: page.at(-1)?.createdAt,
+        hasMore: records.length > limit,
+      });
+    };
+
+    if (!store.indexNames.contains("createdAt")) {
+      const request = store.getAll();
+      request.onsuccess = () => {
+        const records = (request.result as StoredHistoryRecord[])
+          .filter((record) => beforeCreatedAt === undefined || record.createdAt < beforeCreatedAt)
+          .sort((a, b) => b.createdAt - a.createdAt)
+          .slice(0, limit + 1);
+        finish(records);
+      };
+      request.onerror = () => reject(request.error);
+      return;
+    }
+
+    const range = beforeCreatedAt === undefined ? null : IDBKeyRange.upperBound(beforeCreatedAt, true);
+    const request = store.index("createdAt").openCursor(range, "prev");
+    const records: StoredHistoryRecord[] = [];
+    request.onsuccess = () => {
+      const cursor = request.result;
+      if (!cursor || records.length >= limit + 1) {
+        finish(records);
+        return;
+      }
+      records.push(cursor.value as StoredHistoryRecord);
+      cursor.continue();
+    };
+    request.onerror = () => reject(request.error);
+  });
+}
+
+async function saveHistoryRecord(record: StoredHistoryRecord) {
+  const db = await openDb();
+  return new Promise<void>((resolve, reject) => {
+    const tx = db.transaction(STORE_NAME, "readwrite");
+    tx.objectStore(STORE_NAME).put(record);
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
+}
+
+async function deleteHistoryRecord(id: string) {
+  const db = await openDb();
+  return new Promise<void>((resolve, reject) => {
+    const tx = db.transaction(STORE_NAME, "readwrite");
+    tx.objectStore(STORE_NAME).delete(id);
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
+}
+
+async function deleteFailedHistoryRecords() {
+  const db = await openDb();
+  return new Promise<string[]>((resolve, reject) => {
+    const tx = db.transaction(STORE_NAME, "readwrite");
+    const store = tx.objectStore(STORE_NAME);
+    const deletedIds: string[] = [];
+    const request = store.openCursor();
+    request.onsuccess = () => {
+      const cursor = request.result;
+      if (!cursor) return;
+      const record = cursor.value as StoredHistoryRecord;
+      if (record.status === "error") {
+        deletedIds.push(record.id);
+        cursor.delete();
+      }
+      cursor.continue();
+    };
+    tx.oncomplete = () => resolve(deletedIds);
+    tx.onerror = () => reject(tx.error);
+    request.onerror = () => reject(request.error);
+  });
+}
+
+async function clearHistoryRecords() {
+  const db = await openDb();
+  return new Promise<void>((resolve, reject) => {
+    const tx = db.transaction(STORE_NAME, "readwrite");
+    tx.objectStore(STORE_NAME).clear();
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
+}
+
+// ── Canvas IndexedDB Persistence ──
+
+type CanvasPersistedState = {
+  nodes: Array<Omit<CanvasNode, "objectUrl">>;
+  edges: CanvasEdge[];
+  viewport: CanvasViewport;
+  lastSavedAt: number;
+};
+
+async function saveCanvasStateToDB(state: CanvasPersistedState): Promise<void> {
+  const db = await openDb();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(CANVAS_STATE_STORE, "readwrite");
+    tx.objectStore(CANVAS_STATE_STORE).put(state, CANVAS_STATE_KEY);
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
+}
+
+async function loadCanvasStateFromDB(): Promise<CanvasPersistedState | null> {
+  const db = await openDb();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(CANVAS_STATE_STORE, "readonly");
+    const request = tx.objectStore(CANVAS_STATE_STORE).get(CANVAS_STATE_KEY);
+    request.onsuccess = () => resolve(request.result ?? null);
+    request.onerror = () => reject(request.error);
+  });
+}
+
+async function saveCanvasImageToDB(nodeId: string, blob: Blob): Promise<void> {
+  const db = await openDb();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(CANVAS_IMAGES_STORE, "readwrite");
+    tx.objectStore(CANVAS_IMAGES_STORE).put(blob, nodeId);
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
+}
+
+async function loadCanvasImageFromDB(nodeId: string): Promise<Blob | null> {
+  const db = await openDb();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(CANVAS_IMAGES_STORE, "readonly");
+    const request = tx.objectStore(CANVAS_IMAGES_STORE).get(nodeId);
+    request.onsuccess = () => resolve(request.result ?? null);
+    request.onerror = () => reject(request.error);
+  });
+}
+
+async function deleteCanvasImageFromDB(nodeId: string): Promise<void> {
+  const db = await openDb();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(CANVAS_IMAGES_STORE, "readwrite");
+    tx.objectStore(CANVAS_IMAGES_STORE).delete(nodeId);
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
+}
+
+function readFileAsDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result));
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(file);
+  });
+}
+
+function blobToDataUrl(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result));
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(blob);
+  });
+}
+
+function createReferenceThumbnail(dataUrl: string, maxEdge = 160): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    image.onload = () => {
+      const longestEdge = Math.max(image.naturalWidth, image.naturalHeight);
+      const scale = longestEdge > 0 ? Math.min(1, maxEdge / longestEdge) : 1;
+      const width = Math.max(1, Math.round(image.naturalWidth * scale));
+      const height = Math.max(1, Math.round(image.naturalHeight * scale));
+      const canvas = document.createElement("canvas");
+      canvas.width = width;
+      canvas.height = height;
+      const context = canvas.getContext("2d", { alpha: true });
+      if (!context) {
+        reject(new Error("无法创建缩略图"));
+        return;
+      }
+      context.imageSmoothingEnabled = true;
+      context.imageSmoothingQuality = "medium";
+      context.drawImage(image, 0, 0, width, height);
+      try {
+        resolve(canvas.toDataURL("image/webp", 0.72));
+      } catch {
+        resolve(canvas.toDataURL("image/png"));
+      }
+    };
+    image.onerror = () => reject(new Error("无法读取参考图缩略图"));
+    image.src = dataUrl;
+  });
+}
+
+function createSquareThumbnail(dataUrl: string, maxEdge = 1024): Promise<{ dataUrl: string; width: number; height: number }> {
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    image.onload = () => {
+      const naturalWidth = image.naturalWidth;
+      const naturalHeight = image.naturalHeight;
+      const longestEdge = Math.max(naturalWidth, naturalHeight);
+      if (longestEdge > 0 && longestEdge <= maxEdge) {
+        resolve({ dataUrl, width: naturalWidth, height: naturalHeight });
+        return;
+      }
+      const scale = longestEdge > 0 ? Math.min(1, maxEdge / longestEdge) : 1;
+      const width = Math.max(1, Math.round(naturalWidth * scale));
+      const height = Math.max(1, Math.round(naturalHeight * scale));
+      const canvas = document.createElement("canvas");
+      canvas.width = width;
+      canvas.height = height;
+      const context = canvas.getContext("2d", { alpha: true });
+      if (!context) {
+        reject(new Error("无法创建广场压缩图"));
+        return;
+      }
+      context.imageSmoothingEnabled = true;
+      context.imageSmoothingQuality = "high";
+      context.drawImage(image, 0, 0, width, height);
+      try {
+        resolve({ dataUrl: canvas.toDataURL("image/webp", 0.82), width, height });
+      } catch {
+        resolve({ dataUrl: canvas.toDataURL("image/png"), width, height });
+      }
+    };
+    image.onerror = () => reject(new Error("无法读取广场推荐图"));
+    image.src = dataUrl;
+  });
+}
+
+async function fileToReference(file: File): Promise<UploadedReference> {
+  const type = normalizeImageType(file);
+  const baseReference = {
+    id: uid(),
+    name: file.name,
+    type,
+    size: file.size,
+  };
+
+  if (!type.startsWith("image/")) {
+    return {
+      ...baseReference,
+      dataUrl: "",
+      status: "error",
+      message: "不是图片文件",
+    };
   }
 
-  function handleDownloadImage(image: LocalImageRecord, index = 0) {
-    const extension = extensionForMimeType(image.mimeType || dataUrlMimeType(image.src))
-    downloadDataUrl(image.src, `${image.id || `gpt-image-${index + 1}`}.${extension}`)
-    setStatus('已触发图片下载；Codex 内置浏览器可能不支持下载，请在系统浏览器中打开后保存')
+  let dataUrl = "";
+  try {
+    dataUrl = await readFileAsDataUrl(file);
+  } catch {
+    return {
+      ...baseReference,
+      dataUrl: "",
+      status: "error",
+      message: "读取失败",
+    };
   }
 
-  async function handleCopyPreviewPrompt(image: LocalImageRecord) {
-    const text = image.revisedPrompt || image.prompt
+  let dimensions: { width?: number; height?: number } = {};
+  try {
+    dimensions = await getImageSize(dataUrl);
+  } catch {
+    dimensions = {};
+  }
+
+  if (!SUPPORTED_REFERENCE_TYPES.has(type)) {
+    return {
+      ...baseReference,
+      ...dimensions,
+      dataUrl,
+      status: "error",
+      message: `暂不支持 ${formatReferenceType(type)}`,
+    };
+  }
+
+  if (file.size > MAX_REFERENCE_SIZE) {
+    return {
+      ...baseReference,
+      ...dimensions,
+      dataUrl,
+      status: "error",
+      message: `超过 ${formatBytes(MAX_REFERENCE_SIZE)}`,
+    };
+  }
+
+  if (!dimensions.width || !dimensions.height) {
+    return {
+      ...baseReference,
+      dataUrl,
+      status: "error",
+      message: "无法读取尺寸",
+    };
+  }
+
+  let thumbnailDataUrl = dataUrl;
+  try {
+    thumbnailDataUrl = await createReferenceThumbnail(dataUrl);
+  } catch {
+    thumbnailDataUrl = dataUrl;
+  }
+
+  const shortestEdge = Math.min(dimensions.width, dimensions.height);
+  const longestEdge = Math.max(dimensions.width, dimensions.height);
+  if (shortestEdge < MIN_REFERENCE_EDGE) {
+    return {
+      ...baseReference,
+      ...dimensions,
+      dataUrl,
+      thumbnailDataUrl,
+      status: "error",
+      message: `短边小于 ${MIN_REFERENCE_EDGE}px`,
+    };
+  }
+
+  if (longestEdge > LARGE_REFERENCE_EDGE) {
+    return {
+      ...baseReference,
+      ...dimensions,
+      dataUrl,
+      thumbnailDataUrl,
+      status: "warning",
+      message: "尺寸较大",
+    };
+  }
+
+  return {
+    ...baseReference,
+    ...dimensions,
+    dataUrl,
+    thumbnailDataUrl,
+    status: "ready",
+    message: "可用",
+  };
+}
+
+async function dataUrlToBlob(dataUrl: string) {
+  const response = await fetch(dataUrl);
+  return response.blob();
+}
+
+function getImageSize(url: string): Promise<{ width: number; height: number }> {
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    image.onload = () => resolve({ width: image.naturalWidth, height: image.naturalHeight });
+    image.onerror = () => reject(new Error("无法读取图片尺寸"));
+    image.src = url;
+  });
+}
+
+function downloadUrl(url: string, filename: string) {
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = filename;
+  document.body.append(anchor);
+  anchor.click();
+  anchor.remove();
+}
+
+const zipTextEncoder = new TextEncoder();
+const crcTable = Array.from({ length: 256 }, (_, index) => {
+  let value = index;
+  for (let bit = 0; bit < 8; bit += 1) {
+    value = value & 1 ? 0xedb88320 ^ (value >>> 1) : value >>> 1;
+  }
+  return value >>> 0;
+});
+
+function crc32(bytes: Uint8Array) {
+  let crc = 0xffffffff;
+  bytes.forEach((byte) => {
+    crc = crcTable[(crc ^ byte) & 0xff] ^ (crc >>> 8);
+  });
+  return (crc ^ 0xffffffff) >>> 0;
+}
+
+function dosDateTime(value = Date.now()) {
+  const date = new Date(value);
+  const time = (date.getHours() << 11) | (date.getMinutes() << 5) | Math.floor(date.getSeconds() / 2);
+  const day = Math.max(1, date.getDate());
+  const month = date.getMonth() + 1;
+  const year = Math.max(1980, date.getFullYear()) - 1980;
+  return { date: (year << 9) | (month << 5) | day, time };
+}
+
+async function createZipBlob(files: Array<{ name: string; blob: Blob; date?: number }>) {
+  const fileParts: BlobPart[] = [];
+  const centralParts: BlobPart[] = [];
+  let centralSize = 0;
+  let offset = 0;
+
+  for (const file of files) {
+    const bytes = new Uint8Array(await file.blob.arrayBuffer());
+    const nameBytes = zipTextEncoder.encode(file.name);
+    const checksum = crc32(bytes);
+    const { date, time } = dosDateTime(file.date);
+    const localHeader = new Uint8Array(30 + nameBytes.length);
+    const localView = new DataView(localHeader.buffer);
+    localView.setUint32(0, 0x04034b50, true);
+    localView.setUint16(4, 20, true);
+    localView.setUint16(6, 0x0800, true);
+    localView.setUint16(8, 0, true);
+    localView.setUint16(10, time, true);
+    localView.setUint16(12, date, true);
+    localView.setUint32(14, checksum, true);
+    localView.setUint32(18, bytes.length, true);
+    localView.setUint32(22, bytes.length, true);
+    localView.setUint16(26, nameBytes.length, true);
+    localHeader.set(nameBytes, 30);
+    const byteCopy = new Uint8Array(bytes.byteLength);
+    byteCopy.set(bytes);
+    fileParts.push(localHeader.buffer, byteCopy.buffer);
+
+    const centralHeader = new Uint8Array(46 + nameBytes.length);
+    const centralView = new DataView(centralHeader.buffer);
+    centralView.setUint32(0, 0x02014b50, true);
+    centralView.setUint16(4, 20, true);
+    centralView.setUint16(6, 20, true);
+    centralView.setUint16(8, 0x0800, true);
+    centralView.setUint16(10, 0, true);
+    centralView.setUint16(12, time, true);
+    centralView.setUint16(14, date, true);
+    centralView.setUint32(16, checksum, true);
+    centralView.setUint32(20, bytes.length, true);
+    centralView.setUint32(24, bytes.length, true);
+    centralView.setUint16(28, nameBytes.length, true);
+    centralView.setUint32(42, offset, true);
+    centralHeader.set(nameBytes, 46);
+    centralParts.push(centralHeader.buffer);
+    centralSize += centralHeader.byteLength;
+
+    offset += localHeader.length + bytes.length;
+  }
+
+  const endHeader = new Uint8Array(22);
+  const endView = new DataView(endHeader.buffer);
+  endView.setUint32(0, 0x06054b50, true);
+  endView.setUint16(8, files.length, true);
+  endView.setUint16(10, files.length, true);
+  endView.setUint32(12, centralSize, true);
+  endView.setUint32(16, offset, true);
+
+  return new Blob([...fileParts, ...centralParts, endHeader.buffer], { type: "application/zip" });
+}
+
+function serializeError(detail: ErrorDetail) {
+  try {
+    return JSON.stringify(sanitizeClientLogValue(detail), null, 2);
+  } catch {
+    return String(detail);
+  }
+}
+
+async function fetchFrontendBuildVersion(signal?: AbortSignal) {
+  const response = await fetch(`/build-version.json?t=${Date.now()}`, {
+    cache: "no-store",
+    signal,
+  });
+  if (!response.ok) throw new Error(`版本检查失败：HTTP ${response.status}`);
+  const payload = await response.json() as { version?: unknown };
+  return typeof payload.version === "string" ? payload.version : "";
+}
+
+function reloadWithFrontendVersion(version: string) {
+  const nextUrl = new URL(window.location.href);
+  nextUrl.searchParams.set("app_v", version);
+  window.location.assign(nextUrl.toString());
+}
+
+function loadBooleanSetting(key: string, fallback: boolean) {
+  const raw = localStorage.getItem(key);
+  if (raw === "true") return true;
+  if (raw === "false") return false;
+  return fallback;
+}
+
+function truncateForLog(value: string, limit = LOG_TEXT_LIMIT) {
+  if (value.length <= limit) return value;
+  return `${value.slice(0, limit)}...(${value.length} chars)`;
+}
+
+function describeReferenceForLog(summary: ReferenceSummary, model: string) {
+  if (summary.status === "none") return `模型 ${model}，无参考图。`;
+  if (summary.status === "skipped_unsupported") {
+    return `模型 ${model}，用户上传 ${summary.count} 张参考图，但${summary.unsupportedReason || "当前协议不支持参考图"}，已跳过。`;
+  }
+  const sizeLabel = summary.totalBytes > 0 ? `（压缩后 ${formatBytes(summary.totalBytes)}）` : "";
+  if (summary.status === "prepared") return `模型 ${model}，参考图 ${summary.count} 张${sizeLabel}已准备发送。`;
+  if (summary.status === "sent_ok") return `模型 ${model}，参考图 ${summary.count} 张${sizeLabel}已上传到上游。`;
+  if (summary.status === "sent_failed") return `模型 ${model}，参考图 ${summary.count} 张${sizeLabel}发送失败。`;
+  return `模型 ${model}，参考图 ${summary.count} 张${sizeLabel}。`;
+}
+
+function clientImageOmittedPlaceholder(value: string) {
+  const match = value.match(/^data:([^;]+);base64,(.*)$/);
+  const mime = match?.[1] || "application/octet-stream";
+  const base64Body = match?.[2] ?? value;
+  const cleaned = base64Body.replace(/\s+/g, "");
+  const bytes = Math.round((cleaned.length * 3) / 4);
+  return {
+    __omitted: "image" as const,
+    mime,
+    bytes,
+  };
+}
+
+function sanitizeClientLogValue(value: unknown, key = "", depth = 0): unknown {
+  const lowerKey = key.toLowerCase();
+  if (depth > 8) return "[depth-limit]";
+  if (value === null || value === undefined) return value;
+  if (lowerKey === "apikey" || lowerKey === "api_key" || lowerKey === "authorization" || lowerKey === "password" || lowerKey === "token") {
+    return "[redacted]";
+  }
+  if (typeof value === "string") {
+    if (
+      value.startsWith("data:image/")
+      || lowerKey === "dataurl"
+      || lowerKey === "thumbnaildataurl"
+      || lowerKey === "b64_json"
+      || (lowerKey === "data" && value.length > 180 && /^[A-Za-z0-9+/=\r\n]+$/.test(value))
+    ) {
+      return clientImageOmittedPlaceholder(value);
+    }
+    return truncateForLog(value, 4000);
+  }
+  if (typeof value === "number" || typeof value === "boolean") return value;
+  if (Array.isArray(value)) {
+    return value.slice(0, 80).map((item) => sanitizeClientLogValue(item, key, depth + 1));
+  }
+  if (typeof value === "object") {
+    const record = value as Record<string, unknown>;
+    return Object.fromEntries(
+      Object.entries(record).map(([entryKey, entryValue]) => [
+        entryKey,
+        sanitizeClientLogValue(entryValue, entryKey, depth + 1),
+      ]),
+    );
+  }
+  return String(value);
+}
+
+function safeLogError(error: unknown) {
+  if (error instanceof Error) {
+    return { name: error.name, message: error.message };
+  }
+  if (!error || typeof error !== "object") return error;
+  try {
+    return sanitizeClientLogValue(JSON.parse(JSON.stringify(error)));
+  } catch {
+    return String(error);
+  }
+}
+
+function isRetryableError(errorDetail: unknown): boolean {
+  if (!errorDetail) return true;
+  if (typeof errorDetail !== "object") return false;
+  const record = errorDetail as Record<string, unknown>;
+  const status = typeof record.status === "number"
+    ? record.status
+    : typeof record.httpStatus === "number"
+      ? record.httpStatus
+      : null;
+  if (status !== null) {
+    if (status >= 500 && status < 600) return true;
+    if (status === 429) return true;
+    return false;
+  }
+  const errorField = record.error;
+  let messageRaw = "";
+  if (errorField && typeof errorField === "object") {
+    const inner = (errorField as Record<string, unknown>).message;
+    if (typeof inner === "string") messageRaw = inner;
+  } else if (typeof errorField === "string") {
+    messageRaw = errorField;
+  } else if (typeof record.errorMessage === "string") {
+    messageRaw = record.errorMessage;
+  }
+  return /timeout|network|connection|abort|fetch failed|econnreset|etimedout|enotfound/.test(messageRaw.toLowerCase());
+}
+
+async function readApiJson<T>(response: Response, endpoint: string): Promise<T> {
+  const contentType = response.headers.get("content-type") || "";
+  const text = await response.text();
+  if (!text.trim()) return {} as T;
+  try {
+    return JSON.parse(text) as T;
+  } catch {
+    const looksHtml = /^\s*</.test(text);
+    throw {
+      status: response.status,
+      endpoint,
+      contentType,
+      error: looksHtml
+        ? "服务返回了 HTML，不是 JSON。线上通常是 /api 路由未命中、请求体过大、网关拦截或部署平台返回了错误页。"
+        : "服务返回了不可解析的 JSON。",
+      raw: truncateForLog(text, 1600),
+    };
+  }
+}
+
+function maskApiKeyForLog(apiKey: string, rememberKey: boolean) {
+  const trimmed = apiKey.trim();
+  return {
+    present: trimmed.length > 0,
+    length: trimmed.length,
+    prefix: trimmed ? trimmed.slice(0, 6) : "",
+    suffix: trimmed.length > 4 ? trimmed.slice(-4) : "",
+    source: trimmed
+      ? rememberKey
+        ? "localStorage:sumapiImageApiKey"
+        : "sessionStorage:sumapiImageApiKey"
+      : "empty",
+  };
+}
+
+function referenceMetaForLog(images: UploadedReference[]) {
+  return images.map((image) => ({
+    id: image.id,
+    name: image.name,
+    type: image.type,
+    size: image.size,
+    width: image.width,
+    height: image.height,
+    status: image.status || "ready",
+    hasDataUrl: Boolean(image.dataUrl),
+  }));
+}
+
+function loadLocalLogs(): LocalLogEntry[] {
+  const raw = localStorage.getItem(LOCAL_LOG_STORAGE_KEY);
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed.slice(0, LOCAL_LOG_LIMIT) as LocalLogEntry[] : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveLocalLogs(logs: LocalLogEntry[]) {
+  try {
+    localStorage.setItem(LOCAL_LOG_STORAGE_KEY, JSON.stringify(logs.slice(0, LOCAL_LOG_LIMIT)));
+  } catch {
+    // Local request logs are diagnostic only. Ignore quota failures.
+  }
+}
+
+function loadInitialApiConfig(): ApiConfig {
+  const rememberKey = localStorage.getItem("sumapiImageRememberKey") === "true";
+  const storedProtocol = localStorage.getItem("sumapiImageProtocol");
+  const protocol = isImageProtocol(storedProtocol) ? storedProtocol : DEFAULT_PROTOCOL;
+  return {
+    protocol,
+    baseUrl: normalizeApiBaseUrl(localStorage.getItem("sumapiImageBaseUrl")),
+    apiKey: rememberKey
+      ? localStorage.getItem("sumapiImageApiKey") || ""
+      : sessionStorage.getItem("sumapiImageApiKey") || "",
+    rememberKey,
+  };
+}
+
+function loadInitialParams(): ImageParams {
+  const raw = localStorage.getItem("sumapiImageParams");
+  if (!raw) {
+    return normalizeImageParams({
+      aspectRatio: "1:1",
+      resolution: DEFAULT_IMAGE_RESOLUTION,
+      quality: "auto",
+      outputFormat: "png",
+      batchCount: 4,
+      concurrency: 2,
+      seed: "",
+      negativePrompt: "",
+    });
+  }
+  try {
+    const parsed = JSON.parse(raw) as Partial<ImageParams>;
+    return normalizeImageParams(parsed);
+  } catch {
+    return normalizeImageParams({
+      aspectRatio: "1:1",
+      resolution: DEFAULT_IMAGE_RESOLUTION,
+      quality: "auto",
+      outputFormat: "png",
+      batchCount: 4,
+      concurrency: 2,
+      seed: "",
+      negativePrompt: "",
+    });
+  }
+}
+
+function isAllowedImageModel(model: string) {
+  return isGptImage2Model(model) || isGemini3ProImageModel(model);
+}
+
+function imageModelPriority(model: string) {
+  const normalized = normalizedImageModelId(model);
+  if (normalized === GPT_IMAGE_2_MODEL) return 0;
+  if (normalized === GPT_IMAGE_2_PRO_MODEL) return 1;
+  if (normalized === GPT_IMAGE_2_FAMILY_MODEL) return 2;
+  if (normalized === GEMINI_3_PRO_IMAGE_MODEL) return 3;
+  return 10;
+}
+
+function filterAllowedImageModels(models: string[]) {
+  return [...new Set(models)]
+    .filter(isAllowedImageModel)
+    .sort((a, b) => {
+      const priority = imageModelPriority(a) - imageModelPriority(b);
+      return priority || a.localeCompare(b);
+    });
+}
+
+function preferModel(models: string[], current: string) {
+  const allowedModels = filterAllowedImageModels(models);
+  if (current && allowedModels.includes(current) && isAllowedImageModel(current)) return current;
+  return (
+    allowedModels.find((model) => normalizedImageModelId(model) === GPT_IMAGE_2_MODEL) ||
+    allowedModels.find((model) => normalizedImageModelId(model) === GPT_IMAGE_2_FAMILY_MODEL) ||
+    allowedModels.find((model) => normalizedImageModelId(model) === GEMINI_3_PRO_IMAGE_MODEL) ||
+    allowedModels[0] ||
+    ""
+  );
+}
+
+function imageModelsForProtocol(protocol: ImageProtocol, upstreamModels: string[] = []) {
+  const candidates = upstreamModels.length > 0
+    ? upstreamModels
+    : getProtocolDefinition(protocol).defaultModels;
+  return filterAllowedImageModels(candidates).filter((model) => protocolMatchesImageModel(protocol, model));
+}
+
+function normalizedModelId(model: string) {
+  return model.replace(/^models\//, "").trim().toLowerCase();
+}
+
+function isAnalysisModel(model: string) {
+  const normalized = normalizedModelId(model);
+  return normalized.includes("gpt") && !normalized.includes("image");
+}
+
+function analysisModelPriority(model: string) {
+  const normalized = normalizedModelId(model);
+  if (normalized === "gpt-5.4") return 0;
+  if (normalized.includes("gpt-5.4")) return 1;
+  if (normalized === "gpt-5.5") return 2;
+  if (normalized.includes("gpt-5.5")) return 3;
+  if (normalized === "gpt-5.2") return 4;
+  if (normalized.includes("gpt-5.2")) return 5;
+  if (normalized.includes("gpt-5")) return 6;
+  if (normalized.includes("gpt-4.1")) return 7;
+  if (normalized.includes("gpt-4")) return 8;
+  return 20;
+}
+
+function filterAnalysisModels(models: string[]) {
+  return [...new Set(models)]
+    .filter(isAnalysisModel)
+    .sort((a, b) => {
+      const priority = analysisModelPriority(a) - analysisModelPriority(b);
+      return priority || a.localeCompare(b);
+    });
+}
+
+function preferAnalysisModel(models: string[], current: string) {
+  if (current && models.includes(current)) return current;
+  return models[0] || "";
+}
+
+function analysisModeLabel(mode: AnalysisMode) {
+  if (mode === "optimize") return "提示词优化";
+  if (mode === "params") return "参数推荐";
+  if (mode === "risk") return "失败预判";
+  if (mode === "style") return "风格增强";
+  return "发送前检查";
+}
+
+function riskScore(level: RiskLevel) {
+  if (level === "high") return 3;
+  if (level === "medium") return 2;
+  return 1;
+}
+
+function getOverallRiskLevel(risks: PromptRisk[]): RiskLevel {
+  if (risks.some((risk) => risk.level === "high")) return "high";
+  if (risks.some((risk) => risk.level === "medium")) return "medium";
+  return "low";
+}
+
+function recommendAspectRatioForPrompt(promptText: string, currentAspectRatio: string) {
+  const text = promptText.toLowerCase();
+  if (/头像|avatar|portrait|肖像|近景人像|商品主图/.test(text)) return "1:1";
+  if (/小红书|封面|海报|竖版|手机|story|reels|tiktok|shorts/.test(text)) return "3:4";
+  if (/壁纸|短视频|9:16|竖屏|全身/.test(text)) return "9:16";
+  if (/banner|横幅|头图|网页|视频封面|宽屏|youtube|16:9/.test(text)) return "16:9";
+  if (/建筑|蓝图|住宅|室内|空间|剖面/.test(text)) return "4:3";
+  if (/信息图|知识卡片|公众号|长图|排版/.test(text)) return "4:5";
+  return currentAspectRatio;
+}
+
+function pickStyleEnhancements(promptText: string, mode: AnalysisMode) {
+  const text = promptText.toLowerCase();
+  const matched = STYLE_ENHANCEMENT_PRESETS.filter((preset) => {
+    if (/电影|海报|故事|场景|氛围/.test(text) && preset.name === "电影感") return true;
+    if (/商品|产品|人像|写真|摄影|头像/.test(text) && preset.name === "商业摄影") return true;
+    if (/小红书|封面|公众号|社媒|标题/.test(text) && preset.name === "社媒封面") return true;
+    if (/信息图|结构|图解|文字|知识/.test(text) && preset.name === "极简信息图") return true;
+    if (/水墨|国风|东方|禅|龙/.test(text) && preset.name === "东方水墨") return true;
+    if (/手办|玩具|公仔|chibi|q版|3d/.test(text) && preset.name === "3D 手办") return true;
+    return false;
+  });
+  const base = matched.length > 0 ? matched : STYLE_ENHANCEMENT_PRESETS.slice(0, mode === "style" ? 4 : 2);
+  return base.slice(0, 4);
+}
+
+function createOptimizedPrompt(promptText: string, mode: AnalysisMode) {
+  const trimmed = promptText.trim();
+  if (!trimmed) return "";
+  const styleFragments = pickStyleEnhancements(trimmed, mode).slice(0, mode === "style" ? 2 : 1).map((item) => item.promptFragment);
+  const structure = [
+    trimmed,
+    "主体清晰，构图干净，画面重点明确。",
+    "补充镜头语言、光影方向、材质细节、背景层次和最终用途。",
+    ...styleFragments,
+  ];
+  return [...new Set(structure)].join("\n");
+}
+
+function buildLocalPromptAnalysis({
+  promptText,
+  params,
+  protocol,
+  selectedModel,
+  referenceImages,
+  usableReferenceImages,
+  mode,
+}: {
+  promptText: string;
+  params: ImageParams;
+  protocol: ImageProtocol;
+  selectedModel: string;
+  referenceImages: UploadedReference[];
+  usableReferenceImages: UploadedReference[];
+  mode: AnalysisMode;
+}): PromptAnalysisResult {
+  const trimmed = promptText.trim();
+  const risks: PromptRisk[] = [];
+  const definition = getProtocolDefinition(protocol);
+
+  if (trimmed.length < 10) {
+    risks.push({
+      level: "medium",
+      title: "提示词偏短",
+      description: "主体、场景、光影和用途不够明确，结果随机性会更高。",
+      fix: "补充主体、环境、风格、镜头和用途。",
+    });
+  }
+  if (trimmed.length > 2800) {
+    risks.push({
+      level: "medium",
+      title: "提示词过长",
+      description: "过长的提示词容易稀释重点，也可能触发接口长度限制。",
+      fix: "压缩为主体、风格、构图、约束四段。",
+    });
+  }
+  if (/100%|完全一致|一模一样|高度一致|same face|identical/i.test(trimmed) && usableReferenceImages.length === 0) {
+    risks.push({
+      level: "high",
+      title: "缺少参考图",
+      description: "提示词要求高度一致，但当前没有可用参考图，生成结果很难稳定符合。",
+      fix: "上传清晰参考图，或降低“一致性”要求。",
+    });
+  }
+  if (/文字|标题|排版|字体|logo|标语|slogan|海报/i.test(trimmed)) {
+    risks.push({
+      level: "low",
+      title: "文字渲染存在不确定性",
+      description: "图片模型对精准文字仍可能出错，建议减少文字数量并强调可读性。",
+      fix: "把文字控制在 1-2 个短句，后期可用设计工具补字。",
+    });
+  }
+  if (referenceImages.some((image) => image.status === "error")) {
+    risks.push({
+      level: "high",
+      title: "参考图不可用",
+      description: "存在格式、尺寸或读取失败的参考图，发送时会被过滤。",
+      fix: "移除失败参考图，重新上传 PNG、JPEG 或 WebP。",
+    });
+  }
+  if (referenceImages.some((image) => image.status === "warning")) {
+    risks.push({
+      level: "medium",
+      title: "参考图尺寸较大",
+      description: "大图可能增加请求体积和等待时间。",
+      fix: "优先压缩到 4096px 以下再上传。",
+    });
+  }
+  if (referenceImages.length > 0 && !definition.supportsReferenceImages) {
+    risks.push({
+      level: "medium",
+      title: "当前协议不发送参考图",
+      description: `${definition.shortLabel} 暂不支持参考图，本次生成会按纯文本执行。`,
+      fix: "切换到兼容协议或 Gemini Native。",
+    });
+  }
+  if (!isAspectRatioSupported(protocol, params.aspectRatio, selectedModel)) {
+    risks.push({
+      level: "high",
+      title: "宽高比不兼容",
+      description: "当前协议不支持所选宽高比，请换成协议支持的比例。",
+      fix: "应用系统推荐比例。",
+    });
+  }
+  if (params.batchCount > 8 && params.concurrency > 3) {
+    risks.push({
+      level: "low",
+      title: "批量并发较高",
+      description: "大批量高并发可能遇到限流，排队等待时间也会更长。",
+      fix: "建议并发保持 2-3。",
+    });
+  }
+
+  const suggestedAspectRatio = recommendAspectRatioForPrompt(trimmed, params.aspectRatio);
+  const fallbackAspectRatio = getSupportedAspectRatios(protocol, selectedModel)[0] || "1:1";
+  const nextSuggestedAspectRatio = isAspectRatioSupported(protocol, suggestedAspectRatio, selectedModel)
+    ? suggestedAspectRatio
+    : fallbackAspectRatio;
+  const suggestedParams: SuggestedParams = {
+    aspectRatio: nextSuggestedAspectRatio,
+    size: resolveRequestSize(
+      nextSuggestedAspectRatio,
+      safeImageResolution(params.resolution),
+      protocol,
+      selectedModel,
+    ),
+    resolution: normalizeResolutionForRequest(
+      safeImageResolution(params.resolution),
+      protocol,
+      selectedModel,
+    ),
+    count: /海报|封面|logo|文字|信息图/.test(trimmed) ? 2 : Math.min(Math.max(params.batchCount, 2), 4),
+    quality: selectedModel ? params.quality : "auto",
+    styleStrength: mode === "style" ? "high" : "medium",
+    referenceWeight: usableReferenceImages.length > 0 ? "medium" : "low",
+  };
+  const riskLevel = getOverallRiskLevel(risks);
+  const score = clampNumber(94 - risks.reduce((sum, risk) => sum + riskScore(risk.level) * 10, 0), 35, 98);
+  const styleEnhancements = pickStyleEnhancements(trimmed, mode);
+  return {
+    safe: riskLevel !== "high",
+    score,
+    riskLevel,
+    summary: riskLevel === "low"
+      ? "提示词可以直接生成，建议可作为增强参考。"
+      : riskLevel === "medium"
+        ? "可以生成，但有几处会影响稳定性和效果。"
+        : "存在较高失败或偏离风险，建议先修复再生成。",
+    optimizedPrompt: createOptimizedPrompt(trimmed, mode),
+    suggestedNegativePrompt: params.negativePrompt || "低清晰度，畸形结构，错误文字，重复肢体，低质量，过度锐化",
+    suggestedParams,
+    risks,
+    styleEnhancements,
+    source: "local",
+  };
+}
+
+function safeRiskLevel(value: unknown): RiskLevel {
+  return value === "high" || value === "medium" || value === "low" ? value : "low";
+}
+
+function normalizePromptRisk(value: unknown): PromptRisk | null {
+  if (!value || typeof value !== "object") return null;
+  const record = value as Record<string, unknown>;
+  const title = typeof record.title === "string" ? record.title : "";
+  const description = typeof record.description === "string" ? record.description : "";
+  if (!title && !description) return null;
+  return {
+    level: safeRiskLevel(record.level),
+    title: title || "生成风险",
+    description: description || "需要进一步检查。",
+    fix: typeof record.fix === "string" ? record.fix : undefined,
+  };
+}
+
+function normalizeStyleEnhancement(value: unknown): StyleEnhancement | null {
+  if (!value || typeof value !== "object") return null;
+  const record = value as Record<string, unknown>;
+  const name = typeof record.name === "string" ? record.name : "";
+  const description = typeof record.description === "string" ? record.description : "";
+  const promptFragment = typeof record.promptFragment === "string" ? record.promptFragment : "";
+  if (!name || !promptFragment) return null;
+  return { name, description, promptFragment };
+}
+
+function normalizeSuggestedParams(value: unknown, fallback: SuggestedParams): SuggestedParams {
+  const record = value && typeof value === "object" ? value as Record<string, unknown> : {};
+  return {
+    aspectRatio: typeof record.aspectRatio === "string" ? record.aspectRatio : fallback.aspectRatio,
+    size: typeof record.size === "string" ? record.size : fallback.size,
+    resolution: isImageResolution(record.resolution) ? record.resolution : fallback.resolution,
+    count: typeof record.count === "number" ? record.count : fallback.count,
+    quality: typeof record.quality === "string" ? record.quality : fallback.quality,
+    styleStrength: record.styleStrength === "low" || record.styleStrength === "medium" || record.styleStrength === "high"
+      ? record.styleStrength
+      : fallback.styleStrength,
+    referenceWeight: record.referenceWeight === "low" || record.referenceWeight === "medium" || record.referenceWeight === "high"
+      ? record.referenceWeight
+      : fallback.referenceWeight,
+  };
+}
+
+function normalizePromptAnalysisResult(value: unknown, fallback: PromptAnalysisResult): PromptAnalysisResult {
+  const record = value && typeof value === "object" ? value as Record<string, unknown> : {};
+  const risks = Array.isArray(record.risks)
+    ? record.risks.map(normalizePromptRisk).filter((item): item is PromptRisk => Boolean(item))
+    : fallback.risks;
+  const styleEnhancements = Array.isArray(record.styleEnhancements)
+    ? record.styleEnhancements.map(normalizeStyleEnhancement).filter((item): item is StyleEnhancement => Boolean(item))
+    : fallback.styleEnhancements;
+  const riskLevel = safeRiskLevel(record.riskLevel || getOverallRiskLevel(risks));
+  return {
+    safe: typeof record.safe === "boolean" ? record.safe : riskLevel !== "high",
+    score: typeof record.score === "number" ? clampNumber(record.score, 0, 100) : fallback.score,
+    riskLevel,
+    summary: typeof record.summary === "string" && record.summary.trim() ? record.summary : fallback.summary,
+    optimizedPrompt: typeof record.optimizedPrompt === "string" && record.optimizedPrompt.trim()
+      ? record.optimizedPrompt
+      : fallback.optimizedPrompt,
+    suggestedNegativePrompt: typeof record.suggestedNegativePrompt === "string"
+      ? record.suggestedNegativePrompt
+      : fallback.suggestedNegativePrompt,
+    suggestedParams: normalizeSuggestedParams(record.suggestedParams, fallback.suggestedParams),
+    risks,
+    styleEnhancements: styleEnhancements.length > 0 ? styleEnhancements : fallback.styleEnhancements,
+    analysisModel: typeof record.analysisModel === "string" ? record.analysisModel : fallback.analysisModel,
+    source: record.source === "ai" || record.source === "local" ? record.source : fallback.source,
+  };
+}
+
+function safeAgentModeIntentType(value: unknown): AgentModeIntentType {
+  return value === "single_image"
+    || value === "multi_image_batch"
+    || value === "brochure_project"
+    || value === "page_refine"
+    || value === "unknown"
+    ? value
+    : "unknown";
+}
+
+function safeAgentModeCostLevel(value: unknown): AgentModeCostLevel {
+  return value === "low" || value === "medium" || value === "high" ? value : "low";
+}
+
+function normalizeAgentModeJobSpec(value: unknown, index: number): AgentModeJobSpec | null {
+  if (!value || typeof value !== "object") return null;
+  const record = value as Record<string, unknown>;
+  const title = typeof record.title === "string" && record.title.trim() ? record.title.trim() : `任务 ${index + 1}`;
+  const prompt = typeof record.prompt === "string" ? record.prompt.trim() : "";
+  if (!prompt) return null;
+  return {
+    id: typeof record.id === "string" && record.id.trim() ? record.id : `agent-job-${index + 1}`,
+    title,
+    prompt,
+    objective: typeof record.objective === "string" ? record.objective.trim() : "",
+    negativePrompt: typeof record.negativePrompt === "string" ? record.negativePrompt.trim() : "",
+    aspectRatio: typeof record.aspectRatio === "string" ? record.aspectRatio.trim() : "",
+    size: typeof record.size === "string" ? record.size.trim() : "",
+    resolution: isImageResolution(record.resolution) ? record.resolution : undefined,
+    quality: typeof record.quality === "string" ? record.quality.trim() : "",
+    count: typeof record.count === "number" ? clampNumber(record.count, 1, 8) : 1,
+  };
+}
+
+function normalizeAgentModeBrochurePage(value: unknown, index: number): AgentModeBrochurePage | null {
+  if (!value || typeof value !== "object") return null;
+  const record = value as Record<string, unknown>;
+  const title = typeof record.title === "string" && record.title.trim() ? record.title.trim() : `第 ${index + 1} 页`;
+  return {
+    pageNo: typeof record.pageNo === "number" ? clampNumber(record.pageNo, 1, 64) : index + 1,
+    role: typeof record.role === "string" && record.role.trim() ? record.role.trim() : "content",
+    title,
+    objective: typeof record.objective === "string" && record.objective.trim()
+      ? record.objective.trim()
+      : `${title} 页面主视觉`,
+  };
+}
+
+function normalizeAgentModeBrochureProject(value: unknown, promptText: string): AgentModeBrochureProject | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  const record = value as Record<string, unknown>;
+  const title = typeof record.title === "string" && record.title.trim() ? record.title.trim() : "宣传画册项目";
+  const outline = Array.isArray(record.outline)
+    ? record.outline
+      .map(normalizeAgentModeBrochurePage)
+      .filter(Boolean) as AgentModeBrochurePage[]
+    : [];
+  const styleDirections = Array.isArray(record.styleDirections)
+    ? record.styleDirections
+      .filter((item): item is string => typeof item === "string" && item.trim().length > 0)
+      .slice(0, 6)
+    : [];
+  return {
+    title,
+    companyName: typeof record.companyName === "string" ? record.companyName.trim() : "",
+    industry: typeof record.industry === "string" ? record.industry.trim() : "",
+    purpose: typeof record.purpose === "string" ? record.purpose.trim() : "",
+    pageCount: typeof record.pageCount === "number" ? clampNumber(record.pageCount, 4, 32) : Math.max(outline.length, 4),
+    summary: typeof record.summary === "string" && record.summary.trim()
+      ? record.summary.trim()
+      : "已识别为宣传画册任务，建议先选择整本模板方向，再展开单页生成。",
+    outline,
+    styleDirections,
+    requestPrompt: promptText,
+  };
+}
+
+function normalizeAgentModeAnalysisResult(value: unknown, promptText: string): AgentModeAnalysisResult {
+  const fallback: AgentModeAnalysisResult = {
+    intentType: "single_image",
+    confidence: 0.6,
+    reasoningSummary: "未拿到完整解析结果，已按单图任务处理。",
+    estimatedCostLevel: "low",
+    requiresConfirmation: false,
+    autoExecute: true,
+    jobs: [{
+      id: "agent-job-1",
+      title: "图片生成",
+      prompt: promptText.trim(),
+      count: 1,
+    }],
+    source: "local",
+  };
+  if (!value || typeof value !== "object") return fallback;
+  const record = value as Record<string, unknown>;
+  const jobs = Array.isArray(record.jobs)
+    ? record.jobs
+      .map(normalizeAgentModeJobSpec)
+      .filter(Boolean) as AgentModeJobSpec[]
+    : [];
+  const brochureProject = normalizeAgentModeBrochureProject(record.brochureProject, promptText);
+  const intentType = safeAgentModeIntentType(record.intentType);
+  return {
+    intentType,
+    confidence: typeof record.confidence === "number" ? clampNumber(record.confidence, 0, 1) : fallback.confidence,
+    reasoningSummary: typeof record.reasoningSummary === "string" && record.reasoningSummary.trim()
+      ? record.reasoningSummary.trim()
+      : fallback.reasoningSummary,
+    estimatedCostLevel: safeAgentModeCostLevel(record.estimatedCostLevel),
+    requiresConfirmation: typeof record.requiresConfirmation === "boolean"
+      ? record.requiresConfirmation
+      : intentType !== "single_image",
+    autoExecute: typeof record.autoExecute === "boolean"
+      ? record.autoExecute
+      : intentType === "single_image" && jobs.length > 0,
+    jobs: jobs.length > 0 ? jobs : fallback.jobs,
+    brochureProject,
+    analysisModel: typeof record.analysisModel === "string" ? record.analysisModel : undefined,
+    source: record.source === "ai" || record.source === "local" ? record.source : fallback.source,
+  };
+}
+
+function createJob(
+  index: number,
+  total: number,
+  batchId: string,
+  protocol: ImageProtocol,
+  prompt: string,
+  model: string,
+  params: ImageParams,
+  referenceImages: UploadedReference[],
+  createdAt = Date.now(),
+  agentContext?: AgentContext,
+): Job {
+  return {
+    id: uid(),
+    batchId,
+    index,
+    total,
+    protocol,
+    prompt,
+    model,
+    params: { ...params },
+    referenceImages: [...referenceImages],
+    status: "queued",
+    createdAt,
+    agentId: agentContext?.plan.agentId,
+    agentName: agentContext?.plan.agentName,
+    agentScenario: agentContext?.plan.scenario,
+    promptVariant: agentContext?.variant,
+    attempt: 1,
+    maxAttempts: 1 + clampNumber(Number(params.retryLimit ?? 2), 0, 5),
+  };
+}
+
+export default function App() {
+  const [apiConfig, setApiConfig] = useState<ApiConfig>(loadInitialApiConfig);
+  const [params, setParams] = useState<ImageParams>(loadInitialParams);
+  const [prompt, setPrompt] = useState("");
+  const [activePage, setActivePage] = useState<AppPage>(pageFromHash);
+  const [referenceImages, setReferenceImages] = useState<UploadedReference[]>([]);
+  const [models, setModels] = useState<string[]>([]);
+  const [analysisModels, setAnalysisModels] = useState<string[]>([]);
+  const [selectedModel, setSelectedModel] = useState(() => {
+    const storedModel = localStorage.getItem("sumapiImageSelectedModel") || "";
+    return isAllowedImageModel(storedModel) ? storedModel : "";
+  });
+  const [selectedAnalysisModel, setSelectedAnalysisModel] = useState(() =>
+    localStorage.getItem("sumapiImageSelectedAnalysisModel") || "",
+  );
+  const [modelFilter, setModelFilter] = useState("");
+  const [modelState, setModelState] = useState<ModelLoadState>({
+    status: "idle",
+    message: "未读取",
+  });
+  const [verifiedModelKey, setVerifiedModelKey] = useState("");
+  const [verifiedModelAt, setVerifiedModelAt] = useState(0);
+  const [visibleRecords, setVisibleRecords] = useState<Job[]>([]);
+  const [sidebarRecords, setSidebarRecords] = useState<HistoryRecord[]>([]);
+  const [highlightedRecordId, setHighlightedRecordId] = useState<string>("");
+  const [previewItem, setPreviewItem] = useState<PreviewItem | null>(null);
+  const [squareRecommendState, setSquareRecommendState] = useState<Record<string, SquareRecommendStatus>>({});
+  const [isLoadingMainRecords, setIsLoadingMainRecords] = useState(false);
+  const [isLoadingSidebarRecords, setIsLoadingSidebarRecords] = useState(false);
+  const [hasMoreMainRecords, setHasMoreMainRecords] = useState(true);
+  const [hasMoreSidebarRecords, setHasMoreSidebarRecords] = useState(true);
+  const [queueStats, setQueueStats] = useState({ running: 0, queued: 0 });
+  const [isLeftSidebarOpen, setIsLeftSidebarOpen] = useState(() =>
+    loadBooleanSetting("sumapiImageLeftSidebarOpen", window.innerWidth > 780),
+  );
+  const [isSettingsOpen, setIsSettingsOpen] = useState(() =>
+    loadBooleanSetting("sumapiImageSettingsOpen", window.innerWidth > 1180),
+  );
+  const [isAutoPromptAnalysisEnabled, setIsAutoPromptAnalysisEnabled] = useState(() =>
+    loadBooleanSetting("sumapiImageAutoPromptAnalysisEnabled", true),
+  );
+  const [isSelectionMode, setIsSelectionMode] = useState(false);
+  const [selectedRecordIds, setSelectedRecordIds] = useState<Set<string>>(() => new Set());
+  const [pendingDeleteIds, setPendingDeleteIds] = useState<string[] | null>(null);
+  const [showOnboarding, setShowOnboarding] = useState(() =>
+    localStorage.getItem("sumapiImageOnboardingComplete") !== "true",
+  );
+  const [onboardingStep, setOnboardingStep] = useState(0);
+  const [isAutoLoadingModels, setIsAutoLoadingModels] = useState(false);
+  const [showPromptPresets, setShowPromptPresets] = useState(false);
+  const [isAgentPanelOpen, setIsAgentPanelOpen] = useState(false);
+  const [isAgentHintSeen, setIsAgentHintSeen] = useState(() =>
+    localStorage.getItem("sumapiImageAgentHintSeen") === "true",
+  );
+  const [isAgentHintVisible, setIsAgentHintVisible] = useState(false);
+  const [isAgentQuickbarExpanded, setIsAgentQuickbarExpanded] = useState(false);
+  const [selectedAgentId, setSelectedAgentId] = useState("");
+  const [agentValues, setAgentValues] = useState<Record<string, string>>({});
+  const [agentPlan, setAgentPlan] = useState<AgentPlan | null>(null);
+  const [agentPhase, setAgentPhase] = useState<AgentRunPhase>("collecting");
+  const [lastAppliedAgent, setLastAppliedAgent] = useState<AgentContext | null>(null);
+  const [localLogs, setLocalLogs] = useState<LocalLogEntry[]>(loadLocalLogs);
+  const [isLocalLogOpen, setIsLocalLogOpen] = useState(false);
+  const [isAgentModeEnabled, setIsAgentModeEnabled] = useState(() =>
+    loadBooleanSetting(AGENT_MODE_STORAGE_KEY, false),
+  );
+  const [agentModeState, setAgentModeState] = useState<AgentModeState>({
+    status: "idle",
+    message: "",
+  });
+  const [agentModePendingPlan, setAgentModePendingPlan] = useState<AgentModeAnalysisResult | null>(null);
+  const [agentModeBrochureDraft, setAgentModeBrochureDraft] = useState<AgentModeBrochureProject | null>(null);
+  const [analysisCountdown, setAnalysisCountdown] = useState<AnalysisCountdown | null>(null);
+  const [isComposerCollapsed, setIsComposerCollapsed] = useState(false);
+  const [isBulkDownloading, setIsBulkDownloading] = useState(false);
+  const [isSendLaunching, setIsSendLaunching] = useState(false);
+  const [analysisState, setAnalysisState] = useState<PromptAnalysisState>({
+    status: "idle",
+    mode: "send",
+    message: "",
+  });
+  const [analysisStepIndex, setAnalysisStepIndex] = useState(0);
+  const [availableFrontendVersion, setAvailableFrontendVersion] = useState("");
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const promptTextareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const canvasRef = useRef<HTMLElement | null>(null);
+  const sidebarListRef = useRef<HTMLDivElement | null>(null);
+  const mainLoadMoreRef = useRef<HTMLDivElement | null>(null);
+  const sidebarLoadMoreRef = useRef<HTMLDivElement | null>(null);
+  const mainCursorRef = useRef<number | undefined>(undefined);
+  const sidebarCursorRef = useRef<number | undefined>(undefined);
+  const hasMoreMainRef = useRef(true);
+  const hasMoreSidebarRef = useRef(true);
+  const isLoadingMainRef = useRef(false);
+  const isLoadingSidebarRef = useRef(false);
+  const pendingQueueRef = useRef<PendingQueueItem[]>([]);
+  const runningCountRef = useRef(0);
+  const paramsRef = useRef(params);
+  const recordElementRefs = useRef(new Map<string, HTMLElement>());
+  const startIntentRef = useRef(0);
+  const sendLaunchFrameRef = useRef<number | undefined>(undefined);
+  const sendLaunchTimerRef = useRef<number | undefined>(undefined);
+  const modelLoadRequestRef = useRef(0);
+  const lastAutoModelLoadKeyRef = useRef("");
+  const analysisCountdownTimerRef = useRef<number | undefined>(undefined);
+  const composerCollapseTimerRef = useRef<number | undefined>(undefined);
+  const scrollFrameRef = useRef<number | undefined>(undefined);
+  const protocolDefinition = getProtocolDefinition(apiConfig.protocol);
+  const currentApiConnectionKey = apiConnectionKey(apiConfig);
+  const isModelConnectionVerified = modelState.status === "ready" && verifiedModelKey === currentApiConnectionKey;
+  const supportedAspectRatios = getSupportedAspectRatios(apiConfig.protocol, selectedModel);
+  const supportedAspectOptions = ASPECT_RATIOS.filter((ratio) => supportedAspectRatios.includes(ratio.value));
+  const selectedAspectRatio = getAspectDefinition(params.aspectRatio);
+  const selectedResolution = normalizeResolutionForRequest(
+    safeImageResolution(params.resolution),
+    apiConfig.protocol,
+    selectedModel,
+  );
+  const selectedResolutionDefinition = IMAGE_RESOLUTIONS.find((item) => item.value === selectedResolution) || IMAGE_RESOLUTIONS[0];
+  const resolvedRequestSize = resolveRequestSize(
+    params.aspectRatio,
+    selectedResolution,
+    apiConfig.protocol,
+    selectedModel,
+  );
+  const aspectRatioSupported = isAspectRatioSupported(apiConfig.protocol, params.aspectRatio, selectedModel);
+  const selectedAspectHint = isGemini3ProImageModel(selectedModel)
+    ? "Gemini 3 Pro 官方支持比例"
+    : selectedAspectRatio.hint;
+  const composerConfigSummary = `${params.batchCount}张 · ${params.aspectRatio} · ${selectedResolution}`;
+  const composerConfigDetail = `${resolvedRequestSize} · ${params.quality} · ${params.outputFormat.toUpperCase()} · 并发 ${params.concurrency}`;
+
+  const selectableImageModels = useMemo(() => {
+    const candidates = isModelConnectionVerified
+      ? models
+      : getProtocolDefinition(apiConfig.protocol).defaultModels;
+    return filterAllowedImageModels(candidates).filter((model) => protocolMatchesImageModel(apiConfig.protocol, model));
+  }, [apiConfig.protocol, isModelConnectionVerified, models]);
+  const filteredModels = useMemo(() => {
+    const query = modelFilter.trim().toLowerCase();
+    return selectableImageModels
+      .filter((model) => model.toLowerCase().includes(query))
+      .slice(0, 80);
+  }, [modelFilter, selectableImageModels]);
+  const preferredAnalysisModel = useMemo(
+    () => preferAnalysisModel(analysisModels, selectedAnalysisModel),
+    [analysisModels, selectedAnalysisModel],
+  );
+
+  const visibleStats = useMemo(() => {
+    return visibleRecords.reduce(
+      (stats, record) => {
+        stats[record.status] += 1;
+        return stats;
+      },
+      { queued: 0, running: 0, success: 0, error: 0 } as Record<JobStatus, number>,
+    );
+  }, [visibleRecords]);
+  const successfulVisibleRecords = visibleRecords.filter((record) => record.status === "success" && record.imageUrl);
+  const selectableVisibleRecords = visibleRecords.filter((record) => record.status !== "running");
+  const selectedRecords = useMemo(
+    () => visibleRecords.filter((record) => selectedRecordIds.has(record.id)),
+    [selectedRecordIds, visibleRecords],
+  );
+  const downloadableSelectedRecords = selectedRecords.filter((record) => record.status === "success" && record.imageBlob);
+  const pendingDeleteRecords = useMemo(
+    () => visibleRecords.filter((record) => pendingDeleteIds?.includes(record.id)),
+    [pendingDeleteIds, visibleRecords],
+  );
+  const usableReferenceImages = useMemo(
+    () => referenceImages.filter(isReferenceUsable),
+    [referenceImages],
+  );
+  const referenceIssueCount = referenceImages.filter((image) => image.status === "error").length;
+  const referenceWarningCount = referenceImages.filter((image) => image.status === "warning").length;
+  const referenceMetaLabel = referenceImages.length > 0
+    ? protocolDefinition.supportsReferenceImages
+      ? `将发送参考图 ${usableReferenceImages.length}/${referenceImages.length}`
+      : `参考图不会发送 · 当前协议不支持`
+    : `${protocolDefinition.shortLabel} · ${resolvedRequestSize}`;
+  const failedVisibleRecordCount = visibleStats.error;
+  const isPromptAnalyzing = analysisState.status === "analyzing" || analysisState.status === "receiving";
+  const selectedAgent = useMemo(
+    () => INDUSTRY_AGENTS.find((agent) => agent.id === selectedAgentId) || null,
+    [selectedAgentId],
+  );
+  const isAgentEnabled = Boolean(selectedAgent);
+  const latestLocalLogLevel = localLogs[0]?.level;
+  const isAgentModeBusy = isAgentModeEnabled && (
+    agentModeState.status === "analyzing"
+    || agentModeState.status === "receiving"
+  );
+  const modelStatusMessage = isAutoLoadingModels
+    ? "正在自动验证 API Key 并读取图片模型..."
+    : isModelConnectionVerified && verifiedModelAt
+      ? `${modelState.message} · ${formatDate(verifiedModelAt)}`
+      : modelState.message;
+  const currentAnalysisMessage = ANALYSIS_STEPS[analysisStepIndex % ANALYSIS_STEPS.length];
+  const canGenerate =
+    prompt.trim().length > 0 &&
+    selectedModel.length > 0 &&
+    isAllowedImageModel(selectedModel) &&
+    models.includes(selectedModel) &&
+    protocolMatchesImageModel(apiConfig.protocol, selectedModel) &&
+    isModelConnectionVerified &&
+    aspectRatioSupported;
+  const canRequestGenerate = canGenerate && !isPromptAnalyzing && !analysisCountdown && !isAgentModeBusy;
+  const canUseSquareIdentity = apiConfig.apiKey.trim().length >= API_KEY_MIN_LENGTH;
+
+  useEffect(() => {
+    void loadMainRecordsPage();
+    void loadSidebarRecordsPage();
+  }, []);
+
+  useEffect(() => {
+    const onHashChange = () => {
+      setActivePage(pageFromHash());
+    };
+    window.addEventListener("hashchange", onHashChange);
+    return () => window.removeEventListener("hashchange", onHashChange);
+  }, []);
+
+  useEffect(() => {
+    if (activePage !== "studio" || !showOnboarding) return;
+    setIsSettingsOpen(true);
+    if (onboardingStep < 2) {
+      setIsLeftSidebarOpen(false);
+    }
+  }, [activePage, showOnboarding, onboardingStep]);
+
+  useEffect(() => {
+    if (activePage !== "studio" || isAgentHintSeen || isAgentPanelOpen || isComposerCollapsed) {
+      setIsAgentHintVisible(false);
+      return;
+    }
+    const timer = window.setTimeout(() => setIsAgentHintVisible(true), 1200);
+    return () => window.clearTimeout(timer);
+  }, [activePage, isAgentHintSeen, isAgentPanelOpen, isComposerCollapsed]);
+
+  useEffect(() => {
+    paramsRef.current = params;
+    pumpQueue();
+  }, [params]);
+
+  useEffect(() => {
+    localStorage.setItem("sumapiImageProtocol", apiConfig.protocol);
+    localStorage.setItem("sumapiImageBaseUrl", normalizeApiBaseUrl(apiConfig.baseUrl));
+    localStorage.setItem("sumapiImageRememberKey", String(apiConfig.rememberKey));
+    sessionStorage.setItem("sumapiImageApiKey", apiConfig.apiKey);
+    if (apiConfig.rememberKey) {
+      localStorage.setItem("sumapiImageApiKey", apiConfig.apiKey);
+    } else {
+      localStorage.removeItem("sumapiImageApiKey");
+    }
+  }, [apiConfig]);
+
+  useEffect(() => {
+    localStorage.setItem("sumapiImageParams", JSON.stringify(params));
+  }, [params]);
+
+  useEffect(() => {
+    localStorage.setItem("sumapiImageSelectedModel", selectedModel);
+  }, [selectedModel]);
+
+  useEffect(() => {
+    localStorage.setItem("sumapiImageSelectedAnalysisModel", selectedAnalysisModel);
+  }, [selectedAnalysisModel]);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    let stopped = false;
+    const checkVersion = async () => {
+      try {
+        const latestVersion = await fetchFrontendBuildVersion(controller.signal);
+        if (!stopped && latestVersion && latestVersion !== CURRENT_FRONTEND_VERSION) {
+          setAvailableFrontendVersion(latestVersion);
+        }
+      } catch {
+        // Version checks are best-effort and should never interrupt creation.
+      }
+    };
+    void checkVersion();
+    const interval = window.setInterval(() => void checkVersion(), FRONTEND_VERSION_CHECK_INTERVAL_MS);
+    const onVisibilityChange = () => {
+      if (document.visibilityState === "visible") void checkVersion();
+    };
+    window.addEventListener("focus", checkVersion);
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    return () => {
+      stopped = true;
+      controller.abort();
+      window.clearInterval(interval);
+      window.removeEventListener("focus", checkVersion);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+    };
+  }, []);
+
+  useLayoutEffect(() => {
+    resizePromptTextarea();
+  }, [prompt]);
+
+  useEffect(() => {
+    localStorage.setItem("sumapiImageLeftSidebarOpen", String(isLeftSidebarOpen));
+  }, [isLeftSidebarOpen]);
+
+  useEffect(() => {
+    localStorage.setItem("sumapiImageSettingsOpen", String(isSettingsOpen));
+  }, [isSettingsOpen]);
+
+  useEffect(() => {
+    localStorage.setItem("sumapiImageAutoPromptAnalysisEnabled", String(isAutoPromptAnalysisEnabled));
+    if (!isAutoPromptAnalysisEnabled && analysisState.mode === "send") {
+      cancelAnalysisCountdown();
+      setAnalysisState({ status: "idle", mode: "send", message: "" });
+    }
+  }, [isAutoPromptAnalysisEnabled, analysisState.mode]);
+
+  useEffect(() => {
+    localStorage.setItem(AGENT_MODE_STORAGE_KEY, String(isAgentModeEnabled));
+  }, [isAgentModeEnabled]);
+
+  useEffect(() => {
+    if (!isAgentModeEnabled) {
+      setAgentModeState({ status: "idle", message: "" });
+      setAgentModePendingPlan(null);
+      setAgentModeBrochureDraft(null);
+      return;
+    }
+    cancelAnalysisCountdown();
+    setAnalysisState({ status: "idle", mode: "send", message: "" });
+    setShowPromptPresets(false);
+    setIsAgentPanelOpen(false);
+    setAgentModeState({
+      status: "idle",
+      message: "告诉我你想做一张图、一组不同图片，或者一本宣传画册。",
+    });
+    setAgentModePendingPlan(null);
+    setAgentModeBrochureDraft(null);
+  }, [isAgentModeEnabled]);
+
+  useEffect(() => {
+    const normalizedResolution = normalizeResolutionForRequest(
+      safeImageResolution(params.resolution),
+      apiConfig.protocol,
+      selectedModel,
+    );
+    const fallbackRatio = getSupportedAspectRatios(apiConfig.protocol, selectedModel)[0] || "1:1";
+    const nextAspectRatio = isAspectRatioSupported(apiConfig.protocol, params.aspectRatio, selectedModel)
+      ? params.aspectRatio
+      : fallbackRatio;
+    if (nextAspectRatio === params.aspectRatio && normalizedResolution === params.resolution) return;
+    updateParams({
+      aspectRatio: nextAspectRatio,
+      resolution: normalizedResolution,
+      size: resolveRequestSize(nextAspectRatio, normalizedResolution, apiConfig.protocol, selectedModel),
+    });
+  }, [apiConfig.protocol, selectedModel, params.aspectRatio, params.resolution]);
+
+  useEffect(() => {
+    if (!isPromptAnalyzing) {
+      setAnalysisStepIndex(0);
+      return;
+    }
+    const timer = window.setInterval(() => {
+      setAnalysisStepIndex((current) => current + 1);
+    }, 860);
+    return () => window.clearInterval(timer);
+  }, [isPromptAnalyzing]);
+
+  useEffect(() => {
+    return () => {
+      if (sendLaunchFrameRef.current) {
+        window.cancelAnimationFrame(sendLaunchFrameRef.current);
+      }
+      if (sendLaunchTimerRef.current) {
+        window.clearTimeout(sendLaunchTimerRef.current);
+      }
+      if (analysisCountdownTimerRef.current) {
+        window.clearInterval(analysisCountdownTimerRef.current);
+      }
+      if (composerCollapseTimerRef.current) {
+        window.clearTimeout(composerCollapseTimerRef.current);
+      }
+      if (scrollFrameRef.current) {
+        window.cancelAnimationFrame(scrollFrameRef.current);
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    if (activePage !== "studio") return;
+    const apiKey = apiConfig.apiKey.trim();
+    if (apiKey.length < API_KEY_MIN_LENGTH) {
+      lastAutoModelLoadKeyRef.current = "";
+      setVerifiedModelKey("");
+      setVerifiedModelAt(0);
+      setModels([]);
+      setSelectedModel((current) => protocolMatchesImageModel(apiConfig.protocol, current) ? current : "");
+      setAnalysisModels([]);
+      setSelectedAnalysisModel("");
+      setModelState({ status: "idle", message: "填写 API Key 后自动验证" });
+      return;
+    }
+    const normalizedBaseUrl = normalizeApiBaseUrl(apiConfig.baseUrl);
+    const autoLoadKey = `${apiConfig.protocol}|${normalizedBaseUrl}|${apiKey}`;
+    if (verifiedModelKey !== autoLoadKey) {
+      setVerifiedModelKey("");
+      setVerifiedModelAt(0);
+      setModels([]);
+      setSelectedModel((current) => protocolMatchesImageModel(apiConfig.protocol, current) ? current : "");
+      setAnalysisModels([]);
+      setSelectedAnalysisModel("");
+      setModelState({ status: "idle", message: "API Key 已变化，等待自动验证" });
+    }
+    if (lastAutoModelLoadKeyRef.current === autoLoadKey && verifiedModelKey === autoLoadKey) return;
+
+    const timer = window.setTimeout(() => {
+      if (lastAutoModelLoadKeyRef.current === autoLoadKey && verifiedModelKey === autoLoadKey) return;
+      lastAutoModelLoadKeyRef.current = autoLoadKey;
+      void loadModels({
+        silent: true,
+        config: {
+          ...apiConfig,
+          baseUrl: normalizedBaseUrl,
+          apiKey,
+        },
+      });
+    }, 1000);
+
+    return () => window.clearTimeout(timer);
+  }, [activePage, apiConfig.apiKey, apiConfig.baseUrl, apiConfig.protocol, verifiedModelKey]);
+
+  useEffect(() => {
+    const marker = mainLoadMoreRef.current;
+    const root = canvasRef.current;
+    if (!marker || !root || !hasMoreMainRecords) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) void loadMainRecordsPage();
+      },
+      { root, rootMargin: "320px 0px", threshold: 0 },
+    );
+    observer.observe(marker);
+    return () => observer.disconnect();
+  }, [visibleRecords.length, hasMoreMainRecords]);
+
+  useEffect(() => {
+    const marker = sidebarLoadMoreRef.current;
+    const root = sidebarListRef.current;
+    if (!marker || !root || !hasMoreSidebarRecords) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) void loadSidebarRecordsPage();
+      },
+      { root, rootMargin: "220px 0px", threshold: 0 },
+    );
+    observer.observe(marker);
+    return () => observer.disconnect();
+  }, [sidebarRecords.length, hasMoreSidebarRecords]);
+
+  useEffect(() => {
+    const compact = window.matchMedia("(max-width: 1180px)");
+    const mobile = window.matchMedia("(max-width: 780px)");
+    const syncPanels = () => {
+      if (compact.matches) setIsSettingsOpen(false);
+      if (mobile.matches) setIsLeftSidebarOpen(false);
+    };
+    syncPanels();
+    compact.addEventListener("change", syncPanels);
+    mobile.addEventListener("change", syncPanels);
+    return () => {
+      compact.removeEventListener("change", syncPanels);
+      mobile.removeEventListener("change", syncPanels);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!isAgentPanelOpen) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setIsAgentPanelOpen(false);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [isAgentPanelOpen]);
+
+  function resizePromptTextarea() {
+    const element = promptTextareaRef.current;
+    if (!element) return;
+    element.style.height = "auto";
+    const nextHeight = Math.min(element.scrollHeight, PROMPT_TEXTAREA_MAX_HEIGHT);
+    element.style.height = `${Math.max(46, nextHeight)}px`;
+    element.style.overflowY = element.scrollHeight > PROMPT_TEXTAREA_MAX_HEIGHT ? "auto" : "hidden";
+  }
+
+  function syncQueueStats() {
+    setQueueStats({
+      running: runningCountRef.current,
+      queued: pendingQueueRef.current.length,
+    });
+  }
+
+  async function loadMainRecordsPage() {
+    if (isLoadingMainRef.current || !hasMoreMainRef.current) return;
+    isLoadingMainRef.current = true;
+    setIsLoadingMainRecords(true);
     try {
-      await navigator.clipboard.writeText(text)
-      setStatus('提示词已复制')
-    } catch {
-      setError('浏览器暂不支持写入剪贴板，请手动复制')
+      const page = await getHistoryRecordsPage({
+        limit: HISTORY_PAGE_SIZE,
+        beforeCreatedAt: mainCursorRef.current,
+      });
+      const historicalJobs = page.records.map(historyRecordToJob);
+      setVisibleRecords((current) => mergeHistoricalJobs(current, historicalJobs));
+      mainCursorRef.current = page.nextCursor;
+      hasMoreMainRef.current = page.hasMore;
+      setHasMoreMainRecords(page.hasMore);
+    } catch (error) {
+      setModelState({
+        status: "error",
+        message: `历史库读取失败：${formatError(error)}`,
+      });
+    } finally {
+      isLoadingMainRef.current = false;
+      setIsLoadingMainRecords(false);
     }
   }
 
-  function handleCreateCanvas() {
-    const nextCanvas = createWorkflowCanvas(canvases.length + 1)
-    setCanvases((currentCanvases) => [...currentCanvases, nextCanvas])
-    setActiveCanvasId(nextCanvas.id)
-    setPaneMenu(null)
-    setStatus(`${nextCanvas.name} 已创建`)
-  }
-
-  function handleDuplicateCanvas(id: string) {
-    const sourceCanvas = canvases.find((canvas) => canvas.id === id)
-    if (!sourceCanvas) return
-
-    const nextCanvas = createWorkflowCanvas(canvases.length + 1, sourceCanvas)
-    setCanvases((currentCanvases) => [...currentCanvases, nextCanvas])
-    setActiveCanvasId(nextCanvas.id)
-    setPaneMenu(null)
-    setStatus(`${sourceCanvas.name} 已复制`)
-  }
-
-  function handleDeleteCanvas(id: string) {
-    if (canvases.length <= 1) {
-      setStatus('至少保留一个画布')
-      return
-    }
-
-    const deletedIndex = canvases.findIndex((canvas) => canvas.id === id)
-    const nextCanvases = canvases.filter((canvas) => canvas.id !== id)
-    setCanvases(nextCanvases)
-
-    if (id === activeCanvasId) {
-      const nextActive =
-        nextCanvases[Math.max(0, deletedIndex - 1)] || nextCanvases[0]
-      if (nextActive) setActiveCanvasId(nextActive.id)
-    }
-
-    setPaneMenu(null)
-    setStatus('画布已删除')
-  }
-
-  function handleRenameCanvas(id: string, nextName: string) {
-    const normalizedName = nextName.slice(0, 32)
-    setCanvases((currentCanvases) =>
-      currentCanvases.map((canvas) =>
-        canvas.id === id
-          ? { ...canvas, name: normalizedName, updatedAt: Date.now() }
-          : canvas
-      )
-    )
-  }
-
-  function handleBeginCanvasRename(canvas: WorkflowCanvas) {
-    setRenamingCanvasId(canvas.id)
-    setRenamingCanvasName(canvas.name)
-  }
-
-  function handleCancelCanvasRename() {
-    setRenamingCanvasId(null)
-    setRenamingCanvasName('')
-  }
-
-  function handleCommitCanvasRename(id: string) {
-    const canvas = canvases.find((item) => item.id === id)
-    if (!canvas) {
-      handleCancelCanvasRename()
-      return
-    }
-
-    const nextName = renamingCanvasName.trim() || '未命名画布'
-    if (nextName !== canvas.name) handleRenameCanvas(id, nextName)
-    setRenamingCanvasId(null)
-    setRenamingCanvasName('')
-    setStatus(`${nextName} 已命名`)
-  }
-
-  function handleCommitCanvasName(id: string) {
-    const canvas = canvases.find((item) => item.id === id)
-    if (!canvas) return
-
-    const nextName = canvas.name.trim() || '未命名画布'
-    if (nextName !== canvas.name) handleRenameCanvas(id, nextName)
-    setStatus(`${nextName} 已命名`)
-  }
-
-  function stopCanvasNameShortcut(event: ReactKeyboardEvent<HTMLInputElement>) {
-    event.stopPropagation()
-    if (event.key === 'Enter') {
-      event.currentTarget.blur()
+  async function loadSidebarRecordsPage() {
+    if (isLoadingSidebarRef.current || !hasMoreSidebarRef.current) return;
+    isLoadingSidebarRef.current = true;
+    setIsLoadingSidebarRecords(true);
+    try {
+      const page = await getHistoryRecordsPage({
+        limit: HISTORY_PAGE_SIZE,
+        beforeCreatedAt: sidebarCursorRef.current,
+      });
+      setSidebarRecords((current) => mergeHistoryRecords(current, page.records));
+      sidebarCursorRef.current = page.nextCursor;
+      hasMoreSidebarRef.current = page.hasMore;
+      setHasMoreSidebarRecords(page.hasMore);
+    } catch (error) {
+      setModelState({
+        status: "error",
+        message: `历史库读取失败：${formatError(error)}`,
+      });
+    } finally {
+      isLoadingSidebarRef.current = false;
+      setIsLoadingSidebarRecords(false);
     }
   }
 
-  function handleCanvasRenameShortcut(
-    event: ReactKeyboardEvent<HTMLInputElement>,
-    id: string
-  ) {
-    event.stopPropagation()
-    if (event.key === 'Enter') {
-      handleCommitCanvasRename(id)
-    }
-    if (event.key === 'Escape') {
-      handleCancelCanvasRename()
+  function patchVisibleRecord(id: string, patch: Partial<Job>) {
+    setVisibleRecords((current) =>
+      sortGenerationRecords(current.map((record) => (record.id === id ? { ...record, ...patch } : record))),
+    );
+  }
+
+  function enqueueJobs(records: Job[], config: ApiConfig) {
+    pendingQueueRef.current.push(...records.map((job) => ({ job, config })));
+    syncQueueStats();
+    pumpQueue();
+  }
+
+  function pumpQueue() {
+    const maxConcurrency = clampNumber(Number(paramsRef.current.concurrency), 1, 6);
+    while (runningCountRef.current < maxConcurrency && pendingQueueRef.current.length > 0) {
+      const next = pendingQueueRef.current.shift()!;
+      runningCountRef.current += 1;
+      syncQueueStats();
+      void generateSingle(next.job, next.config).finally(() => {
+        runningCountRef.current = Math.max(0, runningCountRef.current - 1);
+        syncQueueStats();
+        pumpQueue();
+      });
     }
   }
 
-  const deleteWorkflowEdge = useCallback(
-    (id: string) => {
-      setEdges((currentEdges) => currentEdges.filter((edge) => edge.id !== id))
-      setStatus('连接已删除')
-    },
-    [setEdges]
-  )
+  function registerRecordElement(id: string, element: HTMLElement | null) {
+    if (element) {
+      recordElementRefs.current.set(id, element);
+    } else {
+      recordElementRefs.current.delete(id);
+    }
+  }
 
-  const deleteWorkflowNode = useCallback(
-    (id: string) => {
-      setNodes((currentNodes) => currentNodes.filter((node) => node.id !== id))
-      setEdges((currentEdges) =>
-        currentEdges.filter((edge) => edge.source !== id && edge.target !== id)
-      )
-      setStatus('节点已删除')
-    },
-    [setEdges, setNodes]
-  )
+  function focusSidebarRecord(record: HistoryRecord) {
+    setHighlightedRecordId(record.id);
+    const element = recordElementRefs.current.get(record.id);
+    if (element) {
+      element.scrollIntoView({ behavior: "smooth", block: "center" });
+      if (record.status === "error") {
+        window.setTimeout(() => previewCurrent(record), 220);
+      }
+    } else if (record.objectUrl || record.status === "error") {
+      previewCurrent(record);
+    }
+    window.setTimeout(() => {
+      setHighlightedRecordId((current) => (current === record.id ? "" : current));
+    }, 1800);
+  }
 
-  function nodeDataFor(node: WorkflowNode): WorkflowNode['data'] {
-    const type = node.type as WorkflowNodeType
+  function toggleSelectionMode() {
+    setIsSelectionMode((value) => {
+      if (value) setSelectedRecordIds(new Set());
+      return !value;
+    });
+  }
 
-    if (type === 'asset') {
-      const nodeReferenceImages = getWorkflowNodeReferenceImages(node)
+  function toggleRecordSelection(record: Job) {
+    if (record.status === "running") return;
+    setIsSelectionMode(true);
+    setSelectedRecordIds((current) => {
+      const next = new Set(current);
+      if (next.has(record.id)) {
+        next.delete(record.id);
+      } else {
+        next.add(record.id);
+      }
+      return next;
+    });
+  }
 
-      return {
-        onDeleteNode: deleteWorkflowNode,
-        referenceImages: nodeReferenceImages,
-        addReferenceFiles: (files: FileList | File[]) => addReferenceFiles(node.id, files),
-        openGalleryPicker: () => setGalleryReferencePickerNodeId(node.id),
-        galleryImageCount: images.length,
-        removeReferenceImage: (id: string) => removeReferenceImage(node.id, id),
-        updateReferenceImageTitle: (id: string, title: string) =>
-          updateReferenceImageTitle(node.id, id, title),
-        isReferenceTitleDuplicate: (id: string) => {
-          const image = nodeReferenceImages.find((item) => item.id === id)
-          if (!image) return false
-          return isReferenceTitleTaken(
-            activeCanvas,
-            image.title || image.name,
-            referenceImageOwnerId(id)
-          )
+  function selectAllVisibleRecords() {
+    setIsSelectionMode(true);
+    setSelectedRecordIds(new Set(selectableVisibleRecords.map((record) => record.id)));
+  }
+
+  function invertVisibleSelection() {
+    setIsSelectionMode(true);
+    setSelectedRecordIds((current) => {
+      const next = new Set(current);
+      selectableVisibleRecords.forEach((record) => {
+        if (next.has(record.id)) {
+          next.delete(record.id);
+        } else {
+          next.add(record.id);
+        }
+      });
+      return next;
+    });
+  }
+
+  function cancelSelection() {
+    setIsSelectionMode(false);
+    setSelectedRecordIds(new Set());
+  }
+
+  async function downloadSelectedRecords() {
+    if (downloadableSelectedRecords.length === 0 || isBulkDownloading) return;
+    setIsBulkDownloading(true);
+    try {
+      const zipBlob = await createZipBlob(
+        downloadableSelectedRecords.map((record) => ({
+          name: recordFilename(record),
+          blob: record.imageBlob!,
+          date: record.finishedAt || record.createdAt,
+        })),
+      );
+      const url = URL.createObjectURL(zipBlob);
+      downloadUrl(url, `sumapi-selected-${formatFileDate()}.zip`);
+      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } finally {
+      setIsBulkDownloading(false);
+    }
+  }
+
+  function requestBulkDelete() {
+    const ids = selectedRecords.filter((record) => record.status !== "running").map((record) => record.id);
+    if (ids.length === 0) return;
+    setPendingDeleteIds(ids);
+  }
+
+  async function confirmBulkDelete() {
+    if (!pendingDeleteIds || pendingDeleteIds.length === 0) return;
+    const deleteIdSet = new Set(pendingDeleteIds);
+    const recordsToDelete = visibleRecords.filter((record) => deleteIdSet.has(record.id));
+    const storedIds = recordsToDelete
+      .filter((record) => record.status === "success" || record.status === "error")
+      .map((record) => record.id);
+
+    pendingQueueRef.current = pendingQueueRef.current.filter((item) => !deleteIdSet.has(item.job.id));
+    syncQueueStats();
+    await Promise.all(storedIds.map((id) => deleteHistoryRecord(id)));
+
+    setSidebarRecords((current) => {
+      current.forEach((record) => {
+        if (deleteIdSet.has(record.id) && record.objectUrl) URL.revokeObjectURL(record.objectUrl);
+      });
+      return current.filter((record) => !deleteIdSet.has(record.id));
+    });
+    setVisibleRecords((current) => {
+      current.forEach((record) => {
+        if (deleteIdSet.has(record.id) && record.imageUrl) URL.revokeObjectURL(record.imageUrl);
+      });
+      return current.filter((record) => !deleteIdSet.has(record.id));
+    });
+    setSelectedRecordIds(new Set());
+    setIsSelectionMode(false);
+    setPendingDeleteIds(null);
+    setHighlightedRecordId((current) => (deleteIdSet.has(current) ? "" : current));
+  }
+
+  async function clearFailedRecords() {
+    const storedFailedIds = await deleteFailedHistoryRecords();
+    const failedIds = new Set(storedFailedIds);
+    visibleRecords.forEach((record) => {
+      if (record.status === "error") failedIds.add(record.id);
+    });
+    sidebarRecords.forEach((record) => {
+      if (record.status === "error") failedIds.add(record.id);
+    });
+    if (failedIds.size === 0) return;
+
+    setSidebarRecords((current) => {
+      current.forEach((record) => {
+        if (failedIds.has(record.id) && record.objectUrl) URL.revokeObjectURL(record.objectUrl);
+      });
+      return current.filter((record) => !failedIds.has(record.id) && record.status !== "error");
+    });
+    setVisibleRecords((current) => {
+      current.forEach((record) => {
+        if ((failedIds.has(record.id) || record.status === "error") && record.imageUrl) {
+          URL.revokeObjectURL(record.imageUrl);
+        }
+      });
+      return current.filter((record) => !failedIds.has(record.id) && record.status !== "error");
+    });
+    setSelectedRecordIds((current) => {
+      const next = new Set(current);
+      failedIds.forEach((id) => next.delete(id));
+      return next;
+    });
+    setHighlightedRecordId((current) => (failedIds.has(current) ? "" : current));
+  }
+
+  async function handleFiles(files: FileList | File[]) {
+    const incomingFiles = Array.from(files);
+    if (incomingFiles.length === 0) return;
+    cancelAnalysisCountdown();
+    clearAgentModeDrafts();
+    setIsComposerCollapsed(false);
+    const nextImages = await Promise.all(incomingFiles.slice(0, REFERENCE_LIMIT).map(fileToReference));
+    setReferenceImages((current) => [...current, ...nextImages].slice(0, REFERENCE_LIMIT));
+  }
+
+  function onReferenceInput(event: ChangeEvent<HTMLInputElement>) {
+    if (event.target.files) void handleFiles(event.target.files);
+    event.target.value = "";
+  }
+
+  function onComposerDrop(event: DragEvent<HTMLFormElement>) {
+    event.preventDefault();
+    void handleFiles(event.dataTransfer.files);
+  }
+
+  function apiLogSnapshot(config = apiConfig) {
+    return {
+      protocol: config.protocol,
+      baseUrl: normalizeApiBaseUrl(config.baseUrl),
+      apiKey: maskApiKeyForLog(config.apiKey, config.rememberKey),
+    };
+  }
+
+  function pushLocalLog(entry: Omit<LocalLogEntry, "id" | "createdAt">) {
+    const sanitized: Omit<LocalLogEntry, "id" | "createdAt"> = {
+      ...entry,
+      params: entry.params ? sanitizeClientLogValue(entry.params) as Record<string, unknown> : entry.params,
+      response: entry.response ? sanitizeClientLogValue(entry.response) as Record<string, unknown> : entry.response,
+      error: entry.error !== undefined ? sanitizeClientLogValue(entry.error) : entry.error,
+    };
+    setLocalLogs((current) => {
+      const next = [{ id: uid(), createdAt: Date.now(), ...sanitized }, ...current].slice(0, LOCAL_LOG_LIMIT);
+      saveLocalLogs(next);
+      return next;
+    });
+  }
+
+  function clearLocalLogs() {
+    saveLocalLogs([]);
+    setLocalLogs([]);
+  }
+
+  function exportLocalDiagnostics() {
+    const exportedAt = new Date().toISOString();
+    const filename = `sumapi-local-diagnostics-${exportedAt.replace(/[:.]/g, "-")}.json`;
+    const refStatusBuckets: Record<ReferenceUploadStatus, number> = {
+      none: 0,
+      prepared: 0,
+      sent_ok: 0,
+      sent_failed: 0,
+      skipped_unsupported: 0,
+    };
+    let imageGenLogCount = 0;
+    let totalRefBytes = 0;
+    for (const log of localLogs) {
+      if (log.type !== "image_generation") continue;
+      imageGenLogCount += 1;
+      if (log.referenceSummary) {
+        refStatusBuckets[log.referenceSummary.status] += 1;
+        totalRefBytes += log.referenceSummary.totalBytes;
+      }
+    }
+    const visibleSnapshot = visibleRecords.map((record) => ({
+      id: record.id,
+      requestId: record.requestId,
+      batchId: record.batchId,
+      index: record.index,
+      total: record.total,
+      protocol: record.protocol,
+      model: record.model,
+      promptPreview: record.prompt?.slice(0, 200) || "",
+      promptLength: record.prompt?.length || 0,
+      params: record.params,
+      referenceCount: record.referenceImages?.length ?? 0,
+      status: record.status,
+      attempt: record.attempt,
+      maxAttempts: record.maxAttempts,
+      startedAt: record.startedAt,
+      finishedAt: record.finishedAt,
+      durationMs: record.durationMs,
+      errorDetail: record.errorDetail ? sanitizeClientLogValue(record.errorDetail) : undefined,
+      agentName: record.agentName,
+      promptVariant: record.promptVariant,
+    }));
+    const payload = {
+      exportedAt,
+      schemaVersion: 2,
+      apiConfig: {
+        protocol: apiConfig.protocol,
+        baseUrl: apiConfig.baseUrl,
+        apiKey: maskApiKeyForLog(apiConfig.apiKey, apiConfig.rememberKey),
+      },
+      params,
+      selectedModel,
+      selectedAnalysisModel,
+      modelState,
+      queueStats,
+      summary: {
+        localLogs: localLogs.length,
+        imageGenerationLogs: imageGenLogCount,
+        referenceUploadStatusDistribution: refStatusBuckets,
+        totalReferenceBytesSent: totalRefBytes,
+        visibleRecords: visibleRecords.length,
+        sidebarRecords: sidebarRecords.length,
+        retryLimit: params.retryLimit,
+      },
+      visibleRecords: visibleSnapshot,
+      localLogs: localLogs.map((log) => sanitizeClientLogValue(log)),
+      currentFrontendVersion: CURRENT_FRONTEND_VERSION,
+      availableFrontendVersion,
+      userAgent: navigator.userAgent,
+      origin: window.location.origin,
+    };
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    downloadUrl(url, filename);
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+
+  function imageRequestParamsForLog(job: Job, config: ApiConfig) {
+    return {
+      ...apiLogSnapshot(config),
+      request: {
+        batchId: job.batchId,
+        index: job.index,
+        total: job.total,
+        protocol: job.protocol,
+        model: job.model,
+        prompt: truncateForLog(job.prompt),
+        aspectRatio: job.params.aspectRatio,
+        size: job.params.size || resolveRequestSize(job.params.aspectRatio, job.params.resolution, job.protocol, job.model),
+        resolution: job.params.resolution,
+        quality: job.params.quality,
+        outputFormat: job.params.outputFormat,
+        seed: job.params.seed,
+        negativePrompt: truncateForLog(job.params.negativePrompt || "", 400),
+        agentId: job.agentId,
+        agentName: job.agentName,
+        agentScenario: job.agentScenario,
+        promptVariant: job.promptVariant,
+        referenceCount: job.referenceImages.length,
+        referenceImages: referenceMetaForLog(job.referenceImages),
+      },
+    };
+  }
+
+  async function loadModels({
+    silent = false,
+    config = apiConfig,
+  }: {
+    silent?: boolean;
+    config?: ApiConfig;
+  } = {}): Promise<boolean> {
+    const normalizedBaseUrl = normalizeApiBaseUrl(config.baseUrl);
+    const modelLoadKey = `${config.protocol}|${normalizedBaseUrl}|${config.apiKey.trim()}`;
+    const startedAt = Date.now();
+    if (config.apiKey.trim().length < API_KEY_MIN_LENGTH) {
+      setVerifiedModelKey("");
+      setVerifiedModelAt(0);
+      setModels([]);
+      setSelectedModel("");
+      setAnalysisModels([]);
+      setSelectedAnalysisModel("");
+      setModelState({ status: "error", message: "请先填写有效的 API Key" });
+      pushLocalLog({
+        type: "model_load",
+        level: "error",
+        title: silent ? "自动读取模型失败" : "读取模型失败",
+        message: "API Key 为空或长度不足，已阻止请求上游。",
+        endpoint: "/api/models",
+        durationMs: 0,
+        params: apiLogSnapshot(config),
+      });
+      return false;
+    }
+    const requestId = modelLoadRequestRef.current + 1;
+    modelLoadRequestRef.current = requestId;
+    setVerifiedModelKey("");
+    setVerifiedModelAt(0);
+    if (silent) {
+      setIsAutoLoadingModels(true);
+      setModelState({ status: "loading", message: "正在自动验证 API Key" });
+    } else {
+      lastAutoModelLoadKeyRef.current = modelLoadKey;
+      setIsAutoLoadingModels(false);
+      setModelState({ status: "loading", message: "正在验证 API Key 并读取模型" });
+    }
+    pushLocalLog({
+      type: "model_load",
+      level: "info",
+      title: silent ? "自动读取模型" : "读取模型列表",
+      message: "正在通过 /api/models 验证 API Key 并读取模型列表。",
+      endpoint: "/api/models",
+      params: apiLogSnapshot(config),
+    });
+    try {
+      const response = await fetch("/api/models", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          protocol: config.protocol,
+          baseUrl: normalizedBaseUrl,
+          apiKey: config.apiKey,
+        }),
+      });
+      const payload = await readApiJson<{ ok?: boolean; models?: string[]; raw?: unknown; detail?: unknown }>(response, "/api/models");
+      if (!response.ok || !payload.ok) {
+        throw payload.detail || payload;
+      }
+      if (requestId !== modelLoadRequestRef.current) return false;
+      const upstreamModels = Array.isArray(payload.models) ? payload.models : [];
+      if (upstreamModels.length === 0) {
+        throw new Error("接口返回了空模型列表");
+      }
+      const nextModels = imageModelsForProtocol(config.protocol, upstreamModels);
+      const nextAnalysisModels = filterAnalysisModels(upstreamModels);
+      if (nextModels.length === 0) {
+        throw new Error("未找到可用的图片模型");
+      }
+      const nextSelectedModel = preferModel(nextModels, selectedModel);
+      const nextSelectedAnalysisModel = preferAnalysisModel(nextAnalysisModels, selectedAnalysisModel);
+      lastAutoModelLoadKeyRef.current = modelLoadKey;
+      setVerifiedModelKey(modelLoadKey);
+      setVerifiedModelAt(Date.now());
+      setModels(nextModels);
+      setSelectedModel(nextSelectedModel);
+      setAnalysisModels(nextAnalysisModels);
+      setSelectedAnalysisModel(nextSelectedAnalysisModel);
+      setModelFilter("");
+      setModelState({ status: "ready", message: `API Key 有效 · ${nextModels.length} 个图片模型` });
+      pushLocalLog({
+        type: "model_load",
+        level: "success",
+        title: silent ? "自动读取模型成功" : "读取模型成功",
+        message: `已读取 ${nextModels.length} 个图片模型，选中 ${nextSelectedModel}。`,
+        endpoint: "/api/models",
+        durationMs: Date.now() - startedAt,
+        params: apiLogSnapshot(config),
+        response: {
+          modelCount: nextModels.length,
+          analysisModelCount: nextAnalysisModels.length,
+          selectedModel: nextSelectedModel,
+          selectedAnalysisModel: nextSelectedAnalysisModel,
         },
+      });
+      if (silent && showOnboarding && onboardingStep < 2) {
+        setOnboardingStep(2);
+      }
+      return true;
+    } catch (error) {
+      if (requestId !== modelLoadRequestRef.current) return false;
+      setVerifiedModelKey("");
+      setVerifiedModelAt(0);
+      setModels([]);
+      setSelectedModel("");
+      setAnalysisModels([]);
+      setSelectedAnalysisModel("");
+      setModelState({ status: "error", message: modelValidationErrorMessage(error) });
+      pushLocalLog({
+        type: "model_load",
+        level: "error",
+        title: silent ? "自动读取模型失败" : "读取模型失败",
+        message: modelValidationErrorMessage(error),
+        endpoint: "/api/models",
+        durationMs: Date.now() - startedAt,
+        params: apiLogSnapshot(config),
+        error: safeLogError(error),
+      });
+      return false;
+    } finally {
+      if (silent) {
+        setIsAutoLoadingModels(false);
       }
     }
-
-    if (type === 'prompt') {
-      const nodePrompt = getWorkflowNodePrompt(node)
-      const nodePromptOptimizationPreset = getWorkflowNodePromptOptimizationPreset(node)
-      const promptReferenceImages = getPromptMentionReferenceImages(node.id, activeCanvas, images)
-      const isPromptOptimizing = optimizingPromptNodeIds.has(node.id)
-
-      return {
-        onDeleteNode: deleteWorkflowNode,
-        prompt: nodePrompt,
-        setPrompt: (updater: StateUpdater<string>) => setPromptNodePrompt(node.id, updater),
-        referenceImages: promptReferenceImages,
-        optimizationPreset: nodePromptOptimizationPreset,
-        optimizationPresets: promptOptimizationPresets,
-        setOptimizationPreset: (preset: PromptOptimizationPreset) =>
-          setPromptNodeOptimizationPreset(node.id, preset),
-        generationMode,
-        isOptimizingPrompt: isPromptOptimizing,
-        canOptimizePrompt:
-          Boolean(nodePrompt.trim()) && Boolean(codexApiKey.trim()) && !isPromptOptimizing,
-        onOptimizePrompt: () => void handleOptimizePrompt(node.id),
-      }
-    }
-
-    if (type === 'style') {
-      return {
-        onDeleteNode: deleteWorkflowNode,
-        styles: styleOptions,
-        categories: styleCategories,
-        selectedStyleId: getWorkflowNodeSelectedStyleId(node),
-        setSelectedStyleId: (id: string) => setStyleNodeSelection(node.id, id),
-        loadCategory: (category: string) => void loadStyleCategory(category),
-        isLoadingStyles,
-      }
-    }
-
-    if (type === 'generate') {
-      const promptEdge = edges.find(
-        (edge) =>
-          edge.target === node.id &&
-          edge.targetHandle === 'prompt' &&
-          nodes.find((item) => item.id === edge.source)?.type === 'prompt'
-      )
-      const promptNode =
-        (promptEdge ? nodes.find((item) => item.id === promptEdge.source) : null) ||
-        nodes.find((item) => item.type === 'prompt') ||
-        null
-      const canGenerateNode =
-        !activeCanvasGenerating &&
-        Boolean(apiKey && imageBaseUrl && model && getWorkflowNodePrompt(promptNode).trim())
-      const activeSize = selectedGenerationSize() || DEFAULT_SAFE_IMAGE_SIZE
-      const availableWorkflowSizes = safeSizeOptionsForModel(model).map((item) => item.value)
-      const workflowSizes = availableWorkflowSizes.includes(activeSize)
-        ? availableWorkflowSizes
-        : [activeSize, ...availableWorkflowSizes]
-      const workflowSizeOptions = workflowSizes.map((item) => ({
-        value: item,
-        label: workflowSizeOptionLabel(item),
-      }))
-
-      return {
-        onDeleteNode: deleteWorkflowNode,
-        model,
-        sortedModels,
-        setModel,
-        size: activeSize,
-        sizeOptions: workflowSizeOptions,
-        setSize: (nextSize: string) => {
-          setSizeMode('preset')
-          setSize(isSafeImageSizeForModel(nextSize, model) ? nextSize : DEFAULT_SAFE_IMAGE_SIZE)
-        },
-        quality,
-        qualities,
-        setQuality,
-        count,
-        counts,
-        setCount,
-        responseFormat,
-        setResponseFormat,
-        inputFidelity,
-        inputFidelities,
-        setInputFidelity,
-        generationMode,
-        isGenerating: activeCanvasGenerating,
-        canGenerate: canGenerateNode,
-        onGenerate: () => void handleGenerate(node.id),
-        image: images.find((image) => image.id === getWorkflowNodeLatestImageId(node)) || null,
-        outputTitle: getWorkflowNodeOutputTitle(node),
-        updateOutputTitle: (title: string) => updateGenerateNodeOutputTitle(node.id, title),
-        isOutputTitleDuplicate: isReferenceTitleTaken(
-          activeCanvas,
-          getWorkflowNodeOutputTitle(node),
-          generateOutputOwnerId(node.id)
-        ),
-        onPreview: setPreviewImage,
-        onDownload: handleDownloadImage,
-      }
-    }
-
-    return { onDeleteNode: deleteWorkflowNode }
   }
 
-  const workflowNodes = useMemo<WorkflowNode[]>(
-    () =>
-      nodes.map((node) => ({
-        ...node,
-        data: nodeDataFor(node),
-      })),
-    [
-      nodes,
-      edges,
-      generationMode,
-      referenceImages,
-      apiKey,
-      imageBaseUrl,
-      codexApiKey,
-      textBaseUrl,
-      textModel,
-      optimizingPromptNodeIds,
-      styleOptions,
-      styleCategories,
-      loadStyleCategory,
-      isLoadingStyles,
-      setStyleNodeSelection,
-      model,
-      sortedModels,
-      size,
-      sizeMode,
-      customSizeWidth,
-      customSizeHeight,
-      quality,
-      count,
-      responseFormat,
-      inputFidelity,
-      images,
-      activeCanvas,
-      activeCanvasGenerating,
-      deleteWorkflowNode,
-      setPromptNodePrompt,
-      setPromptNodeOptimizationPreset,
-    ]
-  )
+  async function verifyApiKeyBeforeGeneration() {
+    const modelLoadKey = apiConnectionKey(apiConfig);
+    const startedAt = Date.now();
+    if (apiConfig.apiKey.trim().length < API_KEY_MIN_LENGTH) {
+      setVerifiedModelKey("");
+      setVerifiedModelAt(0);
+      setModels([]);
+      setSelectedModel("");
+      setAnalysisModels([]);
+      setSelectedAnalysisModel("");
+      setModelState({ status: "error", message: "请先填写有效的 API Key" });
+      pushLocalLog({
+        type: "api_health",
+        level: "error",
+        title: "提交前验证失败",
+        message: "API Key 为空或长度不足，已阻止生成。",
+        endpoint: "/api/models",
+        durationMs: 0,
+        params: apiLogSnapshot(),
+      });
+      return false;
+    }
 
-  const workflowEdges = useMemo<WorkflowEdge[]>(
-    () =>
-      edges.map((edge) => ({
-        ...edge,
-        type: 'blueprint',
-        data: {
-          ...edge.data,
-          label:
-            edge.data?.label ||
-            (edge.source.startsWith('asset')
-              ? '参考图 -> 文字描述'
-              : edge.source.startsWith('style')
-                ? '风格 -> 文字描述'
-              : edge.source.startsWith('generate')
-                ? '生成图 -> 文字描述'
-                : '提示词 -> 图片生成'),
-          onDelete: deleteWorkflowEdge,
-        },
-        animated:
-          edge.source.includes('prompt') ||
-          (activeCanvasGenerating && edge.source.includes('generate')) ||
-          edge.source.includes('style') ||
-          edge.source.includes('asset'),
-      })),
-    [activeCanvasGenerating, deleteWorkflowEdge, edges]
-  )
-
-  const isValidConnection: IsValidConnection<WorkflowEdge> = useCallback(
-    (connection) => {
-      const source = nodes.find((node) => node.id === connection.source)
-      const target = nodes.find((node) => node.id === connection.target)
-      if (!source || !target) return false
-      if (source.id === target.id) return false
-
-      if (source.type === 'asset') {
-        const targetHandle = connection.targetHandle || ''
-        return (
-          target.type === 'prompt' &&
-          connection.sourceHandle === 'reference' &&
-          PROMPT_REFERENCE_HANDLE_IDS.includes(targetHandle)
-        )
+    setIsAutoLoadingModels(false);
+    setModelState({ status: "loading", message: "提交前验证 API Key" });
+    pushLocalLog({
+      type: "api_health",
+      level: "info",
+      title: "提交前验证 API Key",
+      message: "生成前先请求模型列表，避免无效 Key 进入生图链路。",
+      endpoint: "/api/models",
+      params: apiLogSnapshot(),
+    });
+    try {
+      const response = await fetch("/api/models", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          protocol: apiConfig.protocol,
+          baseUrl: normalizeApiBaseUrl(apiConfig.baseUrl),
+          apiKey: apiConfig.apiKey,
+        }),
+      });
+      const payload = await readApiJson<{ ok?: boolean; models?: string[]; raw?: unknown; detail?: unknown }>(response, "/api/models");
+      if (!response.ok || !payload.ok) {
+        throw payload.detail || payload;
       }
-
-      if (source.type === 'style') {
-        return (
-          target.type === 'prompt' &&
-          connection.sourceHandle === 'style' &&
-          connection.targetHandle === 'style'
-        )
+      const nextModels = imageModelsForProtocol(apiConfig.protocol, Array.isArray(payload.models) ? payload.models : []);
+      const nextAnalysisModels = filterAnalysisModels(Array.isArray(payload.models) ? payload.models : []);
+      if (nextModels.length === 0) {
+        throw new Error("未找到可用的图片模型");
       }
-
-      if (source.type === 'prompt') {
-        return (
-          target.type === 'generate' &&
-          connection.sourceHandle === 'prompt' &&
-          connection.targetHandle === 'prompt'
-        )
-      }
-
-      if (source.type === 'generate') {
-        const targetHandle = connection.targetHandle || ''
-        return (
-          target.type === 'prompt' &&
-          connection.sourceHandle === 'generated-image' &&
-          PROMPT_REFERENCE_HANDLE_IDS.includes(targetHandle)
-        )
-      }
-
-      return false
-    },
-    [nodes]
-  )
-
-  const onConnect = useCallback(
-    (connection: Connection) => {
-      if (!isValidConnection(connection)) {
-        setStatus('这个端口不能这样连接')
-        return
-      }
-
-      const sourceType = connection.source?.split('-')[0]
-      const label =
-        sourceType === 'asset'
-          ? '参考图 -> 文字描述'
-          : sourceType === 'style'
-            ? '风格 -> 文字描述'
-            : sourceType === 'generate'
-              ? '生成图 -> 文字描述'
-              : '提示词 -> 图片生成'
-      const className =
-        sourceType === 'asset'
-          ? 'edge-blue'
-          : sourceType === 'style'
-            ? 'edge-green'
-            : sourceType === 'prompt'
-              ? 'edge-violet'
-              : 'edge-pink'
-
-      setEdges((currentEdges) => {
-        const withoutPreviousInput = currentEdges.filter(
-          (edge) =>
-            !(
-              edge.target === connection.target &&
-              edge.targetHandle === connection.targetHandle
-            )
-        )
-
-        return addEdge(
-          {
-            ...connection,
-            type: 'blueprint',
-            id: `${connection.source}-${connection.sourceHandle || 'out'}-${connection.target}-${connection.targetHandle || 'in'}-${Date.now()}`,
-            className,
-            animated: sourceType === 'prompt',
-            data: { label },
+      setVerifiedModelKey(modelLoadKey);
+      setVerifiedModelAt(Date.now());
+      setModels(nextModels);
+      setAnalysisModels(nextAnalysisModels);
+      if (!nextModels.includes(selectedModel)) {
+        setSelectedModel(preferModel(nextModels, selectedModel));
+        setModelState({ status: "ready", message: "模型列表已刷新，请再次点击生成" });
+        pushLocalLog({
+          type: "api_health",
+          level: "warning",
+          title: "提交前验证通过但模型已刷新",
+          message: "当前选中模型不在最新图片模型列表中，已自动改选，需要用户再次确认生成。",
+          endpoint: "/api/models",
+          durationMs: Date.now() - startedAt,
+          params: apiLogSnapshot(),
+          response: {
+            modelCount: nextModels.length,
+            selectedModel,
+            nextSelectedModel: preferModel(nextModels, selectedModel),
           },
-          withoutPreviousInput
-        )
-      })
-      setPaneMenu(null)
-      setStatus(`${label} 已连接`)
-    },
-    [isValidConnection, setEdges]
-  )
-
-  const handlePaneContextMenu = useCallback(
-    (event: ReactMouseEvent<Element> | globalThis.MouseEvent) => {
-      event.preventDefault()
-      const currentTarget =
-        'currentTarget' in event && event.currentTarget
-          ? (event.currentTarget as HTMLDivElement)
-          : null
-      const bounds = currentTarget?.getBoundingClientRect()
-      const position = flowInstance
-        ? flowInstance.screenToFlowPosition({
-            x: event.clientX,
-            y: event.clientY,
-          })
-        : {
-            x: event.clientX - (bounds?.left || 0),
-            y: event.clientY - (bounds?.top || 0),
-          }
-      const menuGap = 6
-      const menuWidth = 190
-      const menuHeight = 210
-      const viewportWidth = typeof window === 'undefined' ? 0 : window.innerWidth
-      const viewportHeight = typeof window === 'undefined' ? 0 : window.innerHeight
-      let menuX = event.clientX + menuGap
-      let menuY = event.clientY
-
-      if (viewportWidth && menuX + menuWidth > viewportWidth - menuGap) {
-        menuX = Math.max(menuGap, event.clientX - menuWidth - menuGap)
+        });
+        return false;
       }
-
-      if (viewportHeight && menuY + menuHeight > viewportHeight - menuGap) {
-        menuY = Math.max(menuGap, viewportHeight - menuHeight - menuGap)
-      }
-
-      setPaneMenu({
-        x: menuX,
-        y: menuY,
-        position,
-      })
-    },
-    [flowInstance]
-  )
-
-  function addWorkflowNodeAt(type: WorkflowNodeType, position: { x: number; y: number }) {
-    const id = `${type}-${Date.now()}`
-    setNodes((currentNodes) => {
-      const data =
-        type === 'generate'
-            ? {
-                outputTitle: createUniqueReferenceTitle(
-                  `生成图${currentNodes.filter((node) => node.type === 'generate').length + 1}`,
-                  getCanvasReferenceNameEntries({ nodes: currentNodes })
-                ),
-              }
-            : {}
-
-      return [
-        ...currentNodes,
-        {
-          id,
-          type,
-          position,
-          data,
+      setModelState({ status: "ready", message: `API Key 有效 · ${nextModels.length} 个图片模型` });
+      pushLocalLog({
+        type: "api_health",
+        level: "success",
+        title: "提交前验证通过",
+        message: `API Key 可用，已确认 ${nextModels.length} 个图片模型。`,
+        endpoint: "/api/models",
+        durationMs: Date.now() - startedAt,
+        params: apiLogSnapshot(),
+        response: {
+          modelCount: nextModels.length,
+          selectedModel,
         },
-      ]
-    })
-    setPaneMenu(null)
-    setStatus('已创建节点，拖动端口可连线')
+      });
+      return true;
+    } catch (error) {
+      setVerifiedModelKey("");
+      setVerifiedModelAt(0);
+      setModels([]);
+      setSelectedModel("");
+      setAnalysisModels([]);
+      setSelectedAnalysisModel("");
+      setModelState({ status: "error", message: modelValidationErrorMessage(error) });
+      pushLocalLog({
+        type: "api_health",
+        level: "error",
+        title: "提交前验证失败",
+        message: modelValidationErrorMessage(error),
+        endpoint: "/api/models",
+        durationMs: Date.now() - startedAt,
+        params: apiLogSnapshot(),
+        error: safeLogError(error),
+      });
+      return false;
+    }
   }
 
-  function addWorkflowNode(type: WorkflowNodeType) {
-    if (!paneMenu) return
-    addWorkflowNodeAt(type, paneMenu.position)
+  async function generateSingle(job: Job, config: ApiConfig) {
+    const startedAt = Date.now();
+    let requestParamsForLog: Record<string, unknown> = imageRequestParamsForLog(job, config);
+    patchVisibleRecord(job.id, { status: "running", startedAt, durationMs: 0 });
+
+    const protocolSupportsRefs = getProtocolDefinition(job.protocol).supportsReferenceImages;
+    const userRefsCount = job.referenceImages.length;
+    let preparedSummary: ReferenceSummary;
+    if (userRefsCount === 0) {
+      preparedSummary = { hasReferences: false, count: 0, totalBytes: 0, status: "none" };
+    } else if (!protocolSupportsRefs) {
+      preparedSummary = {
+        hasReferences: true,
+        count: userRefsCount,
+        totalBytes: 0,
+        status: "skipped_unsupported",
+        unsupportedReason: `当前协议 ${job.protocol} 不支持参考图`,
+      };
+    } else {
+      preparedSummary = {
+        hasReferences: true,
+        count: userRefsCount,
+        totalBytes: 0,
+        status: "prepared",
+      };
+    }
+
+    let submittedRefSnapshot: SubmittedReference[] = [];
+
+    try {
+      let requestReferenceImages: Awaited<ReturnType<typeof referenceImagesForRequest>> = [];
+      if (protocolSupportsRefs && userRefsCount > 0) {
+        const prepared = await Promise.all(job.referenceImages.map(prepareReferenceForRequest));
+        requestReferenceImages = prepared.map((image) => ({
+          name: image.name,
+          type: image.type,
+          dataUrl: image.dataUrl,
+        }));
+        submittedRefSnapshot = prepared.map((image) => ({
+          name: image.name,
+          type: image.type,
+          dataUrl: image.dataUrl,
+          originalBytes: image.originalBytes,
+          requestBytes: image.requestBytes,
+          compressed: image.compressed,
+        }));
+        preparedSummary = {
+          hasReferences: true,
+          count: prepared.length,
+          totalBytes: prepared.reduce((sum, image) => sum + image.requestBytes, 0),
+          status: "prepared",
+          items: prepared.map((image) => ({
+            name: image.name,
+            type: image.type,
+            originalBytes: image.originalBytes,
+            requestBytes: image.requestBytes,
+            compressed: image.compressed,
+          })),
+        };
+        patchVisibleRecord(job.id, { submittedReferenceImages: submittedRefSnapshot });
+      }
+      requestParamsForLog = {
+        ...requestParamsForLog,
+        request: {
+          ...(requestParamsForLog.request as Record<string, unknown>),
+          preparedReferenceImages: preparedReferenceMetaForLog(requestReferenceImages),
+          preparedReferenceTotalBytes: preparedSummary.totalBytes,
+          referenceSummary: preparedSummary,
+        },
+      };
+      const startMessage = describeReferenceForLog(preparedSummary, job.model);
+      pushLocalLog({
+        type: "image_generation",
+        level: "info",
+        title: `开始生成图片 #${job.index}/${job.total}${preparedSummary.hasReferences ? ` · 参考图 ${preparedSummary.count} 张` : " · 无参考图"}`,
+        message: startMessage,
+        endpoint: "/api/images/generate",
+        referenceSummary: preparedSummary,
+        params: requestParamsForLog,
+      });
+
+      const response = await fetch("/api/images/generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          baseUrl: normalizeApiBaseUrl(config.baseUrl),
+          apiKey: config.apiKey,
+          clientId: getClientId(),
+          request: {
+            batchId: job.batchId,
+            index: job.index,
+            total: job.total,
+            protocol: job.protocol,
+            model: job.model,
+            prompt: job.prompt,
+            aspectRatio: job.params.aspectRatio,
+            size: job.params.size || resolveRequestSize(job.params.aspectRatio, job.params.resolution, job.protocol, job.model),
+            resolution: job.params.resolution,
+            quality: job.params.quality,
+            outputFormat: job.params.outputFormat,
+            seed: job.params.seed,
+            negativePrompt: job.params.negativePrompt,
+            agentId: job.agentId,
+            agentName: job.agentName,
+            agentScenario: job.agentScenario,
+            promptVariant: job.promptVariant,
+            referenceImages: requestReferenceImages,
+          },
+        }),
+      });
+      const payload = await readApiJson<GenerateProxyResponse>(response, "/api/images/generate");
+      if (!response.ok || !payload.ok || !payload.images?.[0]?.dataUrl) {
+        throw payload.detail && typeof payload.detail === "object"
+          ? { ...payload.detail as Record<string, unknown>, requestId: payload.requestId }
+          : { error: payload.detail || payload, requestId: payload.requestId };
+      }
+
+      const dataUrl = payload.images[0].dataUrl;
+      const blob = await dataUrlToBlob(dataUrl);
+      const objectUrl = URL.createObjectURL(blob);
+      const { width, height } = await getImageSize(objectUrl);
+      const finishedAt = Date.now();
+      const durationMs = finishedAt - startedAt;
+      const revisedPrompt = payload.images[0].revisedPrompt || "";
+      const successSummary: ReferenceSummary = preparedSummary.hasReferences && preparedSummary.status === "prepared"
+        ? { ...preparedSummary, status: "sent_ok" }
+        : preparedSummary;
+      pushLocalLog({
+        type: "image_generation",
+        level: "success",
+        title: `图片生成成功 #${job.index}/${job.total}${successSummary.hasReferences ? ` · 参考图 ${successSummary.count} 张已上传` : " · 无参考图"}`,
+        message: `生成完成，尺寸 ${width} x ${height}。${successSummary.hasReferences ? `参考图 ${successSummary.count} 张${successSummary.totalBytes > 0 ? `（${formatBytes(successSummary.totalBytes)}）` : ""}已发送给上游。` : ""}`,
+        endpoint: "/api/images/generate",
+        requestId: payload.requestId,
+        durationMs,
+        referenceSummary: successSummary,
+        params: requestParamsForLog,
+        response: {
+          width,
+          height,
+          revisedPrompt: truncateForLog(revisedPrompt || "", 500),
+          imageCount: payload.images.length,
+          proxyResponse: sanitizeClientLogValue(payload),
+        },
+      });
+
+      patchVisibleRecord(job.id, {
+        requestId: payload.requestId,
+        status: "success",
+        imageBlob: blob,
+        imageUrl: objectUrl,
+        width,
+        height,
+        revisedPrompt,
+        startedAt,
+        finishedAt,
+        durationMs,
+      });
+
+      const historyRecord: StoredHistoryRecord = {
+        id: job.id,
+        requestId: payload.requestId,
+        batchId: job.batchId,
+        index: job.index,
+        total: job.total,
+        protocol: job.protocol,
+        prompt: job.prompt,
+        model: job.model,
+        params: job.params,
+        referenceImages: referenceImagesForHistory(job.referenceImages),
+        submittedReferenceImages: submittedRefSnapshot.length > 0 ? submittedRefSnapshot : undefined,
+        status: "success",
+        createdAt: job.createdAt,
+        startedAt,
+        finishedAt,
+        durationMs,
+        imageBlob: blob,
+        width,
+        height,
+        revisedPrompt,
+        agentId: job.agentId,
+        agentName: job.agentName,
+        agentScenario: job.agentScenario,
+        promptVariant: job.promptVariant,
+      };
+      await saveHistoryRecord(historyRecord);
+      setSidebarRecords((current) => mergeHistoryRecords(current, [{
+        ...historyRecord,
+        referenceImages: normalizeStoredReferenceImages(historyRecord.referenceImages),
+        objectUrl,
+      }]));
+    } catch (error) {
+      const finishedAt = Date.now();
+      const durationMs = finishedAt - startedAt;
+      const errorDetail = error instanceof Error ? { error: error.message } : error;
+      const requestId = errorDetail && typeof errorDetail === "object" && "requestId" in errorDetail
+        ? String((errorDetail as { requestId?: unknown }).requestId || "")
+        : undefined;
+      const attempt = job.attempt ?? 1;
+      const maxAttempts = job.maxAttempts ?? 1;
+      const canRetry = attempt < maxAttempts && isRetryableError(errorDetail);
+      if (canRetry) {
+        const nextAttempt = attempt + 1;
+        const backoffMs = Math.min(8000, 500 * Math.pow(2, attempt - 1));
+        const retrySummary: ReferenceSummary = preparedSummary.hasReferences && preparedSummary.status === "prepared"
+          ? { ...preparedSummary, status: "sent_failed" }
+          : preparedSummary;
+        pushLocalLog({
+          type: "image_generation",
+          level: "warning",
+          title: `图片生成失败 #${job.index}/${job.total}，${Math.round(backoffMs / 1000)}s 后重试 (${nextAttempt}/${maxAttempts})${retrySummary.hasReferences ? ` · 参考图 ${retrySummary.count} 张` : ""}`,
+          message: formatError(errorDetail),
+          endpoint: "/api/images/generate",
+          requestId,
+          durationMs,
+          referenceSummary: retrySummary,
+          params: requestParamsForLog,
+          response: {
+            ok: false,
+            requestId,
+            detail: sanitizeClientLogValue(errorDetail),
+            retry: { attempt, nextAttempt, maxAttempts, backoffMs },
+          },
+          error: safeLogError(errorDetail),
+        });
+        patchVisibleRecord(job.id, {
+          requestId,
+          status: "queued",
+          errorDetail,
+          startedAt: undefined,
+          finishedAt: undefined,
+          durationMs: undefined,
+          attempt: nextAttempt,
+          maxAttempts,
+        });
+        window.setTimeout(() => {
+          enqueueJobs([{ ...job, attempt: nextAttempt, status: "queued" }], config);
+        }, backoffMs);
+        return;
+      }
+      const failedSummary: ReferenceSummary = preparedSummary.hasReferences && preparedSummary.status === "prepared"
+        ? { ...preparedSummary, status: "sent_failed" }
+        : preparedSummary;
+      pushLocalLog({
+        type: "image_generation",
+        level: "error",
+        title: `图片生成失败 #${job.index}/${job.total}${attempt > 1 ? `（已重试 ${attempt - 1} 次）` : ""}${failedSummary.hasReferences ? ` · 参考图 ${failedSummary.count} 张` : " · 无参考图"}`,
+        message: formatError(errorDetail),
+        endpoint: "/api/images/generate",
+        requestId,
+        durationMs,
+        referenceSummary: failedSummary,
+        params: requestParamsForLog,
+        response: {
+          ok: false,
+          requestId,
+          detail: sanitizeClientLogValue(errorDetail),
+          retry: { attempt, maxAttempts, exhausted: true },
+        },
+        error: safeLogError(errorDetail),
+      });
+      patchVisibleRecord(job.id, { requestId, status: "error", errorDetail, startedAt, finishedAt, durationMs });
+      const historyRecord: StoredHistoryRecord = {
+        id: job.id,
+        requestId,
+        batchId: job.batchId,
+        index: job.index,
+        total: job.total,
+        protocol: job.protocol,
+        prompt: job.prompt,
+        model: job.model,
+        params: job.params,
+        referenceImages: referenceImagesForHistory(job.referenceImages),
+        submittedReferenceImages: submittedRefSnapshot.length > 0 ? submittedRefSnapshot : undefined,
+        status: "error",
+        createdAt: job.createdAt,
+        startedAt,
+        finishedAt,
+        durationMs,
+        errorDetail,
+        agentId: job.agentId,
+        agentName: job.agentName,
+        agentScenario: job.agentScenario,
+        promptVariant: job.promptVariant,
+      };
+      await saveHistoryRecord(historyRecord);
+      setSidebarRecords((current) => mergeHistoryRecords(current, [{
+        ...historyRecord,
+        referenceImages: normalizeStoredReferenceImages(historyRecord.referenceImages),
+      }]));
+    }
   }
 
-  const activePortalView = currentView === 'workflow' ? 'home' : currentView
-  const portalViewMeta: Record<Exclude<AppView, 'workflow'>, { title: string; description: string }> = {
-    home: {
-      title: '快速生成',
-      description: '用提示词和参数快速完成生图，结果自动进入图库管理。',
-    },
-    advanced: {
-      title: '高级生成',
-      description: '完整控制生图模型、尺寸、质量、数量和返回参数。',
-    },
-    commerce: {
-      title: '电商主题',
-      description: '上传商品白底图和目标风格图，选择主图或详情图后生成。',
-    },
-    console: {
-      title: '控制台',
-      description: '管理连接、模型和本地数据导入导出。',
-    },
-    gallery: {
-      title: '图库',
-      description: '集中管理本地生成结果，预览、下载和删除都在这里完成。',
-    },
+  function analysisFallback(
+    mode: AnalysisMode,
+    promptText = prompt.trim(),
+    analysisParams = params,
+    analysisReferences = referenceImages,
+  ) {
+    const usableAnalysisReferences = analysisReferences.filter(isReferenceUsable);
+    return buildLocalPromptAnalysis({
+      promptText,
+      params: analysisParams,
+      protocol: apiConfig.protocol,
+      selectedModel,
+      referenceImages: analysisReferences,
+      usableReferenceImages: usableAnalysisReferences,
+      mode,
+    });
   }
-  const portalMeta = portalViewMeta[activePortalView]
-  const commerceThemeMenu = (
-    <div className='sidebar-nav-group ecommerce-nav-group'>
-      <button
-        type='button'
-        className={currentView === 'commerce' ? 'active' : ''}
-        onClick={() => enterSidebarView('commerce')}
-        aria-label='电商主题'
-        title='电商主题'
-      >
-        <ShoppingBag size={16} />
-        电商主题
-      </button>
-    </div>
-  )
-  const commerceCanGenerate =
-    isConfigured &&
-    commerceProductImages.length > 0 &&
-    Boolean(commerceStyleImage) &&
-    Boolean(effectiveCommerceCategoryPath)
-  const isCommerceView = currentView === 'commerce'
-  const commerceCopy = commerceGenerateKind === 'detail'
-    ? {
-        title: '详情图制作',
-        styleLabel: '详情风格图',
-        styleHint: '上传你喜欢的详情页风格，用于参考版式、分区、背景、光线和文字排版。',
-        descriptionLabel: '卖点描述（可选）',
-        descriptionPlaceholder: '可简单写商品卖点、详情页短文案或需要替换的文字；留空时会根据详情风格图自动生成提示词',
-        action: '生成详情图',
+
+  async function runPromptAnalysis(
+    mode: AnalysisMode,
+    promptText = prompt.trim(),
+    analysisParams = params,
+    agentContext?: AgentContext,
+    analysisReferences = referenceImages,
+  ) {
+    const usableAnalysisReferences = analysisReferences.filter(isReferenceUsable);
+    const fallback = analysisFallback(mode, promptText, analysisParams, analysisReferences);
+    const analysisModel = preferAnalysisModel(analysisModels, selectedAnalysisModel);
+    if (!analysisModel || !apiConfig.apiKey.trim()) {
+      pushLocalLog({
+        type: "prompt_analysis",
+        level: "warning",
+        title: "提示词分析使用本地预检",
+        message: analysisModel ? "未配置 API Key，未请求 AI 分析接口。" : "未检测到可用分析模型，未请求 AI 分析接口。",
+        endpoint: "/api/prompt/analyze",
+        params: {
+          ...apiLogSnapshot(),
+          mode,
+          prompt: truncateForLog(promptText),
+          referenceCount: usableAnalysisReferences.length,
+        },
+      });
+      return {
+        ...fallback,
+        analysisModel: analysisModel || "本地预检",
+        source: "local" as const,
+        summary: analysisModel
+          ? "未配置 API Key，已先用本地规则完成预检。"
+          : "未检测到 GPT 分析模型，已先用本地规则完成预检。",
+      };
+    }
+
+    const startedAt = Date.now();
+    const requestParamsForLog = {
+      ...apiLogSnapshot(),
+      analysisModel,
+      prompt: truncateForLog(promptText),
+      negativePrompt: truncateForLog(analysisParams.negativePrompt || "", 400),
+      aspectRatio: analysisParams.aspectRatio,
+      size: analysisParams.size || resolveRequestSize(analysisParams.aspectRatio, analysisParams.resolution, apiConfig.protocol, selectedModel),
+      resolution: analysisParams.resolution,
+      quality: analysisParams.quality,
+      outputFormat: analysisParams.outputFormat,
+      count: analysisParams.batchCount,
+      concurrency: analysisParams.concurrency,
+      referenceCount: usableAnalysisReferences.length,
+      referenceIssues: analysisReferences
+        .filter((image) => image.status && image.status !== "ready")
+        .map((image) => ({ name: image.name, status: image.status, message: image.message })),
+      protocol: apiConfig.protocol,
+      imageModel: selectedModel,
+      mode,
+      agentId: agentContext?.plan.agentId,
+      agentName: agentContext?.plan.agentName,
+      agentScenario: agentContext?.plan.scenario,
+      promptVariant: agentContext?.variant,
+    };
+    pushLocalLog({
+      type: "prompt_analysis",
+      level: "info",
+      title: "开始提示词分析",
+      message: `使用 ${analysisModel} 做 ${analysisModeLabel(mode)}。`,
+      endpoint: "/api/prompt/analyze",
+      params: requestParamsForLog,
+    });
+    try {
+      const response = await fetch("/api/prompt/analyze", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Accept: "text/event-stream" },
+        body: JSON.stringify({
+        baseUrl: normalizeApiBaseUrl(apiConfig.baseUrl),
+        apiKey: apiConfig.apiKey,
+        clientId: getClientId(),
+        analysisModel,
+        prompt: promptText,
+        negativePrompt: analysisParams.negativePrompt,
+        aspectRatio: analysisParams.aspectRatio,
+        size: analysisParams.size || resolveRequestSize(analysisParams.aspectRatio, analysisParams.resolution, apiConfig.protocol, selectedModel),
+        resolution: analysisParams.resolution,
+        quality: analysisParams.quality,
+        outputFormat: analysisParams.outputFormat,
+        count: analysisParams.batchCount,
+        concurrency: analysisParams.concurrency,
+        referenceCount: usableAnalysisReferences.length,
+        referenceIssues: analysisReferences
+          .filter((image) => image.status && image.status !== "ready")
+          .map((image) => ({ name: image.name, status: image.status, message: image.message })),
+        protocol: apiConfig.protocol,
+        imageModel: selectedModel,
+        mode,
+        agentId: agentContext?.plan.agentId,
+        agentName: agentContext?.plan.agentName,
+        agentScenario: agentContext?.plan.scenario,
+        promptVariant: agentContext?.variant,
+        }),
+      });
+
+      // 后端可能仍然走非流式（旧版兜底）
+      const contentType = response.headers.get("content-type") || "";
+      if (!contentType.includes("text/event-stream")) {
+        const payload = await readApiJson<{ ok?: boolean; requestId?: string; analysis?: unknown; detail?: unknown }>(response, "/api/prompt/analyze");
+        if (!response.ok || !payload.ok) {
+          throw payload.detail || payload;
+        }
+        const result = normalizePromptAnalysisResult(payload.analysis, {
+          ...fallback,
+          analysisModel,
+          source: "ai",
+        });
+        pushLocalLog({
+          type: "prompt_analysis",
+          level: "success",
+          title: "提示词分析完成（非流式）",
+          message: result.summary,
+          endpoint: "/api/prompt/analyze",
+          requestId: payload.requestId,
+          durationMs: Date.now() - startedAt,
+          params: requestParamsForLog,
+          response: {
+            score: result.score,
+            riskLevel: result.riskLevel,
+            safe: result.safe,
+            source: result.source,
+            analysis: sanitizeClientLogValue(result),
+          },
+        });
+        return result;
       }
-    : {
-        title: '主图制作',
-        styleLabel: '目标风格图',
-        styleHint: '上传你喜欢的主图风格，用于参考光线、背景和构图。',
-        descriptionLabel: '文字描述（可选）',
-        descriptionPlaceholder: '可简单写卖点、文案或替换文字；留空时会根据目标风格图自动生成主图提示词',
-        action: '生成主图',
+
+      if (!response.body) throw new Error("分析响应体为空");
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw { error: `HTTP ${response.status}`, raw: truncateForLog(errorText, 1600) };
       }
-  const renderCommerceKindField = () => (
-    <div className='commerce-kind-field' aria-label='生成类型'>
-      <div className='commerce-kind-copy'>
-        <strong>生成类型</strong>
-        <span>同一套素材和品类信息，在生成前选择主图或详情图</span>
-      </div>
-      <div className='commerce-kind-toggle' role='group' aria-label='选择生成类型'>
-        <button
-          type='button'
-          className={commerceGenerateKind === 'main' ? 'active' : ''}
-          onClick={() => setCommerceGenerateKind('main')}
-          aria-pressed={commerceGenerateKind === 'main'}
-        >
-          <ImageIcon size={15} />
-          主图
-        </button>
-        <button
-          type='button'
-          className={commerceGenerateKind === 'detail' ? 'active' : ''}
-          onClick={() => setCommerceGenerateKind('detail')}
-          aria-pressed={commerceGenerateKind === 'detail'}
-        >
-          <Layers size={15} />
-          详情图
-        </button>
-      </div>
-    </div>
-  )
-  const renderCommerceCategoryField = () => (
-    <div className='commerce-category-field' aria-label='商品品类'>
-      <div className='commerce-category-heading'>
-        <strong>商品品类</strong>
-        <span>预设类目和自定义类目二选一，生成时会作为提示词强约束</span>
-      </div>
-      <div className='commerce-category-mode' role='group' aria-label='选择类目来源'>
-        <button
-          type='button'
-          className={commerceCategoryMode === 'preset' ? 'active' : ''}
-          onClick={() => {
-            setCommerceCategoryMode('preset')
-            setCommerceCustomCategory('')
-          }}
-          aria-pressed={commerceCategoryMode === 'preset'}
-        >
-          预设类目
-        </button>
-        <button
-          type='button'
-          className={commerceCategoryMode === 'custom' ? 'active' : ''}
-          onClick={() => {
-            setCommerceCategoryMode('custom')
-            setCommerceCategoryLevel1('')
-            setCommerceCategoryLevel2('')
-            setCommerceCategoryLevel3('')
-          }}
-          aria-pressed={commerceCategoryMode === 'custom'}
-        >
-          自定义类目
-        </button>
-      </div>
-      <div className='commerce-category-grid'>
-        <label className='field'>
-          <span>一级类目</span>
-          <select
-            value={commerceCategoryLevel1}
-            disabled={commerceCategoryMode === 'custom'}
-            onChange={(event) => {
-              setCommerceCategoryLevel1(event.target.value)
-              setCommerceCategoryLevel2('')
-              setCommerceCategoryLevel3('')
-            }}
-          >
-            <option value=''>选择一级类目</option>
-            {commerceCategoryTree.map((category) => (
-              <option key={category.name} value={category.name}>
-                {category.name}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className='field'>
-          <span>二级类目</span>
-          <select
-            value={commerceCategoryLevel2}
-            disabled={commerceCategoryMode === 'custom' || !commerceCategoryLevel1}
-            onChange={(event) => {
-              setCommerceCategoryLevel2(event.target.value)
-              setCommerceCategoryLevel3('')
-            }}
-          >
-            <option value=''>选择二级类目</option>
-            {commerceCategoryLevel2Options.map((category) => (
-              <option key={category.name} value={category.name}>
-                {category.name}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className='field'>
-          <span>三级类目</span>
-          <select
-            value={commerceCategoryLevel3}
-            disabled={commerceCategoryMode === 'custom' || !commerceCategoryLevel2}
-            onChange={(event) => setCommerceCategoryLevel3(event.target.value)}
-          >
-            <option value=''>选择三级类目</option>
-            {commerceCategoryLevel3Options.map((category) => (
-              <option key={category.name} value={category.name}>
-                {category.name}
-              </option>
-            ))}
-          </select>
-        </label>
-      </div>
-      <label className='field commerce-custom-category'>
-        <span>自定义类目</span>
-        <input
-          value={commerceCustomCategory}
-          disabled={commerceCategoryMode === 'preset'}
-          onChange={(event) => setCommerceCustomCategory(event.target.value)}
-          placeholder='例如：食品饮料 / 地方特产 / 手工锅巴，或直接写“户外露营咖啡器具”'
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+      let analysis: unknown = null;
+      let upstreamRequestId: string | undefined;
+      let chunkCount = 0;
+      let firstByteAt: number | undefined;
+      let receivingAt: number | undefined;
+      let lastError: unknown = null;
+      let totalLength = 0;
+      let streamPreview = "";
+
+      const flushFrame = (event: string, data: unknown) => {
+        switch (event) {
+          case "started":
+            upstreamRequestId = (data as { requestId?: string })?.requestId;
+            setAnalysisState((current) => ({ ...current, status: "analyzing", message: "已发送，等待模型响应..." }));
+            break;
+          case "upstream_connected":
+            firstByteAt = Date.now();
+            setAnalysisState((current) => ({ ...current, status: "analyzing", message: "上游已连接，等待模型生成..." }));
+            break;
+          case "receiving":
+            receivingAt = Date.now();
+            setAnalysisState((current) => ({
+              ...current,
+              status: "receiving",
+              message: "正在接收结果...",
+            }));
+            break;
+          case "chunk":
+            chunkCount += 1;
+            totalLength = (data as { totalLength?: number })?.totalLength ?? totalLength;
+            streamPreview = typeof (data as { preview?: unknown })?.preview === "string"
+              ? ((data as { preview?: string }).preview || "")
+              : streamPreview;
+            setAnalysisState((current) => current.status === "receiving"
+              ? {
+                ...current,
+                message: `接收中... 已 ${totalLength} 字符`,
+                streamPreview,
+                streamCharacters: totalLength,
+                streamChunks: chunkCount,
+              }
+              : current);
+            break;
+          case "done":
+            analysis = (data as { analysis?: unknown })?.analysis ?? null;
+            break;
+          case "error":
+            lastError = (data as { detail?: unknown })?.detail ?? data;
+            break;
+        }
+      };
+
+      // 解析 SSE 帧
+      try {
+        for (;;) {
+          const { value, done } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+          const frames = buffer.split("\n\n");
+          buffer = frames.pop() ?? "";
+          for (const frame of frames) {
+            const lines = frame.split("\n");
+            let eventName = "message";
+            const dataParts: string[] = [];
+            for (const line of lines) {
+              if (line.startsWith("event:")) eventName = line.slice(6).trim();
+              else if (line.startsWith("data:")) dataParts.push(line.slice(5).trim());
+            }
+            if (dataParts.length === 0) continue;
+            const dataStr = dataParts.join("\n");
+            let data: unknown = dataStr;
+            try { data = JSON.parse(dataStr); } catch { /* leave as string */ }
+            flushFrame(eventName, data);
+          }
+        }
+      } finally {
+        try { reader.releaseLock(); } catch {}
+      }
+
+      if (lastError) throw lastError;
+      if (!analysis) throw new Error("分析流结束但未收到 done 事件");
+
+      const result = normalizePromptAnalysisResult(analysis, {
+        ...fallback,
+        analysisModel,
+        source: "ai",
+      });
+      const totalMs = Date.now() - startedAt;
+      pushLocalLog({
+        type: "prompt_analysis",
+        level: "success",
+        title: "提示词分析完成（流式）",
+        message: result.summary,
+        endpoint: "/api/prompt/analyze",
+        requestId: upstreamRequestId,
+        durationMs: totalMs,
+        params: requestParamsForLog,
+        response: {
+          score: result.score,
+          riskLevel: result.riskLevel,
+          safe: result.safe,
+          source: result.source,
+          stream: {
+            chunkCount,
+            totalLength,
+            firstByteMs: firstByteAt ? firstByteAt - startedAt : null,
+            receivingMs: receivingAt ? receivingAt - startedAt : null,
+            totalMs,
+          },
+          analysis: sanitizeClientLogValue(result),
+        },
+      });
+      return result;
+    } catch (error) {
+      pushLocalLog({
+        type: "prompt_analysis",
+        level: "error",
+        title: "提示词分析失败",
+        message: formatError(error),
+        endpoint: "/api/prompt/analyze",
+        durationMs: Date.now() - startedAt,
+        params: requestParamsForLog,
+        error: safeLogError(error),
+        response: {
+          phase: "stream_error",
+          rawDetail: sanitizeClientLogValue(error),
+        },
+      });
+      throw error;
+    }
+  }
+
+  function triggerSendLaunchAnimation() {
+    if (sendLaunchFrameRef.current) {
+      window.cancelAnimationFrame(sendLaunchFrameRef.current);
+    }
+    if (sendLaunchTimerRef.current) {
+      window.clearTimeout(sendLaunchTimerRef.current);
+    }
+    setIsSendLaunching(false);
+    sendLaunchFrameRef.current = window.requestAnimationFrame(() => {
+      setIsSendLaunching(true);
+      sendLaunchTimerRef.current = window.setTimeout(() => setIsSendLaunching(false), 760);
+    });
+  }
+
+  function buildParamsFromAnalysis(
+    result: PromptAnalysisResult,
+    applyRecommendedParams = true,
+    baseParams = params,
+  ) {
+    const suggestedRatio = result.suggestedParams.aspectRatio || baseParams.aspectRatio;
+    const nextRatio = applyRecommendedParams && isAspectRatioSupported(apiConfig.protocol, suggestedRatio, selectedModel)
+      ? suggestedRatio
+      : baseParams.aspectRatio;
+    const nextResolution = normalizeResolutionForRequest(
+      applyRecommendedParams && result.suggestedParams.resolution
+        ? safeImageResolution(result.suggestedParams.resolution)
+        : safeImageResolution(baseParams.resolution),
+      apiConfig.protocol,
+      selectedModel,
+    );
+    return {
+      ...baseParams,
+      aspectRatio: nextRatio,
+      resolution: nextResolution,
+      size: resolveRequestSize(nextRatio, nextResolution, apiConfig.protocol, selectedModel),
+      quality: applyRecommendedParams && protocolDefinition.supportsQuality && result.suggestedParams.quality
+        ? result.suggestedParams.quality
+        : baseParams.quality,
+      batchCount: applyRecommendedParams && result.suggestedParams.count
+        ? clampNumber(Number(result.suggestedParams.count), 1, 20)
+        : baseParams.batchCount,
+      negativePrompt: applyRecommendedParams && result.suggestedNegativePrompt && !baseParams.negativePrompt.trim()
+        ? result.suggestedNegativePrompt
+        : baseParams.negativePrompt,
+    };
+  }
+
+  function applySuggestedParams(result: PromptAnalysisResult) {
+    updateParams(buildParamsFromAnalysis(result, true));
+  }
+
+  function applyOptimizedPrompt(result: PromptAnalysisResult) {
+    setPrompt(result.optimizedPrompt);
+    window.requestAnimationFrame(resizePromptTextarea);
+  }
+
+  function appendStyleEnhancement(enhancement: StyleEnhancement) {
+    setPrompt((current) => `${current.trim()}\n${enhancement.promptFragment}`.trim());
+    window.requestAnimationFrame(resizePromptTextarea);
+  }
+
+  async function requestPromptAssist(mode: AnalysisMode) {
+    const submittedPrompt = prompt.trim();
+    if (!submittedPrompt || isPromptAnalyzing) return;
+    cancelAnalysisCountdown();
+    setShowPromptPresets(false);
+    setAnalysisState({
+      status: "analyzing",
+      mode,
+      message: analysisModeLabel(mode),
+      streamPreview: "",
+      streamCharacters: 0,
+      streamChunks: 0,
+    });
+    try {
+      const result = await runPromptAnalysis(mode, submittedPrompt);
+      setAnalysisState({
+        status: "ready",
+        mode,
+        message: `${analysisModeLabel(mode)}完成`,
+        result,
+      });
+    } catch (error) {
+      setAnalysisState({
+        status: "error",
+        mode,
+        message: `${analysisModeLabel(mode)}失败`,
+        error: formatError(error),
+      });
+    }
+  }
+
+  function cancelAnalysisCountdown() {
+    if (analysisCountdownTimerRef.current) {
+      window.clearInterval(analysisCountdownTimerRef.current);
+      analysisCountdownTimerRef.current = undefined;
+    }
+    setAnalysisCountdown(null);
+  }
+
+  function abandonAnalysisCountdown() {
+    if (analysisCountdown) {
+      setPrompt((current) => current.trim() ? current : analysisCountdown.prompt);
+      if (analysisCountdown.referenceImages.length > 0) {
+        setReferenceImages((current) => current.length > 0 ? current : analysisCountdown.referenceImages);
+      }
+      if (analysisCountdown.agentContext && !lastAppliedAgent) {
+        setLastAppliedAgent(analysisCountdown.agentContext);
+      }
+    }
+    cancelAnalysisCountdown();
+    setAnalysisState({ status: "idle", mode: "send", message: "" });
+  }
+
+  function startAnalysisCountdown({
+    prompt: countdownPrompt,
+    params: countdownParams,
+    referenceImages: countdownReferenceImages,
+    result,
+    agentContext,
+  }: {
+    prompt: string;
+    params: ImageParams;
+    referenceImages: UploadedReference[];
+    result?: PromptAnalysisResult;
+    agentContext?: AgentContext;
+  }) {
+    cancelAnalysisCountdown();
+    const runId = uid();
+    const label = agentContext
+      ? `10 秒后使用 ${agentContext.plan.agentName} · ${PROMPT_VARIANT_LABELS[agentContext.variant]} 自动生成`
+      : "10 秒后将按原始提示词自动生成";
+    let secondsLeft = 10;
+    setAnalysisCountdown({
+      runId,
+      secondsLeft,
+      prompt: countdownPrompt,
+      params: countdownParams,
+      referenceImages: countdownReferenceImages,
+      result,
+      agentContext,
+      label,
+    });
+    if (agentContext) setAgentPhase("countdown");
+    analysisCountdownTimerRef.current = window.setInterval(() => {
+      secondsLeft -= 1;
+      if (secondsLeft <= 0) {
+        if (analysisCountdownTimerRef.current) {
+          window.clearInterval(analysisCountdownTimerRef.current);
+          analysisCountdownTimerRef.current = undefined;
+        }
+        setAnalysisCountdown(null);
+        setAnalysisState({ status: "idle", mode: "send", message: "" });
+        if (agentContext) setAgentPhase("generating");
+        void startBatch(undefined, {
+          promptOverride: countdownPrompt,
+          paramsOverride: countdownParams,
+          referenceImagesOverride: countdownReferenceImages,
+          clearReferenceImages: false,
+          agentContext,
+        });
+        return;
+      }
+      setAnalysisCountdown((current) =>
+        current?.runId === runId ? { ...current, secondsLeft } : current,
+      );
+    }, 1000);
+  }
+
+  async function analyzeBeforeGenerate(
+    submittedPrompt: string,
+    options: { paramsOverride?: ImageParams; referenceImagesOverride?: UploadedReference[]; agentContext?: AgentContext } = {},
+  ) {
+    const analysisParams = options.paramsOverride || params;
+    const analysisReferences = options.referenceImagesOverride || referenceImages;
+    setShowPromptPresets(false);
+    setAnalysisState({
+      status: "analyzing",
+      mode: "send",
+      message: options.agentContext ? "Agent 行业预检" : "发送前智能检查",
+      streamPreview: "",
+      streamCharacters: 0,
+      streamChunks: 0,
+    });
+    try {
+      const result = await runPromptAnalysis("send", submittedPrompt, analysisParams, options.agentContext, analysisReferences);
+      setAnalysisState({
+        status: "ready",
+        mode: "send",
+        message: result.riskLevel === "high" ? "已完成预检，建议先查看风险" : "已完成预检",
+        result,
+      });
+      startAnalysisCountdown({
+        prompt: submittedPrompt,
+        params: analysisParams,
+        referenceImages: analysisReferences,
+        result,
+        agentContext: options.agentContext,
+      });
+    } catch (error) {
+      const result = {
+        ...analysisFallback("send", submittedPrompt, analysisParams, analysisReferences),
+        summary: "AI 分析暂时不可用，已降级为本地预检。倒计时结束后仍会按当前提示词生成。",
+        analysisModel: "本地预检",
+        source: "local" as const,
+      };
+      setAnalysisState({
+        status: "ready",
+        mode: "send",
+        message: `智能分析失败，已降级处理：${formatError(error)}`,
+        result,
+      });
+      startAnalysisCountdown({
+        prompt: submittedPrompt,
+        params: analysisParams,
+        referenceImages: analysisReferences,
+        result,
+        agentContext: options.agentContext,
+      });
+    }
+  }
+
+  function continueFromAnalysis({
+    useOptimizedPrompt = false,
+    applyRecommendedParams = false,
+  }: {
+    useOptimizedPrompt?: boolean;
+    applyRecommendedParams?: boolean;
+  } = {}) {
+    const result = analysisState.result;
+    const countdownContext = analysisCountdown?.agentContext;
+    const basePrompt = analysisCountdown?.prompt || prompt.trim();
+    const baseParams = analysisCountdown?.params || params;
+    const baseReferenceImages = analysisCountdown?.referenceImages || referenceImages;
+    const submittedPrompt = useOptimizedPrompt && result?.optimizedPrompt ? result.optimizedPrompt : basePrompt;
+    if (!submittedPrompt) return;
+    const nextParams = result ? buildParamsFromAnalysis(result, applyRecommendedParams, baseParams) : baseParams;
+    if (result && applyRecommendedParams) {
+      setParams(nextParams);
+    }
+    cancelAnalysisCountdown();
+    triggerSendLaunchAnimation();
+    setAnalysisState({ status: "idle", mode: "send", message: "" });
+    if (countdownContext) setAgentPhase("generating");
+    void startBatch(undefined, {
+      promptOverride: submittedPrompt,
+      paramsOverride: nextParams,
+      referenceImagesOverride: baseReferenceImages,
+      clearReferenceImages: false,
+      agentContext: countdownContext,
+    });
+  }
+
+  async function startBatch(
+    event?: FormEvent,
+    options: {
+      promptOverride?: string;
+      paramsOverride?: ImageParams;
+      referenceImagesOverride?: UploadedReference[];
+      clearReferenceImages?: boolean;
+      agentContext?: AgentContext;
+    } = {},
+  ) {
+    event?.preventDefault();
+    const batchParams = options.paramsOverride || params;
+    const submittedPrompt = (options.promptOverride || prompt).trim();
+    if (!submittedPrompt) return;
+    if (
+      !selectedModel ||
+      !isAllowedImageModel(selectedModel) ||
+      !models.includes(selectedModel) ||
+      !protocolMatchesImageModel(apiConfig.protocol, selectedModel) ||
+      modelState.status !== "ready" ||
+      !isAspectRatioSupported(apiConfig.protocol, batchParams.aspectRatio, selectedModel)
+    ) {
+      return;
+    }
+    const total = clampNumber(Number(batchParams.batchCount), 1, 20);
+    const concurrency = clampNumber(Number(batchParams.concurrency), 1, 6);
+    const batchId = uid();
+    const batchCreatedAt = Date.now();
+    const snapshotConfig = { ...apiConfig };
+    const snapshotParams = {
+      ...batchParams,
+      batchCount: total,
+      concurrency,
+      resolution: normalizeResolutionForRequest(
+        safeImageResolution(batchParams.resolution),
+        apiConfig.protocol,
+        selectedModel,
+      ),
+      size: resolveRequestSize(
+        batchParams.aspectRatio,
+        normalizeResolutionForRequest(safeImageResolution(batchParams.resolution), apiConfig.protocol, selectedModel),
+        apiConfig.protocol,
+        selectedModel,
+      ),
+    };
+    const candidateReferenceImages = options.referenceImagesOverride ?? usableReferenceImages;
+    const snapshotReferenceImages = getProtocolDefinition(apiConfig.protocol).supportsReferenceImages
+      ? candidateReferenceImages.filter(isReferenceUsable)
+      : [];
+    const nextJobs = Array.from({ length: total }, (_, index) =>
+      createJob(
+        index + 1,
+        total,
+        batchId,
+        apiConfig.protocol,
+        submittedPrompt,
+        selectedModel,
+        snapshotParams,
+        snapshotReferenceImages,
+        batchCreatedAt - index / 1000,
+        options.agentContext,
+      ),
+    );
+    setHighlightedRecordId("");
+    setVisibleRecords((current) => sortGenerationRecords([...nextJobs, ...current]));
+    enqueueJobs(nextJobs, snapshotConfig);
+    if (options.clearReferenceImages !== false) {
+      setReferenceImages([]);
+    }
+  }
+
+  function buildAgentModeJobParams(spec: AgentModeJobSpec, baseParams = params): ImageParams {
+    const recommendedRatio = spec.aspectRatio || recommendAspectRatioForPrompt(spec.prompt, baseParams.aspectRatio);
+    const aspectRatio = isAspectRatioSupported(apiConfig.protocol, recommendedRatio, selectedModel)
+      ? recommendedRatio
+      : getSupportedAspectRatios(apiConfig.protocol, selectedModel)[0] || baseParams.aspectRatio;
+    const resolution = normalizeResolutionForRequest(
+      spec.resolution ? safeImageResolution(spec.resolution) : safeImageResolution(baseParams.resolution),
+      apiConfig.protocol,
+      selectedModel,
+    );
+    return {
+      ...baseParams,
+      aspectRatio,
+      resolution,
+      size: spec.size || resolveRequestSize(aspectRatio, resolution, apiConfig.protocol, selectedModel),
+      quality: spec.quality || baseParams.quality,
+      batchCount: 1,
+      negativePrompt: spec.negativePrompt || baseParams.negativePrompt,
+    };
+  }
+
+  function enqueueAgentModeJobs(
+    specs: AgentModeJobSpec[],
+    options: {
+      analysisResult: AgentModeAnalysisResult;
+      clearComposer?: boolean;
+      scenarioLabel?: string;
+    },
+  ) {
+    const expandedSpecs = specs.flatMap((spec) =>
+      Array.from({ length: clampNumber(Number(spec.count) || 1, 1, 8) }, () => spec),
+    );
+    if (expandedSpecs.length === 0) return;
+    const snapshotConfig = { ...apiConfig };
+    const snapshotReferenceImages = getProtocolDefinition(apiConfig.protocol).supportsReferenceImages
+      ? usableReferenceImages
+      : [];
+    const batchId = uid();
+    const batchCreatedAt = Date.now();
+    const nextJobs = expandedSpecs.map((spec, index) => {
+      const baseJob = createJob(
+        index + 1,
+        expandedSpecs.length,
+        batchId,
+        apiConfig.protocol,
+        spec.prompt,
+        selectedModel,
+        buildAgentModeJobParams(spec),
+        snapshotReferenceImages,
+        batchCreatedAt - index / 1000,
+      );
+      return {
+        ...baseJob,
+        agentId: "agent-mode-a",
+        agentName: AGENT_MODE_NAME,
+        agentScenario: spec.title || options.scenarioLabel || options.analysisResult.intentType,
+      };
+    });
+    setHighlightedRecordId("");
+    setVisibleRecords((current) => sortGenerationRecords([...nextJobs, ...current]));
+    enqueueJobs(nextJobs, snapshotConfig);
+    setAgentModePendingPlan(null);
+    setAgentModeBrochureDraft(null);
+    setAgentModeState({ status: "idle", message: "" });
+    if (options.clearComposer !== false) {
+      setPrompt("");
+      setReferenceImages([]);
+      setLastAppliedAgent(null);
+    }
+  }
+
+  function buildBrochureStyleBoardPrompt(project: AgentModeBrochureProject, direction: string, boardIndex: number) {
+    const outlineText = project.outline
+      .slice(0, 12)
+      .map((page) => `${page.pageNo}. ${page.title}：${page.objective}`)
+      .join("；");
+    const company = project.companyName || project.title;
+    const industry = project.industry || "企业品牌";
+    const purpose = project.purpose || "公司宣传";
+    return [
+      `为「${company}」设计一张公司宣传画册模板板。`,
+      `项目类型：${industry} 行业的 ${purpose} 画册，共 ${project.pageCount} 页。`,
+      "请输出一张整本方案图，在同一张图中展示封面和全部内页的缩略版式，不需要真实小字，但必须让页面层级、主视觉和版式节奏清晰可见。",
+      `风格方向：${direction}。`,
+      `页面结构：${outlineText}。`,
+      "要求整本风格统一、封面辨识度高、内页节奏分明、适合商务宣传画册模板探索，像设计提案板而不是最终可印刷文件。",
+      `这是第 ${boardIndex + 1} 套候选方向，请拉开与其他方案的视觉差异。`,
+    ].join(" ");
+  }
+
+  function submitBrochureStyleBoards(project: AgentModeBrochureProject) {
+    const styleDirections = project.styleDirections.length > 0
+      ? project.styleDirections.slice(0, 4)
+      : ["科技蓝信息栅格", "高端杂志感", "制造业目录感", "招商海报感"];
+    const specs = styleDirections.map((direction, index) => ({
+      id: `brochure-style-${index + 1}`,
+      title: `模板板 ${index + 1} · ${direction}`,
+      prompt: buildBrochureStyleBoardPrompt(project, direction, index),
+      aspectRatio: "4:3",
+      resolution: "2K" as ImageResolution,
+      quality: "high",
+      count: 1,
+    }));
+    enqueueAgentModeJobs(specs, {
+      analysisResult: {
+        intentType: "brochure_project",
+        confidence: 1,
+        reasoningSummary: project.summary,
+        estimatedCostLevel: "medium",
+        requiresConfirmation: true,
+        autoExecute: false,
+        jobs: specs,
+        brochureProject: project,
+        source: "local",
+      },
+      clearComposer: false,
+      scenarioLabel: "宣传画册模板板",
+    });
+  }
+
+  function applyAgentModeAnalysisResult(
+    result: AgentModeAnalysisResult,
+    requestId: string | undefined,
+    submittedPrompt: string,
+  ) {
+    if (result.intentType === "brochure_project" && result.brochureProject) {
+      setAgentModePendingPlan(null);
+      setAgentModeBrochureDraft(result.brochureProject);
+      setAgentModeState({
+        status: "planned",
+        message: "已识别为宣传画册任务，请先确认页结构和模板方向。",
+        requestId,
+        result,
+        requestPrompt: submittedPrompt,
+      });
+      return;
+    }
+    if (result.requiresConfirmation || result.intentType === "multi_image_batch") {
+      setAgentModeBrochureDraft(null);
+      setAgentModePendingPlan(result);
+      setAgentModeState({
+        status: "needs_confirmation",
+        message: `已拆解出 ${result.jobs.length} 个独立任务，确认后进入队列。`,
+        requestId,
+        result,
+        requestPrompt: submittedPrompt,
+      });
+      return;
+    }
+    enqueueAgentModeJobs(result.jobs, {
+      analysisResult: result,
+      clearComposer: true,
+      scenarioLabel: "自动拆解任务",
+    });
+  }
+
+  async function requestAgentModeExecution(submittedPrompt: string) {
+    const analysisModel = preferredAnalysisModel;
+    const requestStartedAt = Date.now();
+    const payload = {
+      baseUrl: normalizeApiBaseUrl(apiConfig.baseUrl),
+      apiKey: apiConfig.apiKey,
+      clientId: getClientId(),
+      analysisModel,
+      prompt: submittedPrompt,
+      protocol: apiConfig.protocol,
+      imageModel: selectedModel,
+      aspectRatio: params.aspectRatio,
+      size: params.size || resolveRequestSize(params.aspectRatio, selectedResolution, apiConfig.protocol, selectedModel),
+      resolution: selectedResolution,
+      quality: params.quality,
+      outputFormat: params.outputFormat,
+      count: params.batchCount,
+      referenceCount: usableReferenceImages.length,
+    };
+    setAgentModePendingPlan(null);
+    setAgentModeBrochureDraft(null);
+    setAgentModeState({
+      status: "analyzing",
+      message: `${AGENT_MODE_NAME} 正在理解你的任务并自动编排。`,
+      requestPrompt: submittedPrompt,
+      streamPreview: "",
+      streamCharacters: 0,
+      streamChunks: 0,
+    });
+    pushLocalLog({
+      type: "agent_analysis",
+      level: "info",
+      title: `${AGENT_MODE_NAME} 开始解析`,
+      message: "正在识别单图、多图还是宣传画册任务。",
+      endpoint: "/api/agent/analyze",
+      params: {
+        ...apiLogSnapshot(),
+        prompt: truncateForLog(submittedPrompt),
+        analysisModel,
+        referenceCount: usableReferenceImages.length,
+      },
+    });
+    try {
+      const response = await fetch("/api/agent/analyze", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Accept: "text/event-stream" },
+        body: JSON.stringify(payload),
+      });
+
+      if (!response.ok && response.headers.get("content-type")?.includes("text/event-stream") !== true) {
+        const payloadJson = await readApiJson<{ ok?: boolean; requestId?: string; analysis?: unknown; detail?: unknown }>(response, "/api/agent/analyze");
+        if (!response.ok || !payloadJson.ok) {
+          throw payloadJson.detail || payloadJson;
+        }
+        const result = normalizeAgentModeAnalysisResult(payloadJson.analysis, submittedPrompt);
+        pushLocalLog({
+          type: "agent_analysis",
+          level: "success",
+          title: `${AGENT_MODE_NAME} 解析完成`,
+          message: result.reasoningSummary,
+          endpoint: "/api/agent/analyze",
+          requestId: payloadJson.requestId,
+          durationMs: Date.now() - requestStartedAt,
+          params: {
+            ...apiLogSnapshot(),
+            prompt: truncateForLog(submittedPrompt),
+          },
+          response: sanitizeClientLogValue(result) as Record<string, unknown>,
+        });
+        applyAgentModeAnalysisResult(result, payloadJson.requestId, submittedPrompt);
+        return;
+      }
+
+      const contentType = response.headers.get("content-type") || "";
+      if (!contentType.includes("text/event-stream")) {
+        const payloadJson = await readApiJson<{ ok?: boolean; requestId?: string; analysis?: unknown; detail?: unknown }>(response, "/api/agent/analyze");
+        if (!response.ok || !payloadJson.ok) {
+          throw payloadJson.detail || payloadJson;
+        }
+        const result = normalizeAgentModeAnalysisResult(payloadJson.analysis, submittedPrompt);
+        pushLocalLog({
+          type: "agent_analysis",
+          level: "success",
+          title: `${AGENT_MODE_NAME} 解析完成`,
+          message: result.reasoningSummary,
+          endpoint: "/api/agent/analyze",
+          requestId: payloadJson.requestId,
+          durationMs: Date.now() - requestStartedAt,
+          params: {
+            ...apiLogSnapshot(),
+            prompt: truncateForLog(submittedPrompt),
+          },
+          response: sanitizeClientLogValue(result) as Record<string, unknown>,
+        });
+        applyAgentModeAnalysisResult(result, payloadJson.requestId, submittedPrompt);
+        return;
+      }
+
+      if (!response.body) throw new Error("分析响应体为空");
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw { error: `HTTP ${response.status}`, raw: truncateForLog(errorText, 1600) };
+      }
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+      let analysis: unknown = null;
+      let upstreamRequestId: string | undefined;
+      let chunkCount = 0;
+      let firstByteAt: number | undefined;
+      let receivingAt: number | undefined;
+      let lastError: unknown = null;
+      let totalLength = 0;
+      let streamPreview = "";
+
+      const flushFrame = (event: string, data: unknown) => {
+        switch (event) {
+          case "started":
+            upstreamRequestId = (data as { requestId?: string })?.requestId;
+            setAgentModeState((current) => ({
+              ...current,
+              status: "analyzing",
+              message: "已发送，等待模型响应...",
+            }));
+            break;
+          case "upstream_connected":
+            firstByteAt = Date.now();
+            setAgentModeState((current) => ({
+              ...current,
+              status: "analyzing",
+              message: "上游已连接，等待模型生成...",
+            }));
+            break;
+          case "receiving":
+            receivingAt = Date.now();
+            setAgentModeState((current) => ({
+              ...current,
+              status: "receiving",
+              message: "正在接收 AI 输出...",
+            }));
+            break;
+          case "chunk":
+            chunkCount += 1;
+            totalLength = (data as { totalLength?: number })?.totalLength ?? totalLength;
+            streamPreview = typeof (data as { preview?: unknown })?.preview === "string"
+              ? ((data as { preview?: string }).preview || "")
+              : streamPreview;
+            setAgentModeState((current) => ({
+              ...current,
+              status: "receiving",
+              message: `AI 输出中... 已接收 ${totalLength} 字符`,
+              streamPreview,
+              streamCharacters: totalLength,
+              streamChunks: chunkCount,
+            }));
+            break;
+          case "done":
+            analysis = (data as { analysis?: unknown })?.analysis ?? null;
+            break;
+          case "error":
+            lastError = (data as { detail?: unknown })?.detail ?? data;
+            break;
+        }
+      };
+
+      try {
+        for (;;) {
+          const { value, done } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+          let frame = "";
+          while ((frame = buffer.split("\n\n")[0] || "") && buffer.includes("\n\n")) {
+            const nextIndex = buffer.indexOf("\n\n");
+            const rawFrame = buffer.slice(0, nextIndex);
+            buffer = buffer.slice(nextIndex + 2);
+            let eventName = "message";
+            let dataText = "";
+            for (const line of rawFrame.split("\n")) {
+              if (line.startsWith("event:")) eventName = line.slice(6).trim();
+              if (line.startsWith("data:")) dataText += `${line.slice(5).trim()}\n`;
+            }
+            if (!dataText.trim()) continue;
+            try {
+              flushFrame(eventName, JSON.parse(dataText.trim()));
+            } catch {
+              flushFrame(eventName, { raw: dataText.trim() });
+            }
+          }
+        }
+      } finally {
+        try { reader.releaseLock(); } catch {}
+      }
+
+      if (!analysis && lastError) throw lastError;
+      if (!analysis) throw new Error("分析流结束但未收到 done 事件");
+
+      const result = normalizeAgentModeAnalysisResult(analysis, submittedPrompt);
+      pushLocalLog({
+        type: "agent_analysis",
+        level: "success",
+        title: `${AGENT_MODE_NAME} 解析完成`,
+        message: result.reasoningSummary,
+        endpoint: "/api/agent/analyze",
+        requestId: upstreamRequestId,
+        durationMs: Date.now() - requestStartedAt,
+        params: {
+          ...apiLogSnapshot(),
+          prompt: truncateForLog(submittedPrompt),
+        },
+        response: {
+          requestId: upstreamRequestId,
+          chunkCount,
+          totalLength,
+          firstByteMs: firstByteAt ? firstByteAt - requestStartedAt : null,
+          receivingMs: receivingAt ? receivingAt - requestStartedAt : null,
+          analysis: sanitizeClientLogValue(result),
+        },
+      });
+      applyAgentModeAnalysisResult(result, upstreamRequestId, submittedPrompt);
+    } catch (error) {
+      setAgentModeState({
+        status: "error",
+        message: "Agent 解析失败，请调整描述后重试。",
+        error: formatError(error),
+        requestPrompt: submittedPrompt,
+      });
+      pushLocalLog({
+        type: "agent_analysis",
+        level: "error",
+        title: `${AGENT_MODE_NAME} 解析失败`,
+        message: formatError(error),
+        endpoint: "/api/agent/analyze",
+        durationMs: Date.now() - requestStartedAt,
+        params: {
+          ...apiLogSnapshot(),
+          prompt: truncateForLog(submittedPrompt),
+        },
+        error: safeLogError(error),
+      });
+    }
+  }
+
+  async function requestAgentModeReanalysis() {
+    const submittedPrompt = prompt.trim() || agentModeState.requestPrompt || "";
+    if (!submittedPrompt) return;
+    const apiKeyReady = await verifyApiKeyBeforeGeneration();
+    if (!apiKeyReady) return;
+    triggerSendLaunchAnimation();
+    void requestAgentModeExecution(submittedPrompt);
+  }
+
+  async function requestStartBatch() {
+    if (!canRequestGenerate) return;
+    const nextStart = performance.now();
+    if (nextStart - startIntentRef.current < 400) return;
+    startIntentRef.current = nextStart;
+    const apiKeyReady = await verifyApiKeyBeforeGeneration();
+    if (!apiKeyReady) return;
+    const submittedPrompt = prompt.trim();
+    if (isAgentModeEnabled) {
+      triggerSendLaunchAnimation();
+      void requestAgentModeExecution(submittedPrompt);
+      return;
+    }
+    const snapshotReferenceImages = getProtocolDefinition(apiConfig.protocol).supportsReferenceImages
+      ? usableReferenceImages
+      : [];
+    const agentContext = lastAppliedAgent ?? undefined;
+    triggerSendLaunchAnimation();
+    if (agentContext) setAgentPhase("generating");
+    setPrompt("");
+    setReferenceImages([]);
+    setLastAppliedAgent(null);
+    if (!isAutoPromptAnalysisEnabled) {
+      cancelAnalysisCountdown();
+      setAnalysisState({ status: "idle", mode: "send", message: "" });
+      void startBatch(undefined, {
+        promptOverride: submittedPrompt,
+        referenceImagesOverride: snapshotReferenceImages,
+        clearReferenceImages: false,
+        agentContext,
+      });
+      return;
+    }
+    void analyzeBeforeGenerate(submittedPrompt, {
+      referenceImagesOverride: snapshotReferenceImages,
+      agentContext,
+    });
+  }
+
+  async function retryJob(job: Job) {
+    const retry = {
+      ...createJob(
+      job.index,
+      job.total,
+      uid(),
+      job.protocol,
+      job.prompt,
+      job.model,
+      job.params,
+      job.referenceImages,
+      ),
+      agentId: job.agentId,
+      agentName: job.agentName,
+      agentScenario: job.agentScenario,
+      promptVariant: job.promptVariant,
+    };
+    setHighlightedRecordId("");
+    setVisibleRecords((current) => sortGenerationRecords([retry, ...current]));
+    enqueueJobs([retry], { ...apiConfig });
+  }
+
+  async function deleteHistory(id: string) {
+    await deleteHistoryRecord(id);
+    setSidebarRecords((current) => {
+      current.forEach((record) => {
+        if (record.id === id && record.objectUrl) URL.revokeObjectURL(record.objectUrl);
+      });
+      return current.filter((record) => record.id !== id);
+    });
+    setVisibleRecords((current) => {
+      current.forEach((record) => {
+        if (record.id === id && record.imageUrl) URL.revokeObjectURL(record.imageUrl);
+      });
+      return current.filter((record) => record.id !== id);
+    });
+    setHighlightedRecordId((current) => (current === id ? "" : current));
+    setSelectedRecordIds((current) => {
+      const next = new Set(current);
+      next.delete(id);
+      return next;
+    });
+  }
+
+  async function clearHistory() {
+    await clearHistoryRecords();
+    sidebarRecords.forEach((record) => {
+      if (record.objectUrl) URL.revokeObjectURL(record.objectUrl);
+    });
+    setSidebarRecords([]);
+    setVisibleRecords((current) => {
+      current.forEach((record) => {
+        if ((record.status === "success" || record.status === "error") && record.imageUrl) {
+          URL.revokeObjectURL(record.imageUrl);
+        }
+      });
+      return current.filter((record) => record.status === "queued" || record.status === "running");
+    });
+    mainCursorRef.current = undefined;
+    sidebarCursorRef.current = undefined;
+    hasMoreMainRef.current = false;
+    hasMoreSidebarRef.current = false;
+    setHasMoreMainRecords(false);
+    setHasMoreSidebarRecords(false);
+    setHighlightedRecordId("");
+    setSelectedRecordIds(new Set());
+    setIsSelectionMode(false);
+  }
+
+  function updateParams(patch: Partial<ImageParams>) {
+    cancelAnalysisCountdown();
+    setParams((current) => {
+      const nextAspectRatio = patch.aspectRatio || current.aspectRatio;
+      const nextResolution = normalizeResolutionForRequest(
+        patch.resolution ? safeImageResolution(patch.resolution) : safeImageResolution(current.resolution),
+        apiConfig.protocol,
+        selectedModel,
+      );
+      return {
+        ...current,
+        ...patch,
+        aspectRatio: nextAspectRatio,
+        resolution: nextResolution,
+        size: resolveRequestSize(nextAspectRatio, nextResolution, apiConfig.protocol, selectedModel),
+        batchCount: patch.batchCount !== undefined
+          ? clampNumber(Number(patch.batchCount), 1, 20)
+          : current.batchCount,
+        concurrency: patch.concurrency !== undefined
+          ? clampNumber(Number(patch.concurrency), 1, 6)
+          : current.concurrency,
+        retryLimit: patch.retryLimit !== undefined
+          ? clampNumber(Number(patch.retryLimit), 0, 5)
+          : current.retryLimit,
+      };
+    });
+  }
+
+  function changeProtocol(protocol: ImageProtocol) {
+    const nextDefinition = getProtocolDefinition(protocol);
+    const nextModels = imageModelsForProtocol(protocol, nextDefinition.defaultModels);
+    const nextAnalysisModels = filterAnalysisModels(nextDefinition.defaultModels);
+    setApiConfig((current) => {
+      return {
+        ...current,
+        protocol,
+        baseUrl: DEFAULT_API_URL,
+      };
+    });
+    setModels(nextModels);
+    setSelectedModel((current) => preferModel(nextModels, current));
+    setAnalysisModels(nextAnalysisModels);
+    setSelectedAnalysisModel((current) => preferAnalysisModel(nextAnalysisModels, current));
+    setModelFilter("");
+    setModelState(
+      nextModels.length > 0
+        ? { status: "idle", message: `${nextModels.length} 个预设图片模型，等待验证` }
+        : { status: "idle", message: "等待读取图片模型" },
+    );
+  }
+
+  function selectImageModel(model: string) {
+    const nextModel = model.trim();
+    if (!isAllowedImageModel(nextModel)) return;
+    const nextProtocol = protocolForImageModel(nextModel, apiConfig.protocol);
+    const protocolChanged = nextProtocol !== apiConfig.protocol;
+    const nextDefinition = getProtocolDefinition(nextProtocol);
+    const nextModels = imageModelsForProtocol(nextProtocol, [...models, nextModel]);
+    const nextAnalysisModels = filterAnalysisModels(nextDefinition.defaultModels);
+    if (protocolChanged) {
+      setVerifiedModelKey("");
+      setVerifiedModelAt(0);
+      setAnalysisModels(nextAnalysisModels);
+      setSelectedAnalysisModel((current) => preferAnalysisModel(nextAnalysisModels, current));
+      setModelState({
+        status: "idle",
+        message: `已切换到 ${nextDefinition.shortLabel} 通道，等待自动验证`,
+      });
+    }
+    setApiConfig((current) => {
+      if (current.protocol === nextProtocol) return current;
+      return {
+        ...current,
+        protocol: nextProtocol,
+        baseUrl: normalizeApiBaseUrl(current.baseUrl),
+      };
+    });
+    setModels(nextModels);
+    setSelectedModel(nextModel);
+    setModelFilter("");
+    setParams((current) => {
+      const nextSupportedRatios = getSupportedAspectRatios(nextProtocol, nextModel);
+      const nextAspectRatio = nextSupportedRatios.includes(current.aspectRatio)
+        ? current.aspectRatio
+        : nextSupportedRatios[0] || "1:1";
+      return {
+        ...current,
+        aspectRatio: nextAspectRatio,
+        resolution: current.resolution,
+        size: resolveRequestSize(nextAspectRatio, current.resolution, nextProtocol, nextModel),
+      };
+    });
+  }
+
+  function downloadCurrent(job: Job | HistoryRecord) {
+    const url = (job as Job).imageUrl || (job as HistoryRecord).objectUrl;
+    if (!url) return;
+    const size = job.width && job.height ? `${job.width}x${job.height}` : job.params.size || "image";
+    const filename = `${formatFileDate(job.createdAt)}-${sanitizeFilename(job.model)}-${size}-${job.id}.${job.params.outputFormat}`;
+    downloadUrl(url, filename);
+  }
+
+  function downloadCurrentBatch() {
+    successfulVisibleRecords.forEach((job) => downloadCurrent(job));
+  }
+
+  function clearAgentModeDrafts() {
+    setAgentModePendingPlan(null);
+    setAgentModeBrochureDraft(null);
+    setAgentModeState((current) =>
+      current.status === "idle"
+        ? current
+        : { status: "idle", message: isAgentModeEnabled ? "输入已更新，等待重新理解需求。" : "" },
+    );
+  }
+
+  function copyPrompt(text: string) {
+    void navigator.clipboard.writeText(text);
+  }
+
+  async function imageSourceToDataUrl(item: Job | PreviewItem) {
+    const blob = "imageBlob" in item ? item.imageBlob : undefined;
+    if (blob) return blobToDataUrl(blob);
+    const url = (item as Job).imageUrl || (item as PreviewItem).url;
+    if (!url) throw new Error("没有可推荐的图片");
+    const response = await fetch(url);
+    if (!response.ok) throw new Error("无法读取图片用于推荐");
+    return blobToDataUrl(await response.blob());
+  }
+
+  async function recommendToSquare(item: Job | PreviewItem) {
+    if (!canUseSquareIdentity) {
+      setSquareRecommendState((current) => ({
+        ...current,
+        [item.id]: { status: "error", message: "配置 API Key 后可推荐到广场" },
+      }));
+      return;
+    }
+    if (item.status !== "success") return;
+    setSquareRecommendState((current) => ({
+      ...current,
+      [item.id]: { status: "submitting", message: "正在压缩并推荐到广场..." },
+    }));
+    try {
+      const imageDataUrl = await imageSourceToDataUrl(item);
+      const thumbnail = await createSquareThumbnail(imageDataUrl, 1024);
+      const sourceType = item.agentId === "agent-mode-a"
+        ? "agent_mode"
+        : item.agentName
+          ? "industry_agent"
+          : "local_history";
+      const response = await fetch("/api/square/recommend", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          apiKey: apiConfig.apiKey,
+          imageId: item.id,
+          thumbnailDataUrl: thumbnail.dataUrl,
+          sourceImageMeta: {
+            imageId: item.id,
+            requestId: item.requestId,
+            model: item.model,
+            width: item.width || thumbnail.width,
+            height: item.height || thumbnail.height,
+            aspectRatio: item.params.aspectRatio,
+            pageLabel: item.agentScenario,
+          },
+          prompt: item.prompt,
+          params: item.params,
+          caption: item.agentScenario || item.prompt.replace(/\s+/g, " ").slice(0, 120),
+          sourceType,
+          reasonPlan: {
+            agentName: item.agentName,
+            agentScenario: item.agentScenario,
+            promptVariant: item.promptVariant,
+            compressedTo: "1K",
+          },
+        }),
+      });
+      const payload = await readApiJson<SquareRecommendResponse>(response, "/api/square/recommend");
+      if (!response.ok || !payload.ok) throw payload;
+      const message = payload.action === "replaced"
+        ? `已推荐，替换最早展示位 · 今日剩余 ${payload.remainingDailyQuota ?? 0}`
+        : `已推荐到广场 · 今日剩余 ${payload.remainingDailyQuota ?? 0}`;
+      setSquareRecommendState((current) => ({
+        ...current,
+        [item.id]: {
+          status: "success",
+          message,
+          itemId: payload.item?.id,
+        },
+      }));
+    } catch (error) {
+      setSquareRecommendState((current) => ({
+        ...current,
+        [item.id]: {
+          status: "error",
+          message: formatError(error),
+        },
+      }));
+    }
+  }
+
+  function removeReference(id: string) {
+    cancelAnalysisCountdown();
+    clearAgentModeDrafts();
+    setReferenceImages((current) => current.filter((image) => image.id !== id));
+  }
+
+  function applyPromptStarter(nextPrompt: string) {
+    cancelAnalysisCountdown();
+    clearAgentModeDrafts();
+    setIsComposerCollapsed(false);
+    setPrompt((current) => (current.trim() ? `${current.trim()}\n${nextPrompt}` : nextPrompt));
+    setShowPromptPresets(false);
+    window.requestAnimationFrame(resizePromptTextarea);
+  }
+
+  function updatePromptValue(nextPrompt: string) {
+    cancelAnalysisCountdown();
+    clearAgentModeDrafts();
+    setIsComposerCollapsed(false);
+    setPrompt(nextPrompt);
+  }
+
+  function markAgentHintSeen() {
+    if (!isAgentHintSeen) {
+      localStorage.setItem("sumapiImageAgentHintSeen", "true");
+      setIsAgentHintSeen(true);
+    }
+    setIsAgentHintVisible(false);
+  }
+
+  function disableAgent() {
+    setSelectedAgentId("");
+    setAgentValues({});
+    setAgentPlan(null);
+    setAgentPhase("collecting");
+    setIsAgentPanelOpen(false);
+    setLastAppliedAgent(null);
+  }
+
+  function openAgentPanel(agentId?: string) {
+    const targetAgentId = agentId ?? selectedAgentId;
+    const nextAgent = targetAgentId ? INDUSTRY_AGENTS.find((agent) => agent.id === targetAgentId) || null : null;
+    markAgentHintSeen();
+    setIsAgentQuickbarExpanded(true);
+    if (nextAgent) {
+      // 同一个 Agent 重开：保留 agentValues / agentPlan / agentPhase，避免用户填好的字段被冲掉
+      // 切换到不同 Agent：才重置
+      if (selectedAgentId !== nextAgent.id) {
+        setSelectedAgentId(nextAgent.id);
+        setAgentValues(createAgentDefaults(nextAgent));
+        setAgentPlan(null);
+        setAgentPhase("collecting");
+      }
+    } else {
+      setSelectedAgentId("");
+      setAgentValues({});
+      setAgentPlan(null);
+      setAgentPhase("collecting");
+    }
+    setShowPromptPresets(false);
+    setIsComposerCollapsed(false);
+    setIsAgentPanelOpen(true);
+  }
+
+  function selectAgent(agent: IndustryAgent) {
+    setIsAgentQuickbarExpanded(true);
+    if (selectedAgentId !== agent.id) {
+      setLastAppliedAgent(null);
+    }
+    setSelectedAgentId(agent.id);
+    setAgentValues(createAgentDefaults(agent));
+    setAgentPlan(null);
+    setAgentPhase("collecting");
+  }
+
+  function updateAgentValue(fieldId: string, value: string) {
+    setAgentValues((current) => ({ ...current, [fieldId]: value }));
+    setAgentPlan(null);
+    setAgentPhase("collecting");
+  }
+
+  function generateAgentPlan() {
+    if (!selectedAgent) return;
+    // buildAgentPlan 是纯本地拼接，无需"假装 AI 在思考"的延迟
+    const nextPlan = buildAgentPlan(selectedAgent, agentValues);
+    setAgentPlan(nextPlan);
+    setAgentPhase("prompting");
+  }
+
+  function paramsFromAgentPlan(plan: AgentPlan) {
+    // Agent 是给视觉/创意方向建议，不是控制运行行为。
+    // 覆盖创意方向：aspectRatio + 派生 size + negativePrompt
+    // 保留运行参数：batchCount / concurrency / quality / outputFormat / resolution / seed / retryLimit
+    // —— 用户调好的批量数 / 清晰度等应当跨 Agent 应用保留
+    const recommendedRatio = typeof plan.recommendedParams.aspectRatio === "string"
+      ? plan.recommendedParams.aspectRatio
+      : params.aspectRatio;
+    const nextRatio = isAspectRatioSupported(apiConfig.protocol, recommendedRatio, selectedModel)
+      ? recommendedRatio
+      : params.aspectRatio;
+    return {
+      ...params,
+      aspectRatio: nextRatio,
+      size: resolveRequestSize(
+        nextRatio,
+        normalizeResolutionForRequest(safeImageResolution(params.resolution), apiConfig.protocol, selectedModel),
+        apiConfig.protocol,
+        selectedModel,
+      ),
+      negativePrompt: plan.negativePrompt || params.negativePrompt,
+    } as ImageParams;
+  }
+
+  function applyAgentVariant(variant: PromptVariant) {
+    const plan = agentPlan || (selectedAgent ? buildAgentPlan(selectedAgent, agentValues) : null);
+    if (!plan) return;
+    // 应用新 variant 等于覆盖当前 prompt —— 任何待执行的旧倒计时（snapshot 着旧 prompt）必须取消，
+    // 否则会用旧 prompt 跑生成而 UI 显示新 prompt，行为割裂。
+    cancelAnalysisCountdown();
+    setAnalysisState({ status: "idle", mode: "send", message: "" });
+    const nextPrompt = plan.promptVariants[variant];
+    const nextParams = paramsFromAgentPlan(plan);
+    setAgentPlan(plan);
+    setParams(nextParams);
+    setPrompt(nextPrompt);
+    setIsAgentPanelOpen(false);
+    setIsComposerCollapsed(false);
+    setAgentPhase("collecting");
+    setLastAppliedAgent({ plan, variant });
+    window.requestAnimationFrame(() => {
+      resizePromptTextarea();
+      promptTextareaRef.current?.focus();
+    });
+  }
+
+  function handleCanvasScroll() {
+    if (scrollFrameRef.current) return;
+    scrollFrameRef.current = window.requestAnimationFrame(() => {
+      scrollFrameRef.current = undefined;
+      if (composerCollapseTimerRef.current) {
+        window.clearTimeout(composerCollapseTimerRef.current);
+      }
+      if (
+        prompt.trim() ||
+        isAgentPanelOpen ||
+        analysisState.status !== "idle" ||
+        analysisCountdown ||
+        referenceImages.length > 0
+      ) {
+        return;
+      }
+      composerCollapseTimerRef.current = window.setTimeout(() => setIsComposerCollapsed(true), 120);
+    });
+  }
+
+  function previewCurrent(item: Job | HistoryRecord) {
+    const url = (item as Job).imageUrl || (item as HistoryRecord).objectUrl;
+    setPreviewItem({
+      id: item.id,
+      requestId: item.requestId,
+      url,
+      protocol: (item as Job).protocol || (item as HistoryRecord).protocol,
+      prompt: item.prompt,
+      model: item.model,
+      status: item.status === "success" ? "success" : "error",
+      params: item.params,
+      width: item.width,
+      height: item.height,
+      startedAt: item.startedAt,
+      finishedAt: item.finishedAt,
+      durationMs: item.durationMs,
+      errorDetail: item.errorDetail,
+      agentId: item.agentId,
+      agentName: item.agentName,
+      agentScenario: item.agentScenario,
+      promptVariant: item.promptVariant,
+      submittedReferenceImages: item.submittedReferenceImages,
+    });
+  }
+
+  function enterStudio() {
+    setActivePage("studio");
+    if (window.location.hash !== "#studio") {
+      window.history.pushState(null, "", "#studio");
+    }
+    if (showOnboarding) {
+      setOnboardingStep(0);
+      setIsSettingsOpen(true);
+    }
+  }
+
+  function enterAdmin() {
+    setActivePage("admin");
+    if (window.location.hash !== "#admin") {
+      window.history.pushState(null, "", "#admin");
+    }
+  }
+
+  function enterSquare() {
+    setActivePage("square");
+    if (window.location.hash !== "#square") {
+      window.history.pushState(null, "", "#square");
+    }
+  }
+
+  function enterCanvas() {
+    setActivePage("canvas");
+    if (window.location.hash !== "#canvas") {
+      window.history.pushState(null, "", "#canvas");
+    }
+  }
+
+  function returnHome() {
+    setActivePage("home");
+    if (window.location.hash) {
+      window.history.pushState(null, "", window.location.pathname);
+    }
+  }
+
+  function completeOnboarding() {
+    localStorage.setItem("sumapiImageOnboardingComplete", "true");
+    setShowOnboarding(false);
+    setOnboardingStep(0);
+  }
+
+  const analysisResult = analysisState.result;
+  const suggestedRatio = analysisResult?.suggestedParams.aspectRatio;
+  const suggestedSize = analysisResult?.suggestedParams.size || (
+    suggestedRatio
+      ? resolveRequestSize(suggestedRatio, selectedResolution, apiConfig.protocol, selectedModel)
+      : ""
+  );
+  const suggestedCount = analysisResult?.suggestedParams.count;
+  const analysisSourceLabel = analysisResult?.source === "ai"
+    ? `AI · ${analysisResult.analysisModel || preferredAnalysisModel}`
+    : analysisResult?.analysisModel || "本地预检";
+  const frontendUpdateNotice = availableFrontendVersion ? (
+    <FrontendUpdateNotice
+      version={availableFrontendVersion}
+      onRefresh={() => reloadWithFrontendVersion(availableFrontendVersion)}
+      onDismiss={() => setAvailableFrontendVersion("")}
+    />
+  ) : null;
+
+  if (activePage === "home") {
+    return (
+      <>
+        {frontendUpdateNotice}
+        <HomePage onEnter={enterStudio} onSquare={enterSquare} onAdmin={enterAdmin} onCanvas={enterCanvas} />
+      </>
+    );
+  }
+
+  if (activePage === "square") {
+    return (
+      <>
+        {frontendUpdateNotice}
+        <SquarePage
+          apiKey={apiConfig.apiKey}
+          onBackHome={returnHome}
+          onEnterStudio={enterStudio}
+          onCanvas={enterCanvas}
         />
-      </label>
-    </div>
-  )
-  const renderCommerceUpload = (
-    kind: 'product' | 'style',
-    label: string,
-    hint: string,
-    images: ReferenceImage[]
-  ) => (
-    <div className={`commerce-upload ${images.length > 0 ? 'filled' : ''}`}>
-      <div className='commerce-upload-copy'>
-        <strong>{label}</strong>
-        <span>{hint}</span>
-      </div>
-      {images.length > 0 ? (
-        <div className='commerce-upload-preview-list'>
-          {images.map((image, index) => (
-            <div className='commerce-upload-preview' key={image.id}>
-              <img src={image.dataUrl} alt={kind === 'product' ? `${label} ${index + 1}` : label} />
-              <div>
-                <strong>{image.name}</strong>
-                <span>{kind === 'product' ? `角度 ${index + 1} · ` : ''}{image.type || '图片文件'}</span>
-              </div>
-              <button
-                type='button'
-                className='ghost'
-                onClick={() => {
-                  if (kind === 'product') {
-                    setCommerceProductImages((current) =>
-                      current
-                        .filter((item) => item.id !== image.id)
-                        .map((item, itemIndex) => ({
-                          ...item,
-                          title: `商品白底图 ${itemIndex + 1}`,
-                        }))
-                    )
-                  } else {
-                    setCommerceStyleImage(null)
-                  }
-                }}
-                aria-label={`移除${kind === 'product' ? `${label} ${index + 1}` : label}`}
-              >
-                <X size={15} />
-              </button>
-            </div>
-          ))}
-        </div>
-      ) : null}
-      <label
-        className={`secondary commerce-file-action ${
-          kind === 'product' && images.length >= MAX_COMMERCE_PRODUCT_IMAGES ? 'disabled' : ''
-        }`}
-        aria-disabled={kind === 'product' && images.length >= MAX_COMMERCE_PRODUCT_IMAGES}
-      >
-        <Upload size={15} />
-        {kind === 'product'
-          ? images.length >= MAX_COMMERCE_PRODUCT_IMAGES
-            ? `已达上限（${MAX_COMMERCE_PRODUCT_IMAGES}/${MAX_COMMERCE_PRODUCT_IMAGES}）`
-            : images.length > 0
-            ? `继续上传（${images.length}/${MAX_COMMERCE_PRODUCT_IMAGES}）`
-            : `上传图片（最多 ${MAX_COMMERCE_PRODUCT_IMAGES} 张）`
-          : images.length > 0
-            ? '替换图片'
-            : '上传图片'}
-        <input
-          type='file'
-          accept='image/*'
-          multiple={kind === 'product'}
-          disabled={kind === 'product' && images.length >= MAX_COMMERCE_PRODUCT_IMAGES}
-          onChange={(event) => {
-            void handleCommerceImageFiles(kind, event.target.files)
-            event.target.value = ''
-          }}
+      </>
+    );
+  }
+
+  if (activePage === "canvas") {
+    return (
+      <>
+        {frontendUpdateNotice}
+        <CanvasPage
+          apiConfig={apiConfig}
+          selectedModel={selectedModel}
+          selectableModels={selectableImageModels}
+          modelState={modelState}
+          onBackHome={returnHome}
+          onEnterStudio={enterStudio}
+          onEnterSquare={enterSquare}
         />
-      </label>
-    </div>
-  )
-  const isGalleryReferencePickerOpen = Boolean(galleryReferencePickerNodeId)
-  const closeGalleryReferencePicker = () => {
-    if (selectingGalleryReferenceImageId) return
-    setGalleryReferencePickerNodeId('')
+      </>
+    );
+  }
+
+  if (activePage === "admin") {
+    return (
+      <>
+        {frontendUpdateNotice}
+        <AdminApp onBackHome={returnHome} onEnterStudio={enterStudio} />
+      </>
+    );
   }
 
   return (
-    <div className='app-shell portal-shell' data-theme={resolvedTheme}>
-      {notice ? (
-        <div className='app-notice' role='status' aria-live='polite'>
-          <KeyRound size={16} aria-hidden='true' />
-          <div>
-            <strong>需要先完成连接配置</strong>
-            <span>{notice.message}</span>
+    <>
+    {frontendUpdateNotice}
+    <div className={`app-shell ${isLeftSidebarOpen ? "left-open" : "left-closed"} ${isSettingsOpen ? "settings-open" : "settings-closed"}`}>
+      <button
+        className="drawer-backdrop"
+        type="button"
+        aria-label="关闭侧边栏"
+        onClick={() => {
+          setIsLeftSidebarOpen(false);
+          setIsSettingsOpen(false);
+        }}
+      />
+      <aside className={`sidebar ${isLeftSidebarOpen ? "open" : "closed"}`}>
+        <div className="brand">
+          <div className="brand-main">
+            <div className="brand-mark">
+              <img src={sumapiLogo} alt="" />
+            </div>
+            <div>
+              <strong>SumAPI 生图工作台</strong>
+              <span>本地批量生图</span>
+            </div>
           </div>
-          <button type='button' onClick={() => setNotice(null)} aria-label='关闭配置提示'>
-            <X size={14} />
+          <button
+            className="icon-button sidebar-close-button"
+            type="button"
+            title="收起最近记录"
+            onClick={() => setIsLeftSidebarOpen(false)}
+          >
+            <PanelLeftClose size={16} />
           </button>
         </div>
-      ) : null}
 
-      {currentView === 'workflow' ? (
-        <main className='portal-stage app-workspace-shell'>
-          <aside
-            className={`app-sidebar ${isSidebarDrawerOpen ? 'drawer-open' : ''}`}
-            aria-label='主工具栏'
-          >
-            <button
-              type='button'
-              className='sidebar-drawer-toggle'
-              onClick={() => setIsSidebarDrawerOpen((current) => !current)}
-              aria-label={isSidebarDrawerOpen ? '收起主工具栏' : '展开主工具栏'}
-              aria-controls='app-sidebar-nav'
-              aria-expanded={isSidebarDrawerOpen}
-              title={isSidebarDrawerOpen ? '收起' : '展开'}
-            >
-              {isSidebarDrawerOpen ? <X size={17} /> : <Menu size={17} />}
-            </button>
-            <button type='button' className='portal-brand app-sidebar-brand' onClick={() => enterSidebarView('home')}>
-              <span className='brand-mark'>
-                <Sparkles size={21} />
-              </span>
-              <span>
-                <strong>Sum ImgHub</strong>
-                <small>{isConfigured ? `已配置 ${model}` : '先完成控制台配置'}</small>
-              </span>
-            </button>
-            <nav id='app-sidebar-nav' className='portal-nav app-sidebar-nav' aria-label='主导航'>
-              <button
-                type='button'
-                onClick={() => enterSidebarView('home')}
-              >
-                <Home size={16} />
-                快速生成
-              </button>
-              <button
-                type='button'
-                onClick={() => enterSidebarView('advanced')}
-              >
-                <SlidersHorizontal size={16} />
-                高级生成
-              </button>
-              {commerceThemeMenu}
-              <button
-                type='button'
-                className='active'
-                onClick={() => enterSidebarView('workflow')}
-              >
-                <Workflow size={16} />
-                工作流
-              </button>
-              <button
-                type='button'
-                onClick={() => enterSidebarView('gallery')}
-              >
-                <Layers size={16} />
-                图库
-              </button>
-              <button
-                type='button'
-                onClick={() => enterSidebarView('console')}
-              >
-                <Terminal size={16} />
-                控制台
-              </button>
-            </nav>
-            <div className='app-sidebar-footer'>
-              <div className='sidebar-theme-switcher' aria-label='主题切换'>
-                {themeOptions.map((option) => {
-                  const Icon = option.icon
-                  return (
-                    <button
-                      key={option.value}
-                      type='button'
-                      className={themeMode === option.value ? 'active' : ''}
-                      onClick={() => void handleThemeChange(option.value)}
-                      aria-pressed={themeMode === option.value}
-                      title={option.label}
-                    >
-                      <Icon size={15} />
-                    </button>
-                  )
-                })}
-              </div>
-              <a
-                className='sidebar-github-link'
-                href={GITHUB_REPO_URL}
-                target='_blank'
-                rel='noreferrer'
-                aria-label='打开 GitHub 开源仓库'
-                title='GitHub'
-              >
-                <Github size={16} />
-                <ExternalLink size={12} />
-              </a>
-            </div>
-          </aside>
-          <button
-            type='button'
-            className={`sidebar-scrim ${isSidebarDrawerOpen ? 'visible' : ''}`}
-            onClick={() => setIsSidebarDrawerOpen(false)}
-            aria-label='关闭主工具栏'
-          />
-
-          <section className='app-workspace workflow-workspace'>
-          <main className='workflow-stage'>
-          <aside
-            className={`canvas-drawer workflow-canvas-panel ${isCanvasDrawerOpen ? 'drawer-open' : 'drawer-collapsed'}`}
-            aria-label='画布列表'
-          >
-            <button
-              type='button'
-              className='workflow-canvas-drawer-toggle'
-              onClick={() => {
-                hasManuallyToggledCanvasDrawerRef.current = true
-                setIsCanvasDrawerOpen((current) => !current)
-              }}
-              aria-expanded={isCanvasDrawerOpen}
-              title={isCanvasDrawerOpen ? '收起画布' : '展开画布'}
-            >
-              {isCanvasDrawerOpen ? <X size={17} /> : <Layers size={17} />}
-              <span>画布</span>
-            </button>
-            <div className='workflow-canvas-drawer-content'>
-              <div className='canvas-drawer-header'>
-                <div className='section-title'>
-                  <Layers size={16} />
-                  <span>画布</span>
-                </div>
-                <button
-                  type='button'
-                  className='icon-button'
-                  onClick={handleCreateCanvas}
-                  aria-label='新建画布'
-                  title='新建画布'
-                >
-                  <Plus size={17} />
-                </button>
-              </div>
-
-              {activeCanvas ? (
-                <label className='canvas-title-bar'>
-                  <Edit3 size={15} />
-                  <input
-                    value={activeCanvas.name}
-                    onChange={(event) => handleRenameCanvas(activeCanvas.id, event.target.value)}
-                    onBlur={() => handleCommitCanvasName(activeCanvas.id)}
-                    onKeyDown={stopCanvasNameShortcut}
-                    aria-label='当前画布名称'
-                    placeholder='未命名画布'
-                  />
-                </label>
-              ) : null}
-
-              <div className='canvas-list'>
-                {canvases.map((canvas) => {
-                  const isRenamingCanvas = canvas.id === renamingCanvasId
-
-                  return (
-                    <article
-                      key={canvas.id}
-                      className={`canvas-item ${canvas.id === activeCanvas?.id ? 'active' : ''}`}
-                    >
-                      {isRenamingCanvas ? (
-                        <div className='canvas-switch canvas-switch-editing'>
-                          <label className='canvas-name-field'>
-                            <span>画布名称</span>
-                            <input
-                              ref={canvasListRenameInputRef}
-                              value={renamingCanvasName}
-                              onChange={(event) => setRenamingCanvasName(event.target.value.slice(0, 32))}
-                              onKeyDown={(event) => handleCanvasRenameShortcut(event, canvas.id)}
-                              aria-label={`输入 ${canvas.name || '画布'} 的新名称`}
-                              placeholder='未命名画布'
-                            />
-                          </label>
-                          <div className='canvas-switch-meta'>
-                            <span>
-                            {canvas.nodes.length} 节点 · {canvas.edges.length} 连接
-                            </span>
-                            {isCanvasGenerating(canvas) ? (
-                              <span className='canvas-generation-state'>
-                                <Loader2 className='spin' size={12} />
-                                生成中
-                              </span>
-                            ) : null}
-                          </div>
-                        </div>
-                      ) : (
-                        <button
-                          type='button'
-                          className='canvas-switch'
-                          onClick={() => {
-                            setActiveCanvasId(canvas.id)
-                            setPaneMenu(null)
-                            setStatus(`已切换到 ${canvas.name}`)
-                          }}
-                          aria-label={`打开 ${canvas.name || '未命名画布'}`}
-                        >
-                          <span className='canvas-name-text'>{canvas.name || '未命名画布'}</span>
-                          <span className='canvas-switch-meta'>
-                            <span>
-                            {canvas.nodes.length} 节点 · {canvas.edges.length} 连接
-                            </span>
-                            {isCanvasGenerating(canvas) ? (
-                              <span className='canvas-generation-state'>
-                                <Loader2 className='spin' size={12} />
-                                生成中
-                              </span>
-                            ) : null}
-                          </span>
-                        </button>
-                      )}
-                      <div className='canvas-actions'>
-                        <button
-                          type='button'
-                          onClick={() =>
-                            isRenamingCanvas
-                              ? handleCommitCanvasRename(canvas.id)
-                              : handleBeginCanvasRename(canvas)
-                          }
-                          aria-label={isRenamingCanvas ? `完成重命名 ${canvas.name}` : `重命名 ${canvas.name}`}
-                          title={isRenamingCanvas ? '完成重命名' : '重命名画布'}
-                        >
-                          {isRenamingCanvas ? <Check size={14} /> : <Edit3 size={14} />}
-                        </button>
-                        <button
-                          type='button'
-                          onClick={() => handleDuplicateCanvas(canvas.id)}
-                          aria-label={`复制 ${canvas.name}`}
-                          title='复制画布'
-                        >
-                          <Copy size={14} />
-                        </button>
-                        <button
-                          type='button'
-                          onClick={() => handleDeleteCanvas(canvas.id)}
-                          disabled={canvases.length <= 1}
-                          aria-label={`删除 ${canvas.name}`}
-                          title='删除画布'
-                        >
-                          <Trash2 size={14} />
-                        </button>
-                      </div>
-                    </article>
-                  )
-                })}
-              </div>
-            </div>
-          </aside>
-        <ReactFlow
-          key={activeCanvas?.id}
-          nodes={workflowNodes}
-          edges={workflowEdges}
-          nodeTypes={nodeTypes}
-          edgeTypes={edgeTypes}
-          fitView
-          minZoom={0.45}
-          maxZoom={1.35}
-          defaultViewport={{ x: 120, y: 80, zoom: 0.76 }}
-          nodesDraggable
-          nodesConnectable
-          elementsSelectable
-          elevateEdgesOnSelect
-          deleteKeyCode={['Backspace', 'Delete']}
-          isValidConnection={isValidConnection}
-          onNodesChange={onNodesChange}
-          onEdgesChange={onEdgesChange}
-          onConnect={onConnect}
-          onInit={setFlowInstance}
-          onPaneClick={() => setPaneMenu(null)}
-          onPaneContextMenu={handlePaneContextMenu}
-        >
-          <Background color='rgba(255,255,255,0.08)' gap={32} size={1} />
-          <Controls showInteractive={false} />
-        </ReactFlow>
-
-        {paneMenu ? (
-          <div
-            className='pane-menu'
-            style={{ left: paneMenu.x, top: paneMenu.y }}
-            onContextMenu={(event) => event.preventDefault()}
-          >
-            <strong>创建节点</strong>
-            <button type='button' onClick={() => addWorkflowNode('asset')}>
-              普通节点 · 参考图片
-            </button>
-            <button type='button' onClick={() => addWorkflowNode('prompt')}>
-              普通节点 · 文字描述
-            </button>
-            <button type='button' onClick={() => addWorkflowNode('style')}>
-              标签节点 · 选择风格
-            </button>
-            <button type='button' onClick={() => addWorkflowNode('generate')}>
-              工作节点 · 图片生成
-            </button>
-          </div>
-        ) : null}
-
-        {error ? (
-          <div className='error-toast' role='alert'>
-            <strong>执行失败</strong>
-            <span>{error}</span>
-            <button type='button' onClick={() => setError('')} aria-label='关闭错误提示'>
-              <X size={15} />
-            </button>
-          </div>
-        ) : null}
-        {!error && generationSuccess ? (
-          <div className='error-toast success-toast' role='status' aria-live='polite'>
-            <Check size={16} aria-hidden='true' />
-            <strong>{generationSuccess.title}</strong>
-            <span>{generationSuccess.message}</span>
-            <button
-              type='button'
-              className='toast-action'
-              onClick={() => {
-                setGenerationSuccess(null)
-                enterSidebarView('gallery')
-              }}
-            >
-              去图库查看
-            </button>
-          </div>
-        ) : null}
-
-          </main>
-          </section>
-        </main>
-      ) : (
-        <main className='portal-stage app-workspace-shell'>
-          <aside
-            className={`app-sidebar ${isSidebarDrawerOpen ? 'drawer-open' : ''}`}
-            aria-label='主工具栏'
-          >
-            <button
-              type='button'
-              className='sidebar-drawer-toggle'
-              onClick={() => setIsSidebarDrawerOpen((current) => !current)}
-              aria-label={isSidebarDrawerOpen ? '收起主工具栏' : '展开主工具栏'}
-              aria-controls='app-sidebar-nav'
-              aria-expanded={isSidebarDrawerOpen}
-              title={isSidebarDrawerOpen ? '收起' : '展开'}
-            >
-              {isSidebarDrawerOpen ? <X size={17} /> : <Menu size={17} />}
-            </button>
-            <button type='button' className='portal-brand app-sidebar-brand' onClick={() => enterSidebarView('home')}>
-              <span className='brand-mark'>
-                <Sparkles size={21} />
-              </span>
-              <span>
-                <strong>Sum ImgHub</strong>
-                <small>{isConfigured ? `已配置 ${model}` : '先完成控制台配置'}</small>
-              </span>
-            </button>
-            <nav id='app-sidebar-nav' className='portal-nav app-sidebar-nav' aria-label='主导航'>
-              <button
-                type='button'
-                className={currentView === 'home' ? 'active' : ''}
-                onClick={() => enterSidebarView('home')}
-              >
-                <Home size={16} />
-                快速生成
-              </button>
-              <button
-                type='button'
-                className={currentView === 'advanced' ? 'active' : ''}
-                onClick={() => enterSidebarView('advanced')}
-              >
-                <SlidersHorizontal size={16} />
-                高级生成
-              </button>
-              {commerceThemeMenu}
-              <button
-                type='button'
-                onClick={() => enterSidebarView('workflow')}
-              >
-                <Workflow size={16} />
-                工作流
-              </button>
-              <button
-                type='button'
-                className={currentView === 'gallery' ? 'active' : ''}
-                onClick={() => enterSidebarView('gallery')}
-              >
-                <Layers size={16} />
-                图库
-              </button>
-              <button
-                type='button'
-                className={currentView === 'console' ? 'active' : ''}
-                onClick={() => enterSidebarView('console')}
-              >
-                <Terminal size={16} />
-                控制台
-              </button>
-            </nav>
-            <div className='app-sidebar-footer'>
-              <div className='sidebar-theme-switcher' aria-label='主题切换'>
-                {themeOptions.map((option) => {
-                  const Icon = option.icon
-                  return (
-                    <button
-                      key={option.value}
-                      type='button'
-                      className={themeMode === option.value ? 'active' : ''}
-                      onClick={() => void handleThemeChange(option.value)}
-                      aria-pressed={themeMode === option.value}
-                      title={option.label}
-                    >
-                      <Icon size={15} />
-                    </button>
-                  )
-                })}
-              </div>
-              <a
-                className='sidebar-github-link'
-                href={GITHUB_REPO_URL}
-                target='_blank'
-                rel='noreferrer'
-                aria-label='打开 GitHub 开源仓库'
-                title='GitHub'
-              >
-                <Github size={16} />
-                <ExternalLink size={12} />
-              </a>
-            </div>
-          </aside>
-          <button
-            type='button'
-            className={`sidebar-scrim ${isSidebarDrawerOpen ? 'visible' : ''}`}
-            onClick={() => setIsSidebarDrawerOpen(false)}
-            aria-label='关闭主工具栏'
-          />
-
-          <section className={`app-workspace ${currentView === 'gallery' ? 'gallery-workspace' : ''}`}>
-            {currentView !== 'gallery' ? (
-              <header className='workspace-topbar'>
-                <div className='workspace-title'>
-                  <h1>{portalMeta.title}</h1>
-                  <p>{portalMeta.description}</p>
-                </div>
-              </header>
-            ) : null}
-
-          {currentView === 'home' ? (
-            <section className='launchpad'>
-              <div className='workbench-grid'>
-                <section className='portal-panel workbench-composer'>
-                  <div className='section-title'>
-                    <ImageIcon size={16} />
-                    <span>快速生成</span>
-                  </div>
-                  <label className='field'>
-                    <span>图片描述</span>
-                    <textarea
-                      className='simple-prompt'
-                      value={simplePrompt}
-                      onChange={(event) => setSimplePrompt(event.target.value)}
-                      placeholder='例如：一张高级科技产品海报，干净背景，清晰主视觉，真实材质，高级棚拍光线'
-                    />
-                  </label>
-                  <section
-                    className={`quick-reference-drop ${simpleReferenceImages.length > 0 ? 'filled' : ''}`}
-                    aria-label='快速参考图'
-                  >
-                    <div className='quick-reference-copy'>
-                      <strong>参考图</strong>
-                      <span>
-                        {simpleReferenceImages.length > 0
-                          ? '已启用图生图，生成时会把这些图片作为参考'
-                          : '上传图片后，快速生成会自动切换为图生图'}
-                      </span>
-                    </div>
-                    {simpleReferenceImages.length > 0 ? (
-                      <div className='quick-reference-list'>
-                        {simpleReferenceImages.map((image) => (
-                          <article key={image.id}>
-                            <img src={image.dataUrl} alt={image.title || image.name} />
-                            <span>{image.title || image.name}</span>
-                            <button
-                              type='button'
-                              className='node-icon-button'
-                              onClick={() => removeSimpleReferenceImage(image.id)}
-                              aria-label='移除参考图'
-                            >
-                              <X size={14} />
-                            </button>
-                          </article>
-                        ))}
-                      </div>
-                    ) : null}
-                    <div className='quick-reference-actions'>
-                      <label className='secondary file-action'>
-                        <Upload size={16} />
-                        上传图片
-                        <input
-                          type='file'
-                          accept='image/*'
-                          multiple
-                          onChange={(event) => {
-                            void handleSimpleReferenceFiles(event.target.files)
-                            event.currentTarget.value = ''
-                          }}
-                        />
-                      </label>
-                      {simpleReferenceImages.length > 0 ? (
-                        <button
-                          type='button'
-                          className='ghost'
-                          onClick={clearSimpleReferenceImages}
-                        >
-                          <Trash2 size={16} />
-                          清空参考图
-                        </button>
-                      ) : null}
-                    </div>
-                  </section>
-                  <div className='simple-param-grid'>
-                    <label className='field'>
-                      <span>模型</span>
-                      <select value={model} onChange={(event) => setModel(event.target.value)}>
-                        {sortedModels.length === 0 ? (
-                          <option value={model}>{model}</option>
-                        ) : (
-                          sortedModels.map((item) => (
-                            <option key={item.id} value={item.id}>
-                              {item.id}
-                            </option>
-                          ))
-                        )}
-                      </select>
-                    </label>
-                    {renderSizeField()}
-                    <label className='field'>
-                      <span>质量</span>
-                      <select value={quality} onChange={(event) => setQuality(event.target.value)}>
-                        {qualities.map((item) => (
-                          <option key={item} value={item}>
-                            {item}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-                    <label className='field'>
-                      <span>数量</span>
-                      <select value={count} onChange={(event) => setCount(Number(event.target.value))}>
-                        {counts.map((item) => (
-                          <option key={item} value={item}>
-                            {item}x
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-                  </div>
-                  <div className='simple-actions'>
-                    <button
-                      type='button'
-                      className='secondary simple-optimize-action'
-                      onClick={() => void handleOptimizeSimplePrompt()}
-                      disabled={isOptimizingSimplePrompt || !simplePrompt.trim()}
-                    >
-                      {isOptimizingSimplePrompt ? (
-                        <Loader2 className='spin' size={16} />
-                      ) : (
-                        <Edit3 size={16} />
-                      )}
-                      {isOptimizingSimplePrompt ? '优化中' : '优化提示词'}
-                    </button>
-                    <button
-                      type='button'
-                      className='primary-action'
-                      onClick={() => void handleSimpleGenerate()}
-                      disabled={isQuickGenerating || !isConfigured || !simplePrompt.trim()}
-                    >
-                      {isQuickGenerating ? <Loader2 className='spin' size={16} /> : <Sparkles size={16} />}
-                      {isConfigured ? (isQuickGenerating ? '生成中' : '立即生成') : '先完成配置'}
-                    </button>
-                  </div>
-                </section>
-
-              </div>
-
-            </section>
-          ) : null}
-
-          {currentView === 'advanced' ? (
-            <section className='advanced-page'>
-              <section className='portal-panel advanced-composer'>
-                <div className='section-title'>
-                  <SlidersHorizontal size={16} />
-                  <span>高级生成</span>
-                </div>
-                <div className='field'>
-                  <div className='field-label-row'>
-                    <label htmlFor='advanced-prompt'>图片描述</label>
-                    <button
-                      type='button'
-                      className='secondary simple-optimize-action compact-action'
-                      onClick={() => void handleOptimizeSimplePrompt('advanced')}
-                      disabled={isOptimizingSimplePrompt || !advancedPrompt.trim()}
-                    >
-                      {isOptimizingSimplePrompt ? (
-                        <Loader2 className='spin' size={16} />
-                      ) : (
-                        <Edit3 size={16} />
-                      )}
-                      {isOptimizingSimplePrompt ? '优化中' : '优化提示词'}
-                    </button>
-                  </div>
-                  <textarea
-                    id='advanced-prompt'
-                    className='simple-prompt advanced-prompt'
-                    value={advancedPrompt}
-                    onChange={(event) => setAdvancedPrompt(event.target.value)}
-                    placeholder='例如：一张高级科技产品海报，干净背景，清晰主视觉，真实材质，高级棚拍光线'
-                  />
-                </div>
-                <div className='field advanced-negative-field'>
-                  <div className='field-label-row'>
-                    <span>负面提示词</span>
-                    <button
-                      type='button'
-                      className='secondary compact-action'
-                      onClick={() => void handleOptimizeAdvancedNegativePrompt()}
-                      disabled={
-                        isOptimizingNegativePrompt || !advancedPrompt.trim()
-                      }
-                    >
-                      {isOptimizingNegativePrompt ? (
-                        <Loader2 className='spin' size={15} />
-                      ) : null}
-                      {isOptimizingNegativePrompt ? '优化中' : '优化负面提示词'}
-                    </button>
-                  </div>
-                  <textarea
-                    className='advanced-negative-prompt'
-                    value={advancedNegativePrompt}
-                    onChange={(event) => setAdvancedNegativePrompt(event.target.value)}
-                    placeholder='例如：文字、水印、低清、畸形、错手、脏背景'
-                  />
-                </div>
-                <section className='advanced-sketch-board' aria-label='分镜草图画布'>
-                  <div className='advanced-sketch-header'>
-                    <div>
-                      <strong>分镜草图</strong>
-                      <span>手绘主体、元素和留白位置；生成时会先用文本模型识别并写入最终提示词。</span>
-                    </div>
-                    <button
-                      type='button'
-                      className='secondary'
-                      onClick={handleClearAdvancedSketch}
-                      disabled={!isAdvancedSketchDirty && !advancedSketchDescription}
-                    >
-                      <Trash2 size={15} />
-                      清空草图
-                    </button>
-                  </div>
-                  <canvas
-                    ref={advancedSketchCanvasRef}
-                    className='advanced-sketch-canvas'
-                    width={ADVANCED_SKETCH_WIDTH}
-                    height={ADVANCED_SKETCH_HEIGHT}
-                    onPointerDown={handleAdvancedSketchPointerDown}
-                    onPointerMove={handleAdvancedSketchPointerMove}
-                    onPointerUp={stopAdvancedSketchDrawing}
-                    onPointerCancel={stopAdvancedSketchDrawing}
-                    aria-label='手绘分镜草图'
-                  />
-                  {advancedSketchDescription ? (
-                    <div className='advanced-sketch-result'>
-                      <strong>草图识别结果</strong>
-                      <p>{advancedSketchDescription}</p>
-                    </div>
-                  ) : null}
-                </section>
-                <section className='advanced-style-board' aria-label='高级生成风格库'>
-                  <div className='advanced-style-controls'>
-                    <label className='field'>
-                      <span>风格分类</span>
-                      <select
-                        value={advancedStyleCategory}
-                        disabled={isLoadingStyles || styleCategories.length === 0}
-                        onChange={(event) => {
-                          const nextCategory = event.target.value
-                          setAdvancedStyleCategory(nextCategory)
-                          setAdvancedSelectedStyleId('')
-                          if (nextCategory) void loadStyleCategory(nextCategory)
-                        }}
-                      >
-                        <option value=''>选择分类</option>
-                        {styleCategories.map((item) => (
-                          <option key={item.name} value={item.name}>
-                            {item.name} · {item.count}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-                    <label className='field'>
-                      <span>风格</span>
-                      <select
-                        value={advancedSelectedStyleId}
-                        disabled={isLoadingStyles || advancedVisibleStyles.length === 0}
-                        onChange={(event) => setAdvancedSelectedStyleId(event.target.value)}
-                      >
-                        <option value=''>不使用风格</option>
-                        {advancedVisibleStyles.map((style) => (
-                          <option key={style.id} value={style.id}>
-                            {style.name}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-                  </div>
-                  <div className='advanced-style-preview'>
-                    <div className='advanced-style-image-frame'>
-                      {advancedSelectedStyle?.previewUrl ? (
-                        <img
-                          src={advancedSelectedStyle.previewUrl}
-                          alt={`${advancedSelectedStyle.name} 风格示例`}
-                          loading='lazy'
-                        />
-                      ) : (
-                        <div>
-                          {isLoadingStyles ? <Loader2 className='spin' size={28} /> : <ImageIcon size={30} />}
-                          <span>{isLoadingStyles ? 'LOADING' : 'NO STYLE'}</span>
-                        </div>
-                      )}
-                    </div>
-                    <div className='advanced-style-meta'>
-                      <strong>
-                        {advancedSelectedStyle
-                          ? `${advancedSelectedStyle.category} / ${advancedSelectedStyle.name}`
-                          : '选择一个风格后，会把对应 JSON 协议加入最终提示词'}
-                      </strong>
-                      {advancedStyleKeywords.length > 0 ? (
-                        <div className='advanced-style-keywords'>
-                          {advancedStyleKeywords.map((keyword) => (
-                            <span key={keyword}>{keyword}</span>
-                          ))}
-                        </div>
-                      ) : null}
-                    </div>
-                  </div>
-                </section>
-                <div className='advanced-param-grid'>
-                  <label className='field'>
-                    <span>模型</span>
-                    <select
-                      value={advancedModel}
-                      onChange={(event) => setAdvancedModel(event.target.value)}
-                    >
-                      {sortedModels.length === 0 ? (
-                        <option value={advancedModel}>{advancedModel}</option>
-                      ) : (
-                        sortedModels.map((item) => (
-                          <option key={item.id} value={item.id}>
-                            {item.id}
-                          </option>
-                        ))
-                      )}
-                    </select>
-                  </label>
-                  {renderSizeField({
-                    size: advancedSize,
-                    sizeMode: advancedSizeMode,
-                    customSizeWidth: advancedCustomSizeWidth,
-                    customSizeHeight: advancedCustomSizeHeight,
-                    setSize: setAdvancedSize,
-                    setSizeMode: setAdvancedSizeMode,
-                    setCustomSizeWidth: setAdvancedCustomSizeWidth,
-                    setCustomSizeHeight: setAdvancedCustomSizeHeight,
-                  }, advancedModel)}
-                  <label className='field'>
-                    <span>质量</span>
-                    <select
-                      value={advancedQuality}
-                      onChange={(event) => setAdvancedQuality(event.target.value)}
-                    >
-                      {qualities.map((item) => (
-                        <option key={item} value={item}>
-                          {item}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                  <label className='field'>
-                    <span>背景</span>
-                    <select
-                      value={advancedBackground}
-                      onChange={(event) => setAdvancedBackground(event.target.value as AdvancedBackground)}
-                    >
-                      {backgroundOptions.map((item) => (
-                        <option key={item.value} value={item.value}>
-                          {item.label}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                  <label className='field'>
-                    <span>数量</span>
-                    <select
-                      value={advancedCount}
-                      onChange={(event) => setAdvancedCount(Number(event.target.value))}
-                    >
-                      {counts.map((item) => (
-                        <option key={item} value={item}>
-                          {item}x
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                  <label className='field'>
-                    <span>返回格式</span>
-                    <select
-                      value={advancedResponseFormat}
-                      onChange={(event) =>
-                        setAdvancedResponseFormat(event.target.value as 'url' | 'b64_json')
-                      }
-                    >
-                      <option value='b64_json'>b64_json</option>
-                      <option value='url'>url</option>
-                    </select>
-                  </label>
-                  <label className='field'>
-                    <span>输入保真度</span>
-                    <select
-                      value={advancedInputFidelity}
-                      onChange={(event) =>
-                        setAdvancedInputFidelity(event.target.value as 'low' | 'high')
-                      }
-                    >
-                      <option value='high'>high</option>
-                      <option value='low'>low</option>
-                    </select>
-                  </label>
-                  <label className='field'>
-                    <span>创意强度</span>
-                    <select
-                      value={advancedCreativity}
-                      onChange={(event) => setAdvancedCreativity(event.target.value as AdvancedCreativity)}
-                    >
-                      {creativityOptions.map((item) => (
-                        <option key={item.value} value={item.value}>
-                          {item.label}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                  <label className='field'>
-                    <span>风格权重</span>
-                    <select
-                      value={advancedStyleWeight}
-                      onChange={(event) => setAdvancedStyleWeight(event.target.value as AdvancedStyleWeight)}
-                    >
-                      {styleWeightOptions.map((item) => (
-                        <option key={item.value} value={item.value}>
-                          {item.label}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                  <label className='field'>
-                    <span>草图权重</span>
-                    <select
-                      value={advancedSketchWeight}
-                      onChange={(event) => {
-                        setAdvancedSketchWeight(event.target.value as AdvancedSketchWeight)
-                        setAdvancedSketchDescription('')
-                      }}
-                    >
-                      {sketchWeightOptions.map((item) => (
-                        <option key={item.value} value={item.value}>
-                          {item.label}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                  <label className='field'>
-                    <span>提示词优化方向</span>
-                    <select
-                      value={advancedPromptOptimizationPreset}
-                      onChange={(event) =>
-                        setAdvancedPromptOptimizationPreset(event.target.value as PromptOptimizationPreset)
-                      }
-                    >
-                      {promptOptimizationPresets.map((preset) => (
-                        <option key={preset.value} value={preset.value}>
-                          {preset.label}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                </div>
-                <div className='simple-actions'>
-                  <button
-                    type='button'
-                    className='primary-action'
-                    onClick={() =>
-                      void handleSimpleGenerate({
-                        includeAdvancedSketch: true,
-                        includeAdvancedStyle: true,
-                      })
-                    }
-                    disabled={
-                      isAdvancedGenerating ||
-                      isAnalyzingAdvancedSketch ||
-                      !isConfigured ||
-                      !advancedPrompt.trim()
-                    }
-                  >
-                    {isAdvancedGenerating || isAnalyzingAdvancedSketch ? (
-                      <Loader2 className='spin' size={16} />
-                    ) : (
-                      <Sparkles size={16} />
-                    )}
-                    {isConfigured
-                      ? isAnalyzingAdvancedSketch
-                        ? '识别草图'
-                        : isAdvancedGenerating
-                          ? '生成中'
-                          : '立即生成'
-                      : '先完成配置'}
-                  </button>
-                </div>
-              </section>
-            </section>
-          ) : null}
-
-          {isCommerceView ? (
-            <section className='commerce-page'>
-              <section className='portal-panel commerce-composer'>
-                <div className='section-title'>
-                  <ShoppingBag size={16} />
-                  <span>电商主题</span>
-                </div>
-                {renderCommerceKindField()}
-                <div className='commerce-upload-grid'>
-                  {renderCommerceUpload(
-                    'product',
-                    '商品白底图',
-                    `上传同一个商品的白底图，可包含多个角度，最多 ${MAX_COMMERCE_PRODUCT_IMAGES} 张。`,
-                    commerceProductImages
-                  )}
-                  {renderCommerceUpload(
-                    'style',
-                    commerceCopy.styleLabel,
-                    commerceCopy.styleHint,
-                    commerceStyleImage ? [commerceStyleImage] : []
-                  )}
-                </div>
-                {renderCommerceCategoryField()}
-                <label className='field'>
-                  <span>{commerceCopy.descriptionLabel}</span>
-                  <textarea
-                    className='commerce-description'
-                    value={commerceDescription}
-                    onChange={(event) => setCommerceDescription(event.target.value)}
-                    placeholder={commerceCopy.descriptionPlaceholder}
-                  />
-                </label>
-                <div className='simple-param-grid commerce-param-grid'>
-                  <label className='field'>
-                    <span>模型</span>
-                    <select value={model} onChange={(event) => setModel(event.target.value)}>
-                      {sortedModels.length === 0 ? (
-                        <option value={model}>{model}</option>
-                      ) : (
-                        sortedModels.map((item) => (
-                          <option key={item.id} value={item.id}>
-                            {item.id}
-                          </option>
-                        ))
-                      )}
-                    </select>
-                  </label>
-                  {renderSizeField()}
-                  <label className='field'>
-                    <span>质量</span>
-                    <select value={quality} onChange={(event) => setQuality(event.target.value)}>
-                      {qualities.map((item) => (
-                        <option key={item} value={item}>
-                          {item}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                  <label className='field'>
-                    <span>数量</span>
-                    <select value={count} onChange={(event) => setCount(Number(event.target.value))}>
-                      {counts.map((item) => (
-                        <option key={item} value={item}>
-                          {item}x
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                </div>
-                <div className='simple-actions'>
-                  <button
-                    type='button'
-                    className='primary-action'
-                    onClick={() => void handleCommerceGenerate(commerceGenerateKind)}
-                    disabled={isCommerceGenerating || !commerceCanGenerate}
-                  >
-                    {isCommerceGenerating ? <Loader2 className='spin' size={16} /> : <Sparkles size={16} />}
-                    {isConfigured ? (isCommerceGenerating ? '生成中' : commerceCopy.action) : '先完成配置'}
-                  </button>
-                </div>
-              </section>
-
-            </section>
-          ) : null}
-
-          {currentView === 'gallery' ? (
-            <section className='gallery-page'>
-              <section className='gallery-page-panel'>
-                <div className='gallery-hero'>
-                  <div className='gallery-hero-copy'>
-                    <h2>本地图库</h2>
-                    <p>把刚生成的作品铺成灵感墙，快速预览、下载和删除，集中整理本地生成结果。</p>
-                  </div>
-                  <div className='gallery-hero-stats' aria-label='图库统计'>
-                    <div>
-                      <strong>{images.length}</strong>
-                      <span>张图片</span>
-                    </div>
-                    <div>
-                      <strong>{images.length === 0 ? '暂无' : images[0]?.mode === 'image' ? '图生图' : '文生图'}</strong>
-                      <span>最近类型</span>
-                    </div>
-                  </div>
-                </div>
-                {images.length === 0 ? (
-                  <div className='gallery-empty gallery-page-empty'>
-                    <span>生成结果会出现在这里。</span>
-                    <button
-                      type='button'
-                      className='secondary'
-                      onClick={() => enterConfiguredView('home')}
-                    >
-                      <Home size={16} />
-                      回到快速生成
-                    </button>
-                  </div>
-                ) : (
-                  <GalleryStrip
-                    images={images}
-                    limit={images.length}
-                    onPreview={setPreviewImage}
-                    onDownload={handleDownloadImage}
-                    onDelete={(id) => void handleDeleteImage(id)}
-                  />
-                )}
-              </section>
-            </section>
-          ) : null}
-
-          {currentView === 'console' ? (
-            <section className='console-page'>
-              <div className='console-hero'>
-                <div>
-                  <span className='console-kicker'>SumAPI connection</span>
-                  <h2>把 API Key 填好，Sum ImgHub 就能直接生图。</h2>
-                  <p>
-                    SumAPI 登录页带有人机验证，这里不再代登录。去控制台创建 Key 后粘贴到下方，
-                    图像和提示词请求会从当前浏览器直连你的中转站。
-                  </p>
-                </div>
-                <button
-                  type='button'
-                  className='primary-action console-hero-action'
-                  onClick={() => void handleOpenConsole()}
-                >
-                  <ExternalLink size={16} />
-                  打开 SumAPI 控制台
-                </button>
-              </div>
-              <div className='console-layout'>
-                <section className='portal-panel'>
-                  <div className='section-title'>
-                    <KeyRound size={16} />
-                    <span>连接配置</span>
-                  </div>
-                  <div className='connection-config-block'>
-                    <div className='connection-config-title'>
-                      <Sparkles size={14} />
-                      <span>文本模型</span>
-                      <small>用于优化提示词</small>
-                    </div>
-                    <label className='field'>
-                      <span>文本模型 Base URL</span>
-                      <input
-                        value={textBaseUrl}
-                        onChange={(event) => setTextBaseUrl(event.target.value)}
-                        placeholder='https://api.clawopen.top'
-                        spellCheck={false}
-                      />
-                    </label>
-                    <label className='field'>
-                      <span>文本模型名称</span>
-                      <input
-                        value={textModel}
-                        onChange={(event) => setTextModel(event.target.value)}
-                        placeholder='gpt-5.5'
-                        spellCheck={false}
-                      />
-                    </label>
-                    <label className='field'>
-                      <span>文本模型 API Key</span>
-                      <input
-                        value={codexApiKey}
-                        onChange={(event) => setCodexApiKey(event.target.value)}
-                        type='password'
-                        placeholder='sk-...'
-                        spellCheck={false}
-                      />
-                    </label>
-                  </div>
-
-                  <div className='connection-config-block'>
-                    <div className='connection-config-title'>
-                      <Sparkles size={14} />
-                      <span>生图模型</span>
-                    </div>
-                    <label className='field'>
-                      <span>生图模型 Base URL</span>
-                      <input
-                        value={imageBaseUrl}
-                        onChange={(event) => setImageBaseUrl(event.target.value)}
-                        placeholder='https://api.clawopen.top'
-                        spellCheck={false}
-                      />
-                    </label>
-                    <label className='field'>
-                      <span>生图模型名称</span>
-                      <select value={model} onChange={(event) => setModel(event.target.value)}>
-                        {sortedModels.length === 0 ? (
-                          <option value={model}>{model}</option>
-                        ) : (
-                          <>
-                            {sortedModels.some((item) => item.id === model) ? null : (
-                              <option value={model}>{model}</option>
-                            )}
-                            {sortedModels.map((item) => (
-                              <option key={item.id} value={item.id}>
-                                {item.id}
-                              </option>
-                            ))}
-                          </>
-                        )}
-                      </select>
-                    </label>
-                    <label className='field'>
-                      <span>生图模型 API Key</span>
-                      <input
-                        value={apiKey}
-                        onChange={(event) => setApiKey(event.target.value)}
-                        type='password'
-                        placeholder='sk-...'
-                        spellCheck={false}
-                      />
-                    </label>
-                    <label className='field'>
-                      <span>生图失败重试次数</span>
-                      <input
-                        value={imageRetryCount}
-                        onChange={(event) =>
-                          setImageRetryCount(normalizeImageRetryCount(event.target.value))
-                        }
-                        type='number'
-                        min={0}
-                        max={5}
-                        step={1}
-                      />
-                    </label>
-                  </div>
-                  <label className='checkbox-row'>
-                    <input
-                      type='checkbox'
-                      checked={persistApiKey}
-                      onChange={(event) => setPersistApiKey(event.target.checked)}
-                    />
-                    <span>将 API Key 保存到当前浏览器</span>
-                  </label>
-                  <div className='button-grid'>
-                    <button
-                      type='button'
-                      className='secondary login-button console-link-button'
-                      onClick={() => void handleOpenConsole()}
-                    >
-                      <ExternalLink size={16} />
-                      打开控制台
-                    </button>
-                    <button
-                      className='secondary danger destructive-button'
-                      onClick={() => void handleResetConnectionSettings()}
-                      aria-label='重设连接配置并清除 API Key'
-                      title='重设连接配置并清除 API Key'
-                    >
-                      <Trash2 size={16} />
-                      重设连接
-                    </button>
-                    <button className='secondary' onClick={handleSaveSettings}>
-                      <Save size={16} />
-                      保存设置
-                    </button>
-                    <button
-                      className='secondary'
-                      onClick={handleFetchModels}
-                      disabled={isLoadingModels || !imageBaseUrl || !apiKey}
-                    >
-                      {isLoadingModels ? (
-                        <Loader2 className='spin' size={16} />
-                      ) : (
-                        <RefreshCw size={16} />
-                      )}
-                      获取模型
-                    </button>
-                  </div>
-                </section>
-
-                  <section className='portal-panel compact-panel console-guide-panel'>
-                    <div className='section-title'>
-                      <Terminal size={16} />
-                      <span>配置步骤</span>
-                    </div>
-                    <ol className='console-steps'>
-                      <li>
-                        <strong>创建 API Key</strong>
-                        <span>在 SumAPI 控制台新建可用秘钥，确认包含生图模型权限。</span>
-                      </li>
-                      <li>
-                        <strong>粘贴到两个 Key 输入框</strong>
-                        <span>文本模型 Key 用于提示词优化，生图模型 Key 用于图片生成。</span>
-                      </li>
-                      <li>
-                        <strong>获取模型并保存</strong>
-                        <span>点击获取模型检查连接，再按需选择是否保存到当前浏览器。</span>
-                      </li>
-                    </ol>
-                  </section>
-
-                  <section className='portal-panel compact-panel'>
-                    <div className='section-title'>
-                      <Download size={16} />
-                      <span>本地数据</span>
-                    </div>
-                    <div className='button-grid'>
-                      <button className='secondary' onClick={() => void handleExportBackup()}>
-                        <Download size={16} />
-                        导出备份
-                      </button>
-                      <label className='secondary file-action'>
-                        <Upload size={16} />
-                        导入备份
-                        <input
-                          type='file'
-                          accept='application/json,.json'
-                          onChange={(event) => {
-                            const file = event.target.files?.[0]
-                            if (file) void handleImportBackup(file)
-                            event.currentTarget.value = ''
-                          }}
-                        />
-                      </label>
-                    </div>
-                    <button
-                      className='ghost danger'
-                      onClick={() => void handleClearImages()}
-                      disabled={images.length === 0}
-                    >
-                      <Trash2 size={16} />
-                      清空图库
-                    </button>
-                    <p>
-                      图片和设置保存在当前浏览器 IndexedDB。生成和提示词请求会发送到你配置的 SumAPI 接口；备份文件不包含 API Key。
-                    </p>
-                  </section>
-              </div>
-            </section>
-          ) : null}
-
-          {error ? (
-            <div className='error-toast portal-error' role='alert'>
-              <strong>执行失败</strong>
-              <span>{error}</span>
-              <button type='button' onClick={() => setError('')} aria-label='关闭错误提示'>
-                <X size={15} />
-              </button>
-            </div>
-          ) : null}
-          {!error && generationSuccess ? (
-            <div className='error-toast portal-error success-toast' role='status' aria-live='polite'>
-              <Check size={16} aria-hidden='true' />
-              <strong>{generationSuccess.title}</strong>
-              <span>{generationSuccess.message}</span>
-              <button
-                type='button'
-                className='toast-action'
-                onClick={() => {
-                  setGenerationSuccess(null)
-                  enterSidebarView('gallery')
-                }}
-              >
-                去图库查看
-              </button>
-            </div>
-          ) : null}
-          </section>
-        </main>
-      )}
-
-      {isGalleryReferencePickerOpen ? (
-        <div
-          className='modal-overlay gallery-reference-overlay'
-          role='dialog'
-          aria-modal='true'
-          aria-label='从图库选择参考图'
-          onMouseDown={(event) => {
-            if (event.target === event.currentTarget) closeGalleryReferencePicker()
+        <button
+          className="new-task"
+          type="button"
+          onClick={() => {
+            cancelAnalysisCountdown();
+            setPrompt("");
+            setReferenceImages([]);
+            setIsAgentPanelOpen(false);
+            setLastAppliedAgent(null);
+            setHighlightedRecordId("");
+            canvasRef.current?.scrollTo({ top: 0, behavior: "smooth" });
           }}
         >
-          <div className='gallery-reference-dialog'>
-            <div className='dialog-header'>
-              <div>
-                <strong>从图库选择参考图</strong>
-                <span>选中的图片会替换当前参考图节点中的图片，并可继续编辑 @标题。</span>
-              </div>
+          <ImagePlus size={17} />
+          新任务
+        </button>
+
+        <div className="history-title">
+          <span>最近记录</span>
+          <button type="button" className="icon-button" title="清空历史" onClick={() => void clearHistory()}>
+            <Trash2 size={16} />
+          </button>
+        </div>
+
+        <div className="history-list" ref={sidebarListRef}>
+          {sidebarRecords.length === 0 && !isLoadingSidebarRecords ? (
+            <div className="muted-box">暂无记录</div>
+          ) : (
+            sidebarRecords.map((record) => (
               <button
-                className='icon-button'
-                onClick={closeGalleryReferencePicker}
-                aria-label='关闭图库选择'
-                disabled={Boolean(selectingGalleryReferenceImageId)}
+                key={record.id}
+                type="button"
+                className={`history-item ${highlightedRecordId === record.id ? "active" : ""}`}
+                onClick={() => focusSidebarRecord(record)}
               >
-                <X size={18} />
+                <div className={`history-thumb ${record.status}`}>
+                  {record.objectUrl ? (
+                    <img src={record.objectUrl} alt="" />
+                  ) : (
+                    <AlertCircle size={18} />
+                  )}
+                </div>
+                <div className="history-copy">
+                  <strong>{record.status === "success" ? record.prompt : "生成失败"}</strong>
+                  <span>
+                    {record.model} · {formatDate(record.finishedAt || record.createdAt)}
+                  </span>
+                </div>
               </button>
+            ))
+          )}
+          {isLoadingSidebarRecords && <div className="load-more-state">读取记录中...</div>}
+          {hasMoreSidebarRecords && <div ref={sidebarLoadMoreRef} className="load-more-sentinel" />}
+        </div>
+      </aside>
+
+      <main className="workspace">
+        <header className="topbar">
+          <div className="topbar-cluster">
+            <SidebarToggleButton
+              side="left"
+              open={isLeftSidebarOpen}
+              title={isLeftSidebarOpen ? "收起最近记录" : "打开最近记录"}
+              onClick={() => setIsLeftSidebarOpen((value) => !value)}
+            />
+            <button type="button" className="topbar-home-button" onClick={returnHome}>
+              <WandSparkles size={15} />
+              首页
+            </button>
+            <button type="button" className="topbar-home-button" onClick={enterSquare}>
+              <ExternalLink size={15} />
+              广场
+            </button>
+            <div className={`status-pill ${modelState.status}`}>
+              {modelState.status === "ready" ? <Wifi size={16} /> : <Settings2 size={16} />}
+              <span>{modelState.status === "ready" ? "已连接" : modelState.message}</span>
             </div>
-            {images.length === 0 ? (
-              <div className='gallery-reference-empty'>
-                <ImageIcon size={34} />
-                <strong>图库暂无图片</strong>
-                <span>生成图片后，可以在这里选择为工作流参考图。</span>
+          </div>
+          <div className="current-model">
+            <span>{protocolDefinition.shortLabel}</span>
+            <strong>{selectedModel || "未选择"}</strong>
+          </div>
+          <div className="topbar-cluster right">
+            <button
+              type="button"
+              className={`topbar-log-button ${latestLocalLogLevel ? `is-${latestLocalLogLevel}` : ""}`}
+              title="查看本地请求日志"
+              onClick={() => setIsLocalLogOpen((value) => !value)}
+            >
+              <Database size={15} />
+              <span>{localLogs.length}</span>
+            </button>
+            <SidebarToggleButton
+              side="right"
+              open={isSettingsOpen}
+              title={isSettingsOpen ? "收起配置" : "打开配置"}
+              onClick={() => setIsSettingsOpen((value) => !value)}
+            />
+          </div>
+        </header>
+        {isLocalLogOpen && (
+          <section className="local-log-panel" role="dialog" aria-label="本地请求日志">
+            <div className="local-log-head">
+              <div>
+                <strong>本地请求日志</strong>
+                <span>只保存在当前浏览器，API Key 和参考图内容已脱敏。</span>
               </div>
-            ) : (
-              <div className='gallery-reference-grid'>
-                {images.map((image) => (
+              <div className="local-log-actions">
+                <button type="button" className="subtle-button compact" onClick={exportLocalDiagnostics} disabled={localLogs.length === 0} title="导出本地诊断为 JSON（图片内容已脱敏）">
+                  <DownloadCloud size={14} />
+                  导出
+                </button>
+                <button type="button" className="subtle-button compact" onClick={clearLocalLogs} disabled={localLogs.length === 0}>
+                  <Trash2 size={14} />
+                  清空
+                </button>
+                <button type="button" className="icon-button" title="关闭日志" onClick={() => setIsLocalLogOpen(false)}>
+                  <X size={15} />
+                </button>
+              </div>
+            </div>
+            <div className="local-log-list">
+              {localLogs.length === 0 ? (
+                <div className="local-log-empty">暂无日志。提交生成或读取模型后会显示请求详情。</div>
+              ) : (
+                localLogs.map((log, index) => (
+                  <details className={`local-log-item ${log.level}`} key={log.id} open={index === 0}>
+                    <summary>
+                      <span>{formatFullDate(log.createdAt)}</span>
+                      <strong>{log.title}</strong>
+                      <small>
+                        {log.endpoint || log.type}
+                        {log.durationMs !== undefined ? ` · ${formatDuration(log.durationMs)}` : ""}
+                        {log.referenceSummary && (
+                          <em className={`ref-pill ref-pill-${log.referenceSummary.status}`}>
+                            {log.referenceSummary.status === "none" && "无参考图"}
+                            {log.referenceSummary.status === "skipped_unsupported" && `${log.referenceSummary.count} 张未发送`}
+                            {log.referenceSummary.status === "prepared" && `${log.referenceSummary.count} 张待发送${log.referenceSummary.totalBytes > 0 ? ` · ${formatBytes(log.referenceSummary.totalBytes)}` : ""}`}
+                            {log.referenceSummary.status === "sent_ok" && `${log.referenceSummary.count} 张已上传${log.referenceSummary.totalBytes > 0 ? ` · ${formatBytes(log.referenceSummary.totalBytes)}` : ""}`}
+                            {log.referenceSummary.status === "sent_failed" && `${log.referenceSummary.count} 张发送失败`}
+                          </em>
+                        )}
+                      </small>
+                    </summary>
+                    <div className="local-log-body">
+                      <p>{log.message}</p>
+                      {log.requestId && <span className="local-log-request-id">requestID：{log.requestId}</span>}
+                      <pre>{JSON.stringify({
+                        params: log.params,
+                        response: log.response,
+                        error: log.error,
+                      }, null, 2)}</pre>
+                    </div>
+                  </details>
+                ))
+              )}
+            </div>
+          </section>
+        )}
+
+        <section className="canvas" ref={canvasRef} onScroll={handleCanvasScroll}>
+          {visibleRecords.length === 0 && !isLoadingMainRecords ? (
+            <div className="empty-state">
+              <div className="empty-mark">
+                <ImagePlus size={26} />
+              </div>
+              <div>
+                <strong>准备生成</strong>
+                <span>读取模型后输入提示词</span>
+              </div>
+            </div>
+          ) : (
+            <div className="gallery-stack">
+              <div className="batch-toolbar">
+                <div className="record-summary">
+                  <span>全部生成记录 · 已显示 {visibleRecords.length} 条</span>
+                  <small>运行中 {queueStats.running} / 排队 {queueStats.queued} / 成功 {visibleStats.success} / 失败 {visibleStats.error}</small>
+                </div>
+                <div className="toolbar-actions">
+                  {isSelectionMode ? (
+                    <BulkActionBar
+                      selectedCount={selectedRecords.length}
+                      downloadableCount={downloadableSelectedRecords.length}
+                      selectableCount={selectableVisibleRecords.length}
+                      failedCount={failedVisibleRecordCount}
+                      isDownloading={isBulkDownloading}
+                      onSelectAll={selectAllVisibleRecords}
+                      onClearFailed={() => void clearFailedRecords()}
+                      onInvert={invertVisibleSelection}
+                      onDownload={() => void downloadSelectedRecords()}
+                      onDelete={requestBulkDelete}
+                      onCancel={cancelSelection}
+                    />
+                  ) : (
+                    <>
+                      <button type="button" className="subtle-button" onClick={toggleSelectionMode}>
+                        <CheckSquare size={16} />
+                        选择
+                      </button>
+                      {successfulVisibleRecords.length > 0 && (
+                        <button type="button" className="subtle-button" onClick={downloadCurrentBatch}>
+                          <Download size={16} />
+                          下载已显示成功图片
+                        </button>
+                      )}
+                    </>
+                  )}
+                </div>
+              </div>
+              <div className="gallery-scroll">
+                <div className="gallery-grid">
+                  {visibleRecords.map((job) => (
+	                    <JobCard
+	                      key={job.id}
+	                      job={job}
+	                      highlighted={highlightedRecordId === job.id}
+                      recordRef={(element) => registerRecordElement(job.id, element)}
+                      selected={selectedRecordIds.has(job.id)}
+                      selectionMode={isSelectionMode}
+                      selectable={job.status !== "running"}
+                      onToggleSelect={() => toggleRecordSelection(job)}
+                      onRetry={() => void retryJob(job)}
+                      onPreview={() => previewCurrent(job)}
+                      onDownload={() => downloadCurrent(job)}
+                      onCopyPrompt={() => copyPrompt(job.prompt)}
+                      onRecommend={() => void recommendToSquare(job)}
+                      recommendState={squareRecommendState[job.id]}
+                      canRecommend={canUseSquareIdentity}
+                    />
+                  ))}
+                </div>
+                {isLoadingMainRecords && <div className="load-more-state">读取更多记录中...</div>}
+                {hasMoreMainRecords && <div ref={mainLoadMoreRef} className="load-more-sentinel" />}
+              </div>
+            </div>
+          )}
+        </section>
+
+        <form
+          className={[
+            "composer",
+            isPromptAnalyzing ? "is-analyzing" : "",
+            isComposerCollapsed ? "is-collapsed" : "",
+            isAgentPanelOpen ? "has-agent-panel" : "",
+            isAgentModeEnabled ? "is-agent-mode" : "",
+          ].filter(Boolean).join(" ")}
+          data-onboarding-target="composer"
+          onSubmit={(event) => {
+            event.preventDefault();
+            if (isAgentPanelOpen) return;
+            requestStartBatch();
+          }}
+          onDragOver={(event) => event.preventDefault()}
+          onDrop={onComposerDrop}
+        >
+          {isComposerCollapsed && (
+            <button
+              type="button"
+              className="composer-mini"
+              onClick={() => {
+                setIsComposerCollapsed(false);
+                window.requestAnimationFrame(() => promptTextareaRef.current?.focus());
+              }}
+            >
+              <WandSparkles size={16} />
+              <span>描述你想生成的图片...</span>
+              <Send size={16} />
+            </button>
+          )}
+          <AgentModeSwitch
+            enabled={isAgentModeEnabled}
+            status={agentModeState.status}
+            onToggle={() => setIsAgentModeEnabled((value) => !value)}
+          />
+          {!isAgentModeEnabled && (
+            <div className="agent-quickbar">
+              <button
+                type="button"
+                className={[
+                  "agent-entry-button",
+                  lastAppliedAgent ? "is-active" : isAgentEnabled ? "is-enabled" : "is-muted",
+                  !isAgentHintSeen ? "needs-attention" : "",
+                ].filter(Boolean).join(" ")}
+                title={
+                  lastAppliedAgent
+                    ? `${lastAppliedAgent.plan.agentName} · ${PROMPT_VARIANT_LABELS[lastAppliedAgent.variant]} 已应用到当前提示词`
+                    : isAgentEnabled
+                      ? "已选行业，点开面板应用 variant"
+                      : "打开行业 Agent 选择器"
+                }
+                onClick={() => openAgentPanel()}
+              >
+                <WandSparkles size={15} />
+                {lastAppliedAgent
+                  ? `${lastAppliedAgent.plan.agentName} · ${PROMPT_VARIANT_LABELS[lastAppliedAgent.variant]} 已应用`
+                  : isAgentEnabled
+                    ? `${selectedAgent?.name || "行业 Agent"} · 已选`
+                    : "行业 Agent · 未启用"}
+                <ChevronRight size={14} />
+                <small>
+                  {lastAppliedAgent ? "送出后清" : isAgentEnabled ? "可应用" : "可开启"}
+                </small>
+              </button>
+              {isAgentEnabled && (
+                <button
+                  type="button"
+                  className="agent-disable-button"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    disableAgent();
+                  }}
+                  title="停用行业 Agent"
+                  aria-label="停用行业 Agent"
+                >
+                  <X size={13} />
+                </button>
+              )}
+              {lastAppliedAgent && (
+                <div className="agent-applied-chip" role="status">
+                  <WandSparkles size={12} />
+                  <span>{lastAppliedAgent.plan.agentName} · {PROMPT_VARIANT_LABELS[lastAppliedAgent.variant]}</span>
                   <button
-                    key={image.id}
-                    type='button'
-                    className='gallery-reference-option'
-                    onClick={() =>
-                      void selectGalleryReferenceImage(
-                        galleryReferencePickerNodeId,
-                        image
-                      )
-                    }
-                    disabled={Boolean(selectingGalleryReferenceImageId)}
-                    aria-label='选择这张图库图片作为参考图'
+                    type="button"
+                    className="agent-applied-chip-clear"
+                    onClick={() => setLastAppliedAgent(null)}
+                    title="清除 Agent 标签（保留提示词）"
+                    aria-label="清除 Agent 标签"
                   >
-                    <img src={image.src} alt={image.revisedPrompt || image.prompt} />
-                    <span>
-                      <strong>{image.mode === 'image' ? '图片引导' : '文生图'}</strong>
-                      <small>{new Date(image.createdAt).toLocaleString()}</small>
-                    </span>
-                    {selectingGalleryReferenceImageId === image.id ? (
-                      <Loader2 className='spin' size={16} />
-                    ) : (
-                      <Check size={16} />
+                    <X size={11} />
+                  </button>
+                </div>
+              )}
+              <button
+                type="button"
+                className="agent-expand-button"
+                onClick={() => setIsAgentQuickbarExpanded((value) => !value)}
+                aria-expanded={isAgentQuickbarExpanded}
+                title={isAgentQuickbarExpanded ? "收起行业 Agent 快捷入口" : "展开行业 Agent 快捷入口"}
+              >
+                {isAgentQuickbarExpanded ? "收起" : "展开"}
+                <ChevronRight size={13} />
+              </button>
+              {isAgentHintVisible && (
+                <div className="agent-entry-hint" role="status">
+                  选择行业工作流，不填也能生成标准图
+                </div>
+              )}
+              {isAgentQuickbarExpanded && (
+                <div className="agent-chip-row" aria-label="行业 Agent 快捷入口">
+                  {INDUSTRY_AGENTS.slice(0, 8).map((agent) => (
+                    <button
+                      type="button"
+                      key={agent.id}
+                      className={`agent-chip ${selectedAgentId === agent.id ? "active" : ""}`}
+                      title={agent.clickHint}
+                      onClick={() => openAgentPanel(agent.id)}
+                    >
+                      <span>{agent.icon}</span>
+                      {agent.name}
+                      <small>{selectedAgentId === agent.id ? "已选" : "开启"}</small>
+                      <ChevronRight size={12} />
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+          {isAgentPanelOpen && (
+            <div className="agent-modal">
+              <button
+                type="button"
+                className="agent-modal-backdrop"
+                aria-label="关闭行业 Agent 背景"
+                onClick={() => setIsAgentPanelOpen(false)}
+              />
+              <section className="agent-panel" role="dialog" aria-modal="true" aria-label="行业 Agent">
+                <div className="agent-panel-head">
+                  <div>
+                    <span className="eyebrow">AI + Image workflow</span>
+                    <strong>行业 Agent</strong>
+                    <p>选择行业即可生成标准方案。下方信息可选填，不填写也会使用行业默认值。</p>
+                  </div>
+                  <button
+                    type="button"
+                    className="icon-button"
+                    title="关闭行业 Agent"
+                    aria-label="关闭行业 Agent"
+                    onClick={() => setIsAgentPanelOpen(false)}
+                  >
+                    <X size={16} />
+                  </button>
+                </div>
+                <div className="agent-layout">
+                  <div className="agent-list" aria-label="行业 Agent 列表">
+                    {INDUSTRY_AGENTS.map((agent) => (
+                      <button
+                        type="button"
+                        key={agent.id}
+                        className={`agent-list-item ${selectedAgentId === agent.id ? "active" : ""}`}
+                        onClick={() => selectAgent(agent)}
+                      >
+                        <span>{agent.icon}</span>
+                        <div>
+                          <strong>{agent.name}</strong>
+                          <small>{agent.tag} · {agent.recommendedRatio}</small>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                  <div className="agent-workspace">
+                    {selectedAgent ? (
+                      <>
+                    <div className="agent-current">
+                      <div>
+                        <strong>{selectedAgent.name}</strong>
+                        <span>{selectedAgent.description}</span>
+                        <small>{selectedAgent.emptyStateHint}</small>
+                      </div>
+                      <div className="agent-meta-pills">
+                        <span>{selectedAgent.recommendedRatio}</span>
+                        <span>{selectedAgent.defaultCount} 张</span>
+                        <span>{selectedAgent.defaultQuality}</span>
+                      </div>
+                    </div>
+                    {agentPlan && (
+                      <div className="agent-plan">
+                        <div className="agent-brief">
+                          <strong>生图 Brief</strong>
+                          <p>{agentPlan.brief}</p>
+                        </div>
+                        <div className="agent-variant-grid">
+                          {(Object.keys(agentPlan.promptVariants) as PromptVariant[]).map((variant) => (
+                            <button
+                              type="button"
+                              className={`agent-variant-card ${variant === "stable" ? "recommended" : ""}`}
+                              key={variant}
+                              onClick={() => applyAgentVariant(variant)}
+                            >
+                              <strong>{PROMPT_VARIANT_LABELS[variant]}</strong>
+                              <span>{agentPlan.promptVariants[variant]}</span>
+                              <small>应用到提示词，可继续编辑</small>
+                            </button>
+                          ))}
+                        </div>
+                        <div className="agent-note-grid">
+                          {agentPlan.notes.map((note) => <span key={note}>{note}</span>)}
+                        </div>
+                      </div>
                     )}
+                    <div className="agent-form-grid">
+                      {selectedAgent.fields.map((field) => (
+                        <label className={field.type === "textarea" ? "agent-field wide" : "agent-field"} key={field.id}>
+                          <span>{field.label}{field.required ? " · 建议" : ""}</span>
+                          {field.type === "select" ? (
+                            <select value={agentValues[field.id] || field.defaultValue || ""} onChange={(event) => updateAgentValue(field.id, event.target.value)}>
+                              {(field.options || []).map((option) => (
+                                <option key={option} value={option}>{option}</option>
+                              ))}
+                            </select>
+                          ) : field.type === "textarea" ? (
+                            <textarea
+                              rows={3}
+                              value={agentValues[field.id] || ""}
+                              placeholder={field.placeholder}
+                              onChange={(event) => updateAgentValue(field.id, event.target.value)}
+                            />
+                          ) : (
+                            <input
+                              value={agentValues[field.id] || ""}
+                              placeholder={field.placeholder}
+                              onChange={(event) => updateAgentValue(field.id, event.target.value)}
+                            />
+                          )}
+                        </label>
+                      ))}
+                    </div>
+                    <div className="agent-supplement-row">
+                      {selectedAgent.supplements.map((item) => <span key={item}>{item}</span>)}
+                      {selectedAgent.qualityChecklist.map((item) => <span key={item}>验收：{item}</span>)}
+                    </div>
+                    {agentPhase === "planning" && (
+                      <div className="agent-scan">
+                        <span />
+                        <span />
+                        <span />
+                      </div>
+                    )}
+                      </>
+                    ) : (
+                      <div className="agent-empty-select">
+                        <WandSparkles size={24} />
+                        <strong>先选择一个行业 Agent</strong>
+                        <span>默认不启用行业工作流。选择左侧行业后，系统会自动填入行业默认目标、比例、张数和负面提示词。</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+                <div className="agent-panel-actions">
+                  {!selectedAgent ? (
+                    <button type="button" className="primary-action compact" disabled>
+                      <WandSparkles size={15} />
+                      先选择行业 Agent
+                    </button>
+                  ) : agentPlan ? (
+                    <>
+                      {(Object.keys(agentPlan.promptVariants) as PromptVariant[]).map((variant) => (
+                        <button
+                          type="button"
+                          className={variant === "stable" ? "primary-action compact" : "subtle-button"}
+                          key={variant}
+                          onClick={() => applyAgentVariant(variant)}
+                        >
+                          <WandSparkles size={15} />
+                          应用{PROMPT_VARIANT_LABELS[variant]}到提示词
+                        </button>
+                      ))}
+                      <button type="button" className="subtle-button" onClick={generateAgentPlan} disabled={agentPhase === "planning"}>
+                        {agentPhase === "planning" ? <Loader2 size={15} className="spin" /> : <RefreshCw size={15} />}
+                        重新生成方案
+                      </button>
+                    </>
+                  ) : (
+                    <button type="button" className="primary-action compact" onClick={generateAgentPlan} disabled={agentPhase === "planning"}>
+                      {agentPhase === "planning" ? <Loader2 size={15} className="spin" /> : <WandSparkles size={15} />}
+                      生成行业方案
+                    </button>
+                  )}
+                  {selectedAgent && (
+                    <button type="button" className="subtle-button danger" onClick={disableAgent}>
+                      停用行业 Agent
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    className="subtle-button"
+                    onClick={() => setIsAgentPanelOpen(false)}
+                  >
+                    取消
+                  </button>
+                </div>
+              </section>
+            </div>
+          )}
+          {isAgentModeEnabled && (
+            <AgentModeStatusPanel
+              state={agentModeState}
+              onClear={() => {
+                setAgentModePendingPlan(null);
+                setAgentModeBrochureDraft(null);
+                setAgentModeState({ status: "idle", message: "" });
+              }}
+              onReanalyze={() => void requestAgentModeReanalysis()}
+            />
+          )}
+          {!isAgentModeEnabled && showPromptPresets && (
+            <div className="prompt-presets-panel">
+              <div className="prompt-presets-head">
+                <div>
+                  <strong>预设提示词</strong>
+                  <span>点击模板填入输入框，填入后仍可继续编辑。</span>
+                </div>
+                <button
+                  type="button"
+                  className="icon-button"
+                  title="收起预设提示词"
+                  onClick={() => setShowPromptPresets(false)}
+                >
+                  <X size={16} />
+                </button>
+              </div>
+              <div className="prompt-presets-grid">
+                {PROMPT_STARTERS.map((starter) => (
+                  <button
+                    type="button"
+                    className="prompt-preset-card"
+                    key={starter.label}
+                    onClick={() => applyPromptStarter(starter.prompt)}
+                  >
+                    <span>{starter.tag}</span>
+                    <strong>{starter.label}</strong>
+                    <small>{starter.prompt}</small>
                   </button>
                 ))}
               </div>
+            </div>
+          )}
+          {referenceImages.length > 0 && (
+            <div className="reference-strip">
+              {!protocolDefinition.supportsReferenceImages && (
+                <div className="reference-warning">当前协议暂不发送参考图，切回兼容协议或 Gemini Native 后生效</div>
+              )}
+              {referenceImages.map((image) => (
+                <div className={`reference-chip ${image.status || "ready"}`} key={image.id}>
+                  {image.dataUrl ? (
+                    <img src={image.thumbnailDataUrl || image.dataUrl} alt="" />
+                  ) : (
+                    <div className="reference-thumb-fallback">
+                      <AlertCircle size={16} />
+                    </div>
+                  )}
+                  <div className="reference-chip-copy">
+                    <span title={image.name}>{image.name}</span>
+                    <small title={image.message || ""}>
+                      {referenceDimensionLabel(image)} · {formatReferenceType(image.type)} · {formatBytes(image.size)}
+                    </small>
+                  </div>
+                  <div className="reference-status" title={image.message || "可用"}>
+                    {image.status === "error" ? <AlertCircle size={14} /> : <CheckCircle2 size={14} />}
+                  </div>
+                  <button type="button" title="移除参考图" onClick={() => removeReference(image.id)}>
+                    <X size={14} />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+          {!isAgentModeEnabled && analysisState.status !== "idle" && (
+            <div className={`prompt-analysis-panel ${analysisState.status} risk-${analysisResult?.riskLevel || "low"}`}>
+              <div className="analysis-panel-head">
+                <div className="analysis-orb" aria-hidden="true">
+                  {(analysisState.status === "analyzing" || analysisState.status === "receiving") ? <Loader2 size={16} className="spin" /> : <WandSparkles size={16} />}
+                </div>
+                <div>
+                  <strong>
+                    {analysisState.status === "receiving"
+                      ? "正在接收结果"
+                      : analysisState.message || analysisModeLabel(analysisState.mode)}
+                  </strong>
+                  <span>
+                    {analysisState.status === "analyzing"
+                      ? currentAnalysisMessage
+                      : analysisState.status === "receiving"
+                        ? analysisState.message || "AI 正在流式返回..."
+                        : analysisResult
+                          ? `${analysisSourceLabel} · 评分 ${analysisResult.score}`
+                          : analysisState.error || "可以稍后重试"}
+                  </span>
+                  {(analysisState.streamChunks || analysisState.streamCharacters) && (
+                    <small className="analysis-stream-progress">
+                      {`进度 · ${analysisState.streamChunks || 0} 段 / ${analysisState.streamCharacters || 0} 字`}
+                    </small>
+                  )}
+                </div>
+                <button
+                  type="button"
+                  className="icon-button"
+                  title="关闭智能建议"
+                  onClick={() => {
+                    cancelAnalysisCountdown();
+                    setAnalysisState({ status: "idle", mode: "send", message: "" });
+                  }}
+                >
+                  <X size={16} />
+                </button>
+              </div>
+
+              {analysisCountdown && (
+                <div className="analysis-countdown">
+                  <div>
+                    <strong>{analysisCountdown.secondsLeft}s</strong>
+                    <span>{analysisCountdown.label}</span>
+                  </div>
+                  <div className="analysis-countdown-track" aria-hidden="true">
+                    <span style={{ width: `${(analysisCountdown.secondsLeft / 10) * 100}%` }} />
+                  </div>
+                  <button type="button" className="subtle-button" onClick={abandonAnalysisCountdown}>
+                    停止自动生成
+                  </button>
+                </div>
+              )}
+
+              {(analysisState.status === "analyzing" || analysisState.status === "receiving") && (
+                <div className="analysis-scan">
+                  <span />
+                  <span />
+                  <span />
+                </div>
+              )}
+
+              {analysisState.streamPreview && (analysisState.status === "analyzing" || analysisState.status === "receiving") && (
+                <pre className="analysis-stream-preview">{analysisState.streamPreview}</pre>
+              )}
+
+              {analysisState.status === "error" && (
+                <div className="analysis-error">
+                  <AlertCircle size={16} />
+                  <span>{analysisState.error || "分析接口暂时不可用"}</span>
+                  {analysisState.mode === "send" && (
+                    <button type="button" className="subtle-button" onClick={() => continueFromAnalysis()}>
+                      跳过分析继续生成
+                    </button>
+                  )}
+                </div>
+              )}
+
+              {analysisResult && analysisState.status === "ready" && (
+                <>
+                  <div className="analysis-summary">
+                    <div className={`risk-badge ${analysisResult.riskLevel}`}>
+                      {analysisResult.riskLevel === "high" ? "高风险" : analysisResult.riskLevel === "medium" ? "建议优化" : "可直接生成"}
+                    </div>
+                    <p>{analysisResult.summary}</p>
+                  </div>
+
+                  {analysisResult.risks.length > 0 && (
+                    <div className="analysis-section">
+                      <strong>失败预判</strong>
+                      <div className="analysis-risk-list">
+                        {analysisResult.risks.slice(0, 4).map((risk) => (
+                          <div className={`analysis-risk ${risk.level}`} key={`${risk.title}-${risk.level}`}>
+                            <span>{risk.title}</span>
+                            <small>{risk.description}{risk.fix ? ` · 建议：${risk.fix}` : ""}</small>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="analysis-section">
+                    <strong>参数推荐</strong>
+                    <div className="analysis-param-grid">
+                      <span>比例 <b>{suggestedRatio || params.aspectRatio}</b></span>
+                      <span>尺寸 <b>{suggestedSize || resolvedRequestSize}</b></span>
+                      <span>张数 <b>{suggestedCount || params.batchCount}</b></span>
+                      <span>风格 <b>{analysisResult.suggestedParams.styleStrength || "medium"}</b></span>
+                    </div>
+                  </div>
+
+                  <div className="analysis-section">
+                    <strong>提示词优化</strong>
+                    <div className="optimized-prompt-preview">{analysisResult.optimizedPrompt}</div>
+                  </div>
+
+                  {analysisResult.styleEnhancements.length > 0 && (
+                    <div className="analysis-section">
+                      <strong>风格增强</strong>
+                      <div className="style-enhancement-row">
+                        {analysisResult.styleEnhancements.slice(0, 4).map((enhancement) => (
+                          <button
+                            type="button"
+                            key={enhancement.name}
+                            className="style-enhancement-chip"
+                            title={enhancement.description}
+                            onClick={() => appendStyleEnhancement(enhancement)}
+                          >
+                            {enhancement.name}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="analysis-actions">
+                    {analysisState.mode === "send" ? (
+                      <>
+                        <button
+                          type="button"
+                          className="primary-action compact"
+                          onClick={() => continueFromAnalysis({ useOptimizedPrompt: true, applyRecommendedParams: true })}
+                        >
+                          <WandSparkles size={15} />
+                          使用优化版生成
+                        </button>
+                        <button type="button" className="subtle-button" onClick={() => continueFromAnalysis()}>
+                          原样继续
+                        </button>
+                      </>
+                    ) : (
+                      <>
+                        <button type="button" className="primary-action compact" onClick={() => applyOptimizedPrompt(analysisResult)}>
+                          <WandSparkles size={15} />
+                          应用优化提示词
+                        </button>
+                        <button type="button" className="subtle-button" onClick={() => applySuggestedParams(analysisResult)}>
+                          应用推荐参数
+                        </button>
+                      </>
+                    )}
+                    <button type="button" className="subtle-button" onClick={() => copyPrompt(analysisResult.optimizedPrompt)}>
+                      <Copy size={15} />
+                      复制优化版
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
+          )}
+          <div className={`composer-main ${isAgentModeEnabled ? "is-agent-mode" : ""}`}>
+            <button
+              type="button"
+              className="icon-button upload-button"
+              title="上传参考图"
+              onClick={() => fileInputRef.current?.click()}
+            >
+              <UploadCloud size={19} />
+            </button>
+            {!isAgentModeEnabled && (
+              <button
+                type="button"
+                className={`icon-button preset-toggle-button ${!showPromptPresets && !prompt.trim() ? "is-guiding" : ""}`}
+                title={showPromptPresets ? "收起预设提示词" : "查看预设提示词"}
+                aria-expanded={showPromptPresets}
+                onClick={() => setShowPromptPresets((value) => !value)}
+              >
+                <WandSparkles size={18} />
+                <span>预设</span>
+              </button>
+            )}
+            <textarea
+              ref={promptTextareaRef}
+              value={prompt}
+              onChange={(event) => updatePromptValue(event.target.value)}
+              onInput={resizePromptTextarea}
+              onKeyDown={(event) => {
+                if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
+                  event.preventDefault();
+                  requestStartBatch();
+                }
+              }}
+              placeholder={
+                isAgentModeEnabled
+                  ? "上传参考图后，直接描述你想做一张图、一组不同图片，或一本宣传画册..."
+                  : "描述你想生成的图片..."
+              }
+              aria-label="提示词"
+              rows={1}
+            />
+            {!isAgentModeEnabled && (
+              <button
+                type="button"
+                className={`composer-config-button ${isSettingsOpen ? "active" : ""}`}
+                title={`打开生成配置：${composerConfigSummary} · ${composerConfigDetail}`}
+                aria-label={`打开生成配置，当前 ${composerConfigSummary}`}
+                onClick={() => setIsSettingsOpen(true)}
+              >
+                <Settings2 size={15} />
+                <span>{params.batchCount}张</span>
+                <span>{params.aspectRatio}</span>
+                <span>{selectedResolution}</span>
+              </button>
+            )}
+            <button
+              type="button"
+              className={`send-button${isSendLaunching ? " is-launching" : ""}`}
+              title={
+                isAgentModeEnabled
+                  ? agentModeState.status === "analyzing"
+                    ? "正在理解任务"
+                    : "开始由 Agent 自动编排"
+                  : isPromptAnalyzing
+                    ? "正在分析提示词"
+                    : "生成"
+              }
+              aria-label={isAgentModeEnabled ? "开始 Agent 编排" : "生成图片"}
+              disabled={!canRequestGenerate}
+              onPointerDown={(event) => {
+                if (event.button !== 0) return;
+                event.preventDefault();
+                requestStartBatch();
+              }}
+              onClick={() => requestStartBatch()}
+              onKeyDown={(event) => {
+                if (event.key !== "Enter" && event.key !== " ") return;
+                event.preventDefault();
+                requestStartBatch();
+              }}
+            >
+              <span className="send-button__trail" aria-hidden="true" />
+              <span className="send-button__plane" aria-hidden="true">
+                <Send size={18} />
+              </span>
+            </button>
+          </div>
+          {!isAgentModeEnabled && (
+            <>
+              <div className="prompt-assist-bar" aria-label="智能创作工具">
+                <button type="button" disabled={!prompt.trim() || isPromptAnalyzing} onClick={() => void requestPromptAssist("optimize")}>
+                  <WandSparkles size={14} />
+                  优化提示词
+                </button>
+                <button type="button" disabled={!prompt.trim() || isPromptAnalyzing} onClick={() => void requestPromptAssist("params")}>
+                  <Settings2 size={14} />
+                  参数推荐
+                </button>
+                <button type="button" disabled={!prompt.trim() || isPromptAnalyzing} onClick={() => void requestPromptAssist("risk")}>
+                  <ShieldCheck size={14} />
+                  失败预判
+                </button>
+                <button type="button" disabled={!prompt.trim() || isPromptAnalyzing} onClick={() => void requestPromptAssist("style")}>
+                  <WandSparkles size={14} />
+                  风格增强
+                </button>
+              </div>
+              <div className="composer-meta">
+                <span className={referenceIssueCount > 0 ? "has-error" : referenceWarningCount > 0 ? "has-warning" : ""}>
+                  {referenceMetaLabel}
+                </span>
+                <span className={`composer-config-meta ${aspectRatioSupported ? "" : "has-error"}`}>
+                  {composerConfigSummary} · {resolvedRequestSize} · {params.outputFormat.toUpperCase()}
+                </span>
+                <label className="composer-auto-toggle" title="发送前自动优化提示词">
+                  <input
+                    type="checkbox"
+                    checked={isAutoPromptAnalysisEnabled}
+                    onChange={(event) => setIsAutoPromptAnalysisEnabled(event.target.checked)}
+                  />
+                  <span>发送前优化</span>
+                </label>
+                <span>{prompt.trim().length} 字</span>
+              </div>
+            </>
+          )}
+          <input
+            ref={fileInputRef}
+            className="hidden-input"
+            type="file"
+            accept="image/*"
+            multiple
+            onChange={onReferenceInput}
+          />
+        </form>
+        {agentModePendingPlan && (
+          <AgentModePlanModal
+            plan={agentModePendingPlan}
+            onCancel={() => {
+              setAgentModePendingPlan(null);
+              setAgentModeState({
+                status: "idle",
+                message: "已取消自动拆解，请继续修改需求。",
+              });
+            }}
+            onReanalyze={() => void requestAgentModeReanalysis()}
+            onConfirm={() => enqueueAgentModeJobs(agentModePendingPlan.jobs, {
+              analysisResult: agentModePendingPlan,
+              clearComposer: true,
+              scenarioLabel: "自动拆解任务",
+            })}
+          />
+        )}
+        {agentModeBrochureDraft && (
+          <BrochurePlannerModal
+            project={agentModeBrochureDraft}
+            onCancel={() => {
+              setAgentModeBrochureDraft(null);
+              setAgentModeState({
+                status: "idle",
+                message: "已取消画册规划，请继续补充你的要求。",
+              });
+            }}
+            onReanalyze={() => void requestAgentModeReanalysis()}
+            onGenerateBoards={() => submitBrochureStyleBoards(agentModeBrochureDraft)}
+          />
+        )}
+      </main>
+
+      <aside className={`settings-panel ${isSettingsOpen ? "open" : "closed"}`}>
+        <div className="panel-header">
+          <div>
+            <strong>配置</strong>
+            <span>API 与生成参数</span>
+          </div>
+          <button
+            className="icon-button"
+            type="button"
+            title="收起配置"
+            aria-label="收起配置"
+            onClick={() => setIsSettingsOpen(false)}
+          >
+            <PanelRightClose size={16} />
+          </button>
+        </div>
+
+        <section className="settings-section" data-onboarding-target="api">
+          <label>
+            <span>生图协议</span>
+            <select
+              value={apiConfig.protocol}
+              onChange={(event) => changeProtocol(event.target.value as ImageProtocol)}
+            >
+              {PROTOCOLS.map((protocol) => (
+                <option key={protocol.value} value={protocol.value}>
+                  {protocol.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <div className="protocol-note">
+            <strong>{protocolDefinition.shortLabel}</strong>
+            <span>{protocolDefinition.description}</span>
+            <small>{formatProtocolCapability(apiConfig.protocol)}</small>
+          </div>
+          <label>
+            <span>API URL</span>
+            <input value={DEFAULT_API_URL} readOnly />
+          </label>
+          <div className="endpoint-note">
+            固定使用 SumAPI 默认中转地址
+          </div>
+          <label>
+            <span>API Key</span>
+            <input
+              value={apiConfig.apiKey}
+              type="password"
+              onChange={(event) => setApiConfig((current) => ({ ...current, apiKey: event.target.value }))}
+              spellCheck={false}
+            />
+          </label>
+          <div className="prompt-group-hint api-key-hint" role="note">
+            <WandSparkles size={14} />
+            <span>
+              推荐使用 <strong>banana Pro 官转</strong> 或 <strong>OpenRouter</strong> 分组。
+            </span>
+          </div>
+          <label className="check-row">
+            <input
+              type="checkbox"
+              checked={apiConfig.rememberKey}
+              onChange={(event) => setApiConfig((current) => ({ ...current, rememberKey: event.target.checked }))}
+            />
+            <span>记住 API Key</span>
+          </label>
+          <button className="primary-action" type="button" onClick={() => void loadModels()} disabled={modelState.status === "loading"}>
+            {modelState.status === "loading" ? <Loader2 size={17} className="spin" /> : <RefreshCw size={17} />}
+            读取/刷新模型
+          </button>
+          <div className={`status-line ${isAutoLoadingModels ? "loading" : modelState.status}`}>
+            {isAutoLoadingModels ? (
+              <Loader2 size={15} className="spin" />
+            ) : modelState.status === "ready" ? (
+              <CheckCircle2 size={15} />
+            ) : (
+              <AlertCircle size={15} />
+            )}
+            <span>{modelStatusMessage}</span>
+          </div>
+          <label>
+            <span>智能分析 AI</span>
+            <select
+              value={preferredAnalysisModel}
+              disabled={analysisModels.length === 0}
+              onChange={(event) => setSelectedAnalysisModel(event.target.value)}
+            >
+              {analysisModels.length === 0 ? (
+                <option value="">未检测到 GPT 分析模型</option>
+              ) : (
+                analysisModels.map((model) => (
+                  <option key={model} value={model}>
+                    {model}
+                  </option>
+                ))
+              )}
+            </select>
+          </label>
+          <div className={`status-line ${analysisModels.length > 0 ? "ready" : "idle"}`}>
+            {analysisModels.length > 0 ? <ShieldCheck size={15} /> : <AlertCircle size={15} />}
+            <span>
+              {!isAutoPromptAnalysisEnabled
+                ? "已关闭发送前自动优化，点击发送会直接进入生图队列"
+                : analysisModels.length > 0
+                ? `发送前使用 ${preferredAnalysisModel} 做提示词优化、参数推荐和失败预判`
+                : "没有 GPT 文本模型时，会先使用本地规则预检"}
+            </span>
+          </div>
+          <div className="local-save-note">
+            <Database size={15} />
+            <span>生成图片和历史仅保存到当前浏览器本地，服务端只做无状态协议转发。</span>
+          </div>
+        </section>
+
+        <section className="settings-section" data-onboarding-target="model">
+          <div className="section-label with-note">
+            <span>可用生图模型</span>
+            <small>支持 GPT Image 2 与 Gemini 3 Pro Image Preview，选择后自动切换接口格式</small>
+          </div>
+          <div className="search-input">
+            <Search size={16} />
+            <input
+              value={modelFilter}
+              placeholder="筛选模型"
+              onChange={(event) => setModelFilter(event.target.value)}
+            />
+          </div>
+          <div className="model-list">
+            {filteredModels.length === 0 ? (
+              <div className="muted-box">
+                {selectableImageModels.length === 0 ? "暂无可用图片模型" : "无匹配模型"}
+              </div>
+            ) : (
+              filteredModels.map((model) => (
+                <button
+                  type="button"
+                  key={model}
+                  className={selectedModel === model ? "selected" : ""}
+                  onClick={() => selectImageModel(model)}
+                >
+                  <span>{model}</span>
+                  <small>{imageModelLaneLabel(model)}</small>
+                </button>
+              ))
+            )}
+          </div>
+        </section>
+
+        <section className="settings-section compact-grid">
+          <label>
+            <span>宽高比</span>
+            <select
+              value={params.aspectRatio}
+              onChange={(event) => updateParams({ aspectRatio: event.target.value })}
+            >
+              {supportedAspectOptions.map((ratio) => (
+                <option
+                  key={ratio.value}
+                  value={ratio.value}
+                >
+                  {ratio.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <div className={`ratio-preview ${aspectRatioSupported ? "" : "unsupported"}`}>
+            <strong>{selectedAspectRatio.value}</strong>
+            <span>{selectedAspectHint}</span>
+            <small>{aspectRatioSupported ? `${selectedResolution} · 请求尺寸 ${resolvedRequestSize}` : "当前协议不支持此比例"}</small>
+          </div>
+          <label>
+            <span>分辨率</span>
+            <select
+              value={selectedResolution}
+              onChange={(event) => updateParams({ resolution: event.target.value as ImageResolution })}
+            >
+              {IMAGE_RESOLUTIONS.map((item) => (
+                <option key={item.value} value={item.value}>
+                  {item.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <div className="ratio-preview">
+            <strong>{selectedResolution}</strong>
+            <span>{selectedResolutionDefinition.hint}</span>
+            <small>{isGemini3ProImageModel(selectedModel) ? "Gemini 3 Pro 会以 imageSize 传递 1K/2K/4K" : isGptImage2Model(selectedModel) ? "Image 2 模型均支持 1K/2K/4K 高分辨率输出" : "尺寸会随宽高比自动换算"}</small>
+          </div>
+          <label>
+            <span>质量</span>
+            <select
+              value={params.quality}
+              disabled={!protocolDefinition.supportsQuality}
+              onChange={(event) => updateParams({ quality: event.target.value })}
+            >
+              <option value="auto">auto</option>
+              <option value="low">low</option>
+              <option value="medium">medium</option>
+              <option value="high">high</option>
+            </select>
+          </label>
+          <label>
+            <span>格式</span>
+            <select
+              value={params.outputFormat}
+              disabled={!protocolDefinition.supportsOutputFormat}
+              onChange={(event) => updateParams({ outputFormat: event.target.value as ImageParams["outputFormat"] })}
+            >
+              <option value="png">PNG</option>
+              <option value="jpeg">JPEG</option>
+              <option value="webp">WebP</option>
+            </select>
+          </label>
+          <label>
+            <span>张数</span>
+            <input
+              type="number"
+              min={1}
+              max={20}
+              value={params.batchCount}
+              onChange={(event) => updateParams({ batchCount: Number(event.target.value) })}
+            />
+          </label>
+          <label>
+            <span>并发</span>
+            <input
+              type="number"
+              min={1}
+              max={6}
+              value={params.concurrency}
+              onChange={(event) => updateParams({ concurrency: Number(event.target.value) })}
+            />
+          </label>
+          <label title="生成失败时（5xx / 429 / 网络错误）自动重试的次数。范围 0–5，默认 2。">
+            <span>失败自动重试</span>
+            <input
+              type="number"
+              min={0}
+              max={5}
+              value={params.retryLimit}
+              onChange={(event) => updateParams({ retryLimit: Number(event.target.value) })}
+            />
+          </label>
+          <label>
+            <span>Seed</span>
+            <input value={params.seed} onChange={(event) => updateParams({ seed: event.target.value })} />
+          </label>
+        </section>
+
+        <section className="settings-section">
+          <label>
+            <span>负面提示词</span>
+            <textarea
+              value={params.negativePrompt}
+              rows={3}
+              onChange={(event) => updateParams({ negativePrompt: event.target.value })}
+              placeholder="不想出现的内容"
+            />
+          </label>
+        </section>
+      </aside>
+
+      {previewItem && (
+        <ImagePreviewModal
+          item={previewItem}
+          onClose={() => setPreviewItem(null)}
+          onDownload={() => {
+            if (!previewItem.url) return;
+            downloadUrl(
+              previewItem.url,
+              `${previewItem.model}-${previewItem.width || "image"}x${previewItem.height || "image"}-${previewItem.id}.${previewItem.params.outputFormat}`,
+            );
+          }}
+          onCopyPrompt={() => copyPrompt(previewItem.prompt)}
+          onRecommend={() => void recommendToSquare(previewItem)}
+          recommendState={squareRecommendState[previewItem.id]}
+          canRecommend={canUseSquareIdentity}
+        />
+      )}
+      {pendingDeleteIds && (
+        <ConfirmDialog
+          title="删除本地记录"
+          body={`将从当前浏览器本地删除 ${pendingDeleteRecords.length} 条记录，此操作不可撤销。运行中的任务不会被删除。`}
+          confirmLabel="删除"
+          onCancel={() => setPendingDeleteIds(null)}
+          onConfirm={() => void confirmBulkDelete()}
+        />
+      )}
+      {showOnboarding && (
+        <OnboardingGuide
+          step={onboardingStep}
+          canGenerate={canGenerate}
+          modelState={modelState}
+          selectedModel={selectedModel}
+          apiKeyReady={apiConfig.apiKey.trim().length > 0}
+          onStepChange={setOnboardingStep}
+          onOpenSettings={() => setIsSettingsOpen(true)}
+          onFinish={completeOnboarding}
+        />
+      )}
+    </div>
+    </>
+  );
+}
+
+function AdminApp({
+  onBackHome,
+  onEnterStudio,
+}: {
+  onBackHome: () => void;
+  onEnterStudio: () => void;
+}) {
+  const [user, setUser] = useState<AdminUserView | null>(null);
+  const [isChecking, setIsChecking] = useState(true);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [loginForm, setLoginForm] = useState({ username: "admin", password: "" });
+  const [passwordForm, setPasswordForm] = useState({ oldPassword: "", newPassword: "", confirmPassword: "" });
+  const [adminError, setAdminError] = useState("");
+  const [stats, setStats] = useState<AdminStats | null>(null);
+  const [squareOverview, setSquareOverview] = useState<SquareAdminOverview | null>(null);
+  const [logs, setLogs] = useState<AdminRequestLog[]>([]);
+  const [logStatus, setLogStatus] = useState("");
+  const [logQuery, setLogQuery] = useState("");
+  const [isLoadingLogs, setIsLoadingLogs] = useState(false);
+  const [isExportingSquare, setIsExportingSquare] = useState(false);
+  const [expandedLogId, setExpandedLogId] = useState("");
+
+  useEffect(() => {
+    void refreshMe();
+  }, []);
+
+  useEffect(() => {
+    if (!user || user.mustChangePassword) return;
+    void refreshDashboard();
+    const timer = window.setInterval(() => void refreshDashboard({ quiet: true }), 10_000);
+    return () => window.clearInterval(timer);
+  }, [user?.username, user?.mustChangePassword, logStatus, logQuery]);
+
+  async function adminFetch<T>(path: string, init: RequestInit = {}) {
+    const response = await fetch(`/api/admin${path}`, {
+      ...init,
+      credentials: "same-origin",
+      headers: {
+        "Content-Type": "application/json",
+        ...(init.headers || {}),
+      },
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok || payload.ok === false) {
+      throw payload;
+    }
+    return payload as T;
+  }
+
+  async function squareAdminFetch<T>(path: string, init: RequestInit = {}) {
+    const response = await fetch(`/api/square/admin${path}`, {
+      ...init,
+      credentials: "same-origin",
+      headers: {
+        "Content-Type": "application/json",
+        ...(init.headers || {}),
+      },
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok || payload.ok === false) {
+      throw payload;
+    }
+    return payload as T;
+  }
+
+  async function exportAdminLogs() {
+    setAdminError("");
+    try {
+      const response = await fetch("/api/admin/logs/export", {
+        method: "GET",
+        credentials: "same-origin",
+      });
+      if (!response.ok) {
+        const detail = await response.json().catch(() => ({}));
+        throw detail || new Error(`HTTP ${response.status}`);
+      }
+      const blob = await response.blob();
+      const dispositionFilename = response.headers.get("content-disposition")?.match(/filename="([^"]+)"/)?.[1];
+      const filename = dispositionFilename || `sumapi-logs-${new Date().toISOString().replace(/[:.]/g, "-")}.json`;
+      const url = URL.createObjectURL(blob);
+      downloadUrl(url, filename);
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch (error) {
+      setAdminError(formatError(error));
+    }
+  }
+
+  async function exportSquareLogs(format: "json" | "csv" = "json") {
+    setAdminError("");
+    setIsExportingSquare(true);
+    try {
+      const response = await fetch(`/api/square/admin/export?format=${format}`, {
+        method: "GET",
+        credentials: "same-origin",
+      });
+      if (!response.ok) {
+        const detail = await response.json().catch(() => ({}));
+        throw detail || new Error(`HTTP ${response.status}`);
+      }
+      const blob = await response.blob();
+      const dispositionFilename = response.headers.get("content-disposition")?.match(/filename="([^"]+)"/)?.[1];
+      const filename = dispositionFilename || `SumAPI-square-audit-${new Date().toISOString().replace(/[:.]/g, "-")}.${format}`;
+      const url = URL.createObjectURL(blob);
+      downloadUrl(url, filename);
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch (error) {
+      setAdminError(formatError(error));
+    } finally {
+      setIsExportingSquare(false);
+    }
+  }
+
+  async function refreshMe() {
+    setIsChecking(true);
+    try {
+      const payload = await adminFetch<{ ok: true; user: AdminUserView }>("/me");
+      setUser(payload.user);
+    } catch {
+      setUser(null);
+    } finally {
+      setIsChecking(false);
+    }
+  }
+
+  async function handleLogin(event: FormEvent) {
+    event.preventDefault();
+    setAdminError("");
+    setIsSubmitting(true);
+    try {
+      const payload = await adminFetch<{ ok: true; user: AdminUserView }>("/login", {
+        method: "POST",
+        body: JSON.stringify(loginForm),
+      });
+      setUser(payload.user);
+      setPasswordForm((current) => ({ ...current, oldPassword: loginForm.password }));
+    } catch (error) {
+      setAdminError(formatError(error));
+    } finally {
+      setIsSubmitting(false);
+    }
+  }
+
+  async function handlePasswordChange(event: FormEvent) {
+    event.preventDefault();
+    setAdminError("");
+    if (passwordForm.newPassword !== passwordForm.confirmPassword) {
+      setAdminError("两次输入的新密码不一致");
+      return;
+    }
+    setIsSubmitting(true);
+    try {
+      await adminFetch<{ ok: true }>("/change-password", {
+        method: "POST",
+        body: JSON.stringify({
+          oldPassword: passwordForm.oldPassword,
+          newPassword: passwordForm.newPassword,
+        }),
+      });
+      setPasswordForm({ oldPassword: "", newPassword: "", confirmPassword: "" });
+      setUser((current) => current ? { ...current, mustChangePassword: false } : current);
+    } catch (error) {
+      setAdminError(formatError(error));
+    } finally {
+      setIsSubmitting(false);
+    }
+  }
+
+  async function refreshDashboard(options: { quiet?: boolean } = {}) {
+    if (!options.quiet) setIsLoadingLogs(true);
+    try {
+      const query = new URLSearchParams();
+      if (logStatus) query.set("status", logStatus);
+      if (logQuery.trim()) query.set("q", logQuery.trim());
+      const [statsPayload, logsPayload, squarePayload] = await Promise.all([
+        adminFetch<{ ok: true; stats: AdminStats }>("/stats"),
+        adminFetch<{ ok: true; logs: AdminRequestLog[] }>(`/requests?${query.toString()}`),
+        squareAdminFetch<{ ok: true; overview: SquareAdminOverview }>("/overview"),
+      ]);
+      setStats(statsPayload.stats);
+      setLogs(logsPayload.logs);
+      setSquareOverview(squarePayload.overview);
+      setExpandedLogId((current) =>
+        logsPayload.logs.some((log) => log.requestId === current) ? current : "",
+      );
+    } catch (error) {
+      setAdminError(formatError(error));
+      if ((error as { mustChangePassword?: boolean })?.mustChangePassword) {
+        setUser((current) => current ? { ...current, mustChangePassword: true } : current);
+      }
+    } finally {
+      if (!options.quiet) setIsLoadingLogs(false);
+    }
+  }
+
+  async function handleLogout() {
+    try {
+      await adminFetch<{ ok: true }>("/logout", { method: "POST", body: "{}" });
+    } finally {
+      setUser(null);
+      setStats(null);
+      setSquareOverview(null);
+      setLogs([]);
+      setAdminError("");
+    }
+  }
+
+  const topModels = useMemo(
+    () => Object.entries(stats?.modelCounts || {}).sort((a, b) => b[1] - a[1]).slice(0, 5),
+    [stats],
+  );
+  const topErrors = useMemo(
+    () => Object.entries(stats?.errorCounts || {}).sort((a, b) => b[1] - a[1]).slice(0, 4),
+    [stats],
+  );
+  const squareLastTrend = squareOverview?.trend[squareOverview.trend.length - 1];
+  const squareTopReasons = squareOverview?.rejectedReasonTop.slice(0, 4) || [];
+  const squareRiskEvents = squareOverview?.riskEvents.slice(0, 4) || [];
+
+  if (isChecking) {
+    return (
+      <main className="admin-page">
+        <div className="admin-checking">
+          <Loader2 className="spin" size={22} />
+          <span>正在检查管理员登录状态...</span>
+        </div>
+      </main>
+    );
+  }
+
+  if (!user) {
+    return (
+      <main className="admin-page">
+        <section className="admin-auth-panel">
+          <div className="admin-auth-hero">
+            <span className="admin-badge"><ShieldCheck size={16} /> Admin Console</span>
+            <h1>请求日志与服务健康后台</h1>
+            <p>查看所有用户的生成请求、成功率、耗时和失败原因。后台不会记录 API Key，也不会保存生成图片。</p>
+            <div className="admin-auth-actions">
+              <button type="button" className="subtle-button" onClick={onBackHome}>返回首页</button>
+              <button type="button" className="subtle-button" onClick={onEnterStudio}>打开工作台</button>
+            </div>
+          </div>
+          <form className="admin-login-card" onSubmit={handleLogin}>
+            <strong>管理员登录</strong>
+            <span>首次登录默认账号需要立即重置密码</span>
+            <label>
+              <span>用户名</span>
+              <input
+                value={loginForm.username}
+                onChange={(event) => setLoginForm((current) => ({ ...current, username: event.target.value }))}
+                autoComplete="username"
+              />
+            </label>
+            <label>
+              <span>密码</span>
+              <input
+                type="password"
+                value={loginForm.password}
+                onChange={(event) => setLoginForm((current) => ({ ...current, password: event.target.value }))}
+                autoComplete="current-password"
+                placeholder="默认 admin123456"
+              />
+            </label>
+            {adminError && <div className="admin-error">{adminError}</div>}
+            <button className="primary-action" type="submit" disabled={isSubmitting}>
+              {isSubmitting ? <Loader2 size={17} className="spin" /> : <ShieldCheck size={17} />}
+              登录
+            </button>
+          </form>
+        </section>
+      </main>
+    );
+  }
+
+  if (user.mustChangePassword) {
+    return (
+      <main className="admin-page">
+        <section className="admin-reset-panel">
+          <div>
+            <span className="admin-badge"><ShieldCheck size={16} /> First Login</span>
+            <h1>首次登录需要重置管理员密码</h1>
+            <p>新密码至少 8 位，并包含字母和数字。完成后会进入日志后台。</p>
+          </div>
+          <form className="admin-login-card" onSubmit={handlePasswordChange}>
+            <strong>重置密码</strong>
+            <label>
+              <span>当前密码</span>
+              <input
+                type="password"
+                value={passwordForm.oldPassword}
+                onChange={(event) => setPasswordForm((current) => ({ ...current, oldPassword: event.target.value }))}
+                autoComplete="current-password"
+              />
+            </label>
+            <label>
+              <span>新密码</span>
+              <input
+                type="password"
+                value={passwordForm.newPassword}
+                onChange={(event) => setPasswordForm((current) => ({ ...current, newPassword: event.target.value }))}
+                autoComplete="new-password"
+              />
+            </label>
+            <label>
+              <span>确认新密码</span>
+              <input
+                type="password"
+                value={passwordForm.confirmPassword}
+                onChange={(event) => setPasswordForm((current) => ({ ...current, confirmPassword: event.target.value }))}
+                autoComplete="new-password"
+              />
+            </label>
+            {adminError && <div className="admin-error">{adminError}</div>}
+            <button className="primary-action" type="submit" disabled={isSubmitting}>
+              {isSubmitting ? <Loader2 size={17} className="spin" /> : <ShieldCheck size={17} />}
+              保存新密码
+            </button>
+          </form>
+        </section>
+      </main>
+    );
+  }
+
+  return (
+    <main className="admin-page">
+      <header className="admin-topbar">
+        <div>
+          <span className="admin-badge"><img src={sumapiLogo} alt="" /> SumAPI 生图工作台 Admin</span>
+          <h1>请求日志后台</h1>
+        </div>
+        <div className="admin-topbar-actions">
+          <button type="button" className="subtle-button" onClick={onEnterStudio}>工作台</button>
+          <button type="button" className="subtle-button" onClick={() => void refreshDashboard()}>
+            <RefreshCw size={16} />
+            刷新
+          </button>
+          <button type="button" className="subtle-button" onClick={exportAdminLogs} title="下载完整请求日志为 JSON（图片内容已脱敏）">
+            <DownloadCloud size={16} />
+            导出日志
+          </button>
+          <button type="button" className="subtle-button" onClick={() => void handleLogout()}>
+            <LogOut size={16} />
+            退出
+          </button>
+        </div>
+      </header>
+
+      <section className="admin-stat-grid">
+        <AdminStatCard label="总请求" value={stats?.total ?? 0} />
+        <AdminStatCard label="成功率" value={`${stats?.successRate ?? 0}%`} tone="success" />
+        <AdminStatCard label="失败" value={stats?.error ?? 0} tone="error" />
+        <AdminStatCard label="平均耗时" value={formatCompactDuration(stats?.avgDurationMs ?? 0)} />
+        <AdminStatCard label="广场展示" value={squareOverview?.activeItems ?? 0} />
+        <AdminStatCard label="推荐尝试" value={squareOverview?.totalRecommendAttempts ?? 0} />
+        <AdminStatCard label="替换率" value={`${squareOverview?.replacementRate ?? 0}%`} />
+        <AdminStatCard label="广场点赞" value={squareOverview?.totalLikes ?? 0} tone="success" />
+      </section>
+
+      <section className="admin-insight-grid">
+        <article className="admin-panel">
+          <div className="admin-panel-title">
+            <BarChart3 size={17} />
+            <strong>模型分布</strong>
+          </div>
+          {topModels.length === 0 ? (
+            <p className="admin-muted">暂无模型请求</p>
+          ) : (
+            topModels.map(([model, count]) => (
+              <div className="admin-rank-row" key={model}>
+                <span title={model}>{model}</span>
+                <strong>{count}</strong>
+              </div>
+            ))
+          )}
+        </article>
+        <article className="admin-panel">
+          <div className="admin-panel-title">
+            <AlertCircle size={17} />
+            <strong>常见失败</strong>
+          </div>
+          {topErrors.length === 0 ? (
+            <p className="admin-muted">暂无失败记录</p>
+          ) : (
+            topErrors.map(([error, count]) => (
+              <div className="admin-rank-row" key={error}>
+                <span title={error}>{error}</span>
+                <strong>{count}</strong>
+              </div>
+            ))
+          )}
+        </article>
+        <article className="admin-panel admin-square-panel">
+          <div className="admin-panel-title admin-panel-title-spread">
+            <div>
+              <Star size={17} />
+              <strong>广场治理</strong>
+            </div>
+            <div className="admin-panel-actions">
+              <button type="button" className="subtle-button" onClick={() => void exportSquareLogs("csv")} disabled={isExportingSquare}>
+                {isExportingSquare ? <Loader2 size={15} className="spin" /> : <DownloadCloud size={15} />}
+                导出今日 CSV
+              </button>
+              <button type="button" className="subtle-button" onClick={() => void exportSquareLogs("json")} disabled={isExportingSquare}>
+                <DownloadCloud size={15} />
+                导出今日 JSON
+              </button>
+            </div>
+          </div>
+          <div className="admin-square-grid">
+            <div>
+              <strong>今日趋势</strong>
+              <div className="admin-rank-row">
+                <span>{squareLastTrend?.dateKey || "今日"}</span>
+                <strong>{squareLastTrend ? `${squareLastTrend.recommendAttempts} 推荐 · ${squareLastTrend.likes} 赞` : "-"}</strong>
+              </div>
+              <div className="admin-rank-row">
+                <span>新增 / 替换 / 拒绝</span>
+                <strong>{squareLastTrend ? `${squareLastTrend.added} / ${squareLastTrend.replaced} / ${squareLastTrend.rejected}` : "0 / 0 / 0"}</strong>
+              </div>
+              <div className="admin-rank-row">
+                <span>平均点赞</span>
+                <strong>{squareOverview?.likeRate ?? 0}</strong>
+              </div>
+            </div>
+            <div>
+              <strong>拒绝原因 Top</strong>
+              {squareTopReasons.length === 0 ? (
+                <p className="admin-muted">暂无拒绝记录</p>
+              ) : (
+                squareTopReasons.map((reason) => (
+                  <div className="admin-rank-row" key={reason.reasonCode}>
+                    <span title={reason.reasonCode}>{reason.reasonCode}</span>
+                    <strong>{reason.count}</strong>
+                  </div>
+                ))
+              )}
+            </div>
+            <div>
+              <strong>风控事件</strong>
+              {squareRiskEvents.length === 0 ? (
+                <p className="admin-muted">暂无风控事件</p>
+              ) : (
+                squareRiskEvents.map((event) => (
+                  <div className="admin-rank-row" key={event.id}>
+                    <span title={`${event.event} · ${event.reasonCode}`}>{event.severity} · {event.reasonCode}</span>
+                    <strong>{formatFullDate(event.timestamp)}</strong>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        </article>
+      </section>
+
+      <section className="admin-panel admin-log-panel">
+        <div className="admin-log-toolbar">
+          <div>
+            <strong>请求记录</strong>
+            <span>点击任意请求可查看脱敏请求参数、上游 payload 与返回内容；图片内容不会记录。</span>
+          </div>
+          <div className="admin-filter-row">
+            <select value={logStatus} onChange={(event) => setLogStatus(event.target.value)}>
+              <option value="">全部状态</option>
+              <option value="running">运行中</option>
+              <option value="success">成功</option>
+              <option value="error">失败</option>
+            </select>
+            <input
+              value={logQuery}
+              onChange={(event) => setLogQuery(event.target.value)}
+              placeholder="搜索 requestID / 提示词 / 模型"
+            />
+          </div>
+        </div>
+        {adminError && <div className="admin-error">{adminError}</div>}
+        <div className="admin-table-wrap">
+          <table className="admin-table">
+            <thead>
+              <tr>
+                <th>状态</th>
+                <th>类型</th>
+                <th>Agent</th>
+                <th>Request ID</th>
+                <th>提示词</th>
+                <th>模型</th>
+                <th>参数</th>
+                <th>耗时</th>
+                <th>时间</th>
+                <th>错误</th>
+              </tr>
+            </thead>
+            <tbody>
+              {logs.length === 0 ? (
+                <tr>
+                  <td colSpan={10} className="admin-empty-cell">
+                    {isLoadingLogs ? "正在读取日志..." : "暂无请求记录"}
+                  </td>
+                </tr>
+              ) : (
+                logs.map((log) => (
+                  <Fragment key={log.requestId}>
+                    <tr
+                      className={`admin-log-row ${expandedLogId === log.requestId ? "expanded" : ""}`}
+                      onClick={() => setExpandedLogId((current) => current === log.requestId ? "" : log.requestId)}
+                    >
+                      <td>
+                        <div className="admin-status-cell">
+                          <ChevronRight size={14} />
+                          <span className={`admin-status ${log.status}`}>{log.status}</span>
+                        </div>
+                      </td>
+                      <td>{log.requestType === "prompt_analysis" ? "提示词分析" : "生图"}</td>
+                      <td className="admin-model-cell" title={log.agentScenario || ""}>
+                        {log.agentName ? `${log.agentName}${log.promptVariant ? ` · ${log.promptVariant}` : ""}` : "-"}
+                      </td>
+                      <td><code title={log.requestId}>{log.requestId.slice(0, 8)}</code></td>
+                      <td className="admin-prompt-cell" title={log.prompt}>{log.prompt || "-"}</td>
+                      <td className="admin-model-cell" title={log.model}>{log.model || "-"}</td>
+                      <td
+                        title={[
+                          `API：${log.apiBaseUrl}`,
+                          `Key：${log.apiKeyPresent ? `${log.apiKeyPrefix || ""}...${log.apiKeySuffix || ""} · ${log.apiKeyLength || 0} 位` : "未读取到"}`,
+                          log.upstreamPayloadKeys?.length ? `上游字段：${log.upstreamPayloadKeys.join(", ")}` : "",
+                          log.upstreamReferenceMode ? `参考图模式：${log.upstreamReferenceMode}` : "",
+                        ].filter(Boolean).join("\n")}
+                      >
+                        {[
+                          log.aspectRatio,
+                          log.resolution,
+                          log.upstreamSize ? `上游 ${log.upstreamSize}` : log.size,
+                          log.outputFormat,
+                          log.upstreamReferenceCount ? `上游 ${log.upstreamReferenceCount} 图` : log.referenceCount ? `${log.referenceCount} 图` : "",
+                        ].filter(Boolean).join(" · ") || "-"}
+                      </td>
+                      <td>{formatCompactDuration(log.durationMs || 0)}</td>
+                      <td>{formatFullDate(log.createdAt)}</td>
+                      <td className="admin-error-cell" title={log.errorRaw || log.errorMessage || ""}>{log.errorMessage || "-"}</td>
+                    </tr>
+                    {expandedLogId === log.requestId && (
+                      <tr className="admin-log-detail-row">
+                        <td colSpan={10}>
+                          <div className="admin-log-detail-head">
+                            <div>
+                              <strong>请求详情</strong>
+                              <span>{log.requestId} · {log.endpoint}</span>
+                            </div>
+                            <span className="admin-log-safety">图片内容已脱敏，不记录 API Key 原文</span>
+                          </div>
+                          <div className="admin-log-detail-grid">
+                            <AdminJsonBlock title="请求参数" value={log.requestParams || {
+                              protocol: log.protocol,
+                              apiBaseUrl: log.apiBaseUrl,
+                              credential: {
+                                present: log.apiKeyPresent,
+                                length: log.apiKeyLength,
+                                prefix: log.apiKeyPrefix,
+                                suffix: log.apiKeySuffix,
+                              },
+                              model: log.model,
+                              prompt: log.prompt,
+                              negativePrompt: log.negativePrompt,
+                              aspectRatio: log.aspectRatio,
+                              size: log.size,
+                              resolution: log.resolution,
+                              quality: log.quality,
+                              outputFormat: log.outputFormat,
+                              seed: log.seed,
+                              referenceCount: log.referenceCount,
+                            }} />
+                            <AdminJsonBlock title="上游请求" value={log.upstreamRequest || {
+                              endpoint: log.endpoint,
+                              payloadKeys: log.upstreamPayloadKeys,
+                              referenceMode: log.upstreamReferenceMode,
+                              referenceCount: log.upstreamReferenceCount,
+                              upstreamSize: log.upstreamSize,
+                            }} />
+                            <AdminJsonBlock title="返回内容" value={log.responseBody || {
+                              status: log.status,
+                              httpStatus: log.httpStatus,
+                              errorMessage: log.errorMessage,
+                              errorType: log.errorType,
+                              errorCode: log.errorCode,
+                              errorRaw: log.errorRaw,
+                            }} />
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                  </Fragment>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      </section>
+    </main>
+  );
+}
+
+function AdminStatCard({
+  label,
+  value,
+  tone = "neutral",
+}: {
+  label: string;
+  value: string | number;
+  tone?: "neutral" | "success" | "error";
+}) {
+  return (
+    <article className={`admin-stat-card ${tone}`}>
+      <span>{label}</span>
+      <strong>{value}</strong>
+    </article>
+  );
+}
+
+function AdminJsonBlock({ title, value }: { title: string; value: unknown }) {
+  return (
+    <article className="admin-json-block">
+      <strong>{title}</strong>
+      <pre>{JSON.stringify(value ?? {}, null, 2)}</pre>
+    </article>
+  );
+}
+
+// ══════════════════════════════════════
+// Canvas Page Component
+// ══════════════════════════════════════
+
+function CanvasPage({
+  apiConfig,
+  selectedModel: globalSelectedModel,
+  selectableModels,
+  modelState,
+  onBackHome,
+  onEnterStudio,
+  onEnterSquare,
+}: {
+  apiConfig: ApiConfig;
+  selectedModel: string;
+  selectableModels: string[];
+  modelState: ModelLoadState;
+  onBackHome: () => void;
+  onEnterStudio: () => void;
+  onEnterSquare: () => void;
+}) {
+  // ── State ──
+  const [canvasNodes, setCanvasNodes] = useState<CanvasNode[]>([]);
+  const [canvasEdges, setCanvasEdges] = useState<CanvasEdge[]>([]);
+  const [viewport, setViewport] = useState<CanvasViewport>({ x: 0, y: 0, zoom: 1 });
+  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+  const [panelMode, setPanelMode] = useState<CanvasPanelMode>("generate");
+  const [isPanelOpen, setIsPanelOpen] = useState(true);
+  const [canvasPrompt, setCanvasPrompt] = useState("");
+  const [canvasModel, setCanvasModel] = useState(() => globalSelectedModel || selectableModels[0] || "");
+  const [canvasAspectRatio, setCanvasAspectRatio] = useState("1:1");
+  const [canvasResolution, setCanvasResolution] = useState<ImageResolution>("1K");
+  const [canvasQuality, setCanvasQuality] = useState("auto");
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [optimizeSourceNode, setOptimizeSourceNode] = useState<CanvasNode | null>(null);
+  const [optimizePrompt, setOptimizePrompt] = useState("");
+  const [compressedRef, setCompressedRef] = useState<{ dataUrl: string; size: number } | null>(null);
+  const [isSpaceHeld, setIsSpaceHeld] = useState(false);
+  const [toastMessage, setToastMessage] = useState("");
+  const [canvasLoaded, setCanvasLoaded] = useState(false);
+  const [isMinimapVisible, setIsMinimapVisible] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState<string | null>(null);
+
+  // ── Refs ──
+  const containerRef = useRef<HTMLDivElement>(null);
+  const promptInputRef = useRef<HTMLTextAreaElement>(null);
+  const optimizePromptRef = useRef<HTMLTextAreaElement>(null);
+  const nodesRef = useRef(canvasNodes);
+  nodesRef.current = canvasNodes;
+  const edgesRef = useRef(canvasEdges);
+  edgesRef.current = canvasEdges;
+  const viewportRef = useRef(viewport);
+  viewportRef.current = viewport;
+  const isPanningRef = useRef(false);
+  const isDraggingNodeRef = useRef(false);
+  const panStartRef = useRef({ screenX: 0, screenY: 0, vpX: 0, vpY: 0 });
+  const dragStartRef = useRef({ nodeId: "", startX: 0, startY: 0, screenX: 0, screenY: 0 });
+  const saveTimerRef = useRef<number>(0);
+  const toastTimerRef = useRef<number>(0);
+
+  // ── Helper: aspect ratio to number ──
+  function aspectRatioToNumber(ratio: string): number {
+    const parts = ratio.split(":").map(Number);
+    if (parts.length === 2 && parts[0] > 0 && parts[1] > 0) return parts[0] / parts[1];
+    return 1;
+  }
+
+  // ── Helper: show toast ──
+  function showToast(message: string) {
+    setToastMessage(message);
+    window.clearTimeout(toastTimerRef.current);
+    toastTimerRef.current = window.setTimeout(() => setToastMessage(""), 2000);
+  }
+
+  // ── Helper: debounced save ──
+  function scheduleSave() {
+    window.clearTimeout(saveTimerRef.current);
+    saveTimerRef.current = window.setTimeout(() => {
+      const state: CanvasPersistedState = {
+        nodes: nodesRef.current.map(({ objectUrl: _objectUrl, ...rest }) => rest),
+        edges: edgesRef.current,
+        viewport: viewportRef.current,
+        lastSavedAt: Date.now(),
+      };
+      void saveCanvasStateToDB(state);
+    }, CANVAS_SAVE_DEBOUNCE_MS);
+  }
+
+  // ── Load canvas state from IndexedDB on mount ──
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const saved = await loadCanvasStateFromDB();
+        if (cancelled || !saved) { setCanvasLoaded(true); return; }
+        const loadedNodes: CanvasNode[] = [];
+        for (const node of saved.nodes) {
+          if (node.status === "success") {
+            const blob = await loadCanvasImageFromDB(node.id);
+            if (blob) {
+              loadedNodes.push({ ...node, objectUrl: URL.createObjectURL(blob) });
+            } else {
+              loadedNodes.push({ ...node, status: "error", error: "图片数据丢失" });
+            }
+          } else if (node.status === "generating") {
+            // Was generating when page closed - mark as error
+            loadedNodes.push({ ...node, status: "error", error: "生成中断（页面关闭）" });
+          } else {
+            loadedNodes.push(node);
+          }
+        }
+        if (!cancelled) {
+          setCanvasNodes(loadedNodes);
+          setCanvasEdges(saved.edges || []);
+          setViewport(saved.viewport || { x: 0, y: 0, zoom: 1 });
+          setCanvasLoaded(true);
+        }
+      } catch {
+        if (!cancelled) setCanvasLoaded(true);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  // ── Cleanup objectUrls on unmount ──
+  useEffect(() => {
+    return () => {
+      nodesRef.current.forEach((n) => { if (n.objectUrl) URL.revokeObjectURL(n.objectUrl); });
+    };
+  }, []);
+
+  // ── Save on beforeunload ──
+  useEffect(() => {
+    const handler = () => {
+      const state: CanvasPersistedState = {
+        nodes: nodesRef.current.map(({ objectUrl: _objectUrl, ...rest }) => rest),
+        edges: edgesRef.current,
+        viewport: viewportRef.current,
+        lastSavedAt: Date.now(),
+      };
+      void saveCanvasStateToDB(state);
+    };
+    window.addEventListener("beforeunload", handler);
+    return () => window.removeEventListener("beforeunload", handler);
+  }, []);
+
+  // ── Auto-save when nodes/edges change ──
+  useEffect(() => {
+    if (canvasLoaded) scheduleSave();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [canvasNodes, canvasEdges, canvasLoaded]);
+
+  // ── Zoom helpers ──
+  function clampZoomVal(z: number) { return clampNumber(z, 0.1, 3); }
+
+  function zoomAtPoint(screenX: number, screenY: number, newZoom: number) {
+    const rect = containerRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    const vp = viewportRef.current;
+    const canvasX = (screenX - rect.left) / vp.zoom + vp.x;
+    const canvasY = (screenY - rect.top) / vp.zoom + vp.y;
+    setViewport({
+      x: canvasX - (screenX - rect.left) / newZoom,
+      y: canvasY - (screenY - rect.top) / newZoom,
+      zoom: newZoom,
+    });
+  }
+
+  function zoomAtCenter(newZoom: number) {
+    const rect = containerRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    zoomAtPoint(rect.left + rect.width / 2, rect.top + rect.height / 2, newZoom);
+  }
+
+  function fitAllNodes() {
+    if (canvasNodes.length === 0) return;
+    const rect = containerRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    const pad = 80;
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    for (const n of canvasNodes) {
+      if (n.x < minX) minX = n.x;
+      if (n.y < minY) minY = n.y;
+      if (n.x + n.width > maxX) maxX = n.x + n.width;
+      if (n.y + n.height > maxY) maxY = n.y + n.height;
+    }
+    const cw = maxX - minX + pad * 2;
+    const ch = maxY - minY + pad * 2;
+    const zoom = clampZoomVal(Math.min(rect.width / cw, rect.height / ch));
+    setViewport({
+      x: minX - pad + (cw - rect.width / zoom) / 2,
+      y: minY - pad + (ch - rect.height / zoom) / 2,
+      zoom,
+    });
+  }
+
+  // ── Viewport center in canvas coords ──
+  function viewportCenter() {
+    const rect = containerRef.current?.getBoundingClientRect();
+    if (!rect) return { x: 0, y: 0 };
+    const vp = viewportRef.current;
+    return {
+      x: vp.x + rect.width / (2 * vp.zoom),
+      y: vp.y + rect.height / (2 * vp.zoom),
+    };
+  }
+
+  // ── Find non-overlapping position ──
+  function findNonOverlappingPos(cx: number, cy: number, w: number, h: number) {
+    let x = cx - w / 2;
+    const y = cy - h / 2;
+    const overlaps = (nx: number, ny: number) =>
+      nodesRef.current.some((n) =>
+        nx < n.x + n.width + 20 && nx + w + 20 > n.x && ny < n.y + n.height + 20 && ny + h + 20 > n.y
+      );
+    let attempts = 0;
+    while (overlaps(x, y) && attempts < 20) {
+      x += w + 40;
+      attempts++;
+    }
+    return { x, y };
+  }
+
+  // ── Pan & Zoom event handlers ──
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+
+    function onWheel(e: WheelEvent) {
+      e.preventDefault();
+      const vp = viewportRef.current;
+      if (e.ctrlKey || e.metaKey) {
+        // Zoom
+        const factor = e.deltaY > 0 ? 1 / 1.08 : 1.08;
+        const nz = clampZoomVal(vp.zoom * factor);
+        const rect = el!.getBoundingClientRect();
+        const cx = (e.clientX - rect.left) / vp.zoom + vp.x;
+        const cy = (e.clientY - rect.top) / vp.zoom + vp.y;
+        setViewport({
+          x: cx - (e.clientX - rect.left) / nz,
+          y: cy - (e.clientY - rect.top) / nz,
+          zoom: nz,
+        });
+      } else {
+        // Pan
+        setViewport({
+          x: vp.x + e.deltaX / vp.zoom,
+          y: vp.y + e.deltaY / vp.zoom,
+          zoom: vp.zoom,
+        });
+      }
+    }
+
+    el.addEventListener("wheel", onWheel, { passive: false });
+    return () => el.removeEventListener("wheel", onWheel);
+  }, []);
+
+  // ── Pointer events for panning and node dragging ──
+  function handleCanvasPointerDown(e: React.PointerEvent) {
+    if (e.target !== e.currentTarget && !isSpaceHeld) return; // clicked on a child, not canvas background
+    // Deselect if clicking on canvas background
+    if (e.button === 0 && !isSpaceHeld) {
+      setSelectedNodeId(null);
+      if (panelMode === "optimize") {
+        setPanelMode("generate");
+        setOptimizeSourceNode(null);
+        setCompressedRef(null);
+      }
+    }
+    // Start pan
+    if (e.button === 1 || e.button === 2 || (e.button === 0 && isSpaceHeld)) {
+      e.preventDefault();
+      isPanningRef.current = true;
+      panStartRef.current = {
+        screenX: e.clientX,
+        screenY: e.clientY,
+        vpX: viewportRef.current.x,
+        vpY: viewportRef.current.y,
+      };
+      (e.target as HTMLElement).setPointerCapture(e.pointerId);
+    }
+  }
+
+  function handleCanvasPointerMove(e: React.PointerEvent) {
+    if (isDraggingNodeRef.current) {
+      const ds = dragStartRef.current;
+      const vp = viewportRef.current;
+      const dx = (e.clientX - ds.screenX) / vp.zoom;
+      const dy = (e.clientY - ds.screenY) / vp.zoom;
+      setCanvasNodes((prev) => prev.map((n) =>
+        n.id === ds.nodeId ? { ...n, x: ds.startX + dx, y: ds.startY + dy } : n
+      ));
+      return;
+    }
+    if (isPanningRef.current) {
+      const ps = panStartRef.current;
+      const vp = viewportRef.current;
+      setViewport({
+        x: ps.vpX - (e.clientX - ps.screenX) / vp.zoom,
+        y: ps.vpY - (e.clientY - ps.screenY) / vp.zoom,
+        zoom: vp.zoom,
+      });
+    }
+  }
+
+  function handleCanvasPointerUp() {
+    if (isDraggingNodeRef.current) {
+      isDraggingNodeRef.current = false;
+      scheduleSave();
+    }
+    if (isPanningRef.current) {
+      isPanningRef.current = false;
+    }
+  }
+
+  function handleNodePointerDown(e: React.PointerEvent, node: CanvasNode) {
+    if (isSpaceHeld || e.button !== 0) return;
+    e.stopPropagation();
+    setSelectedNodeId(node.id);
+    isDraggingNodeRef.current = true;
+    dragStartRef.current = {
+      nodeId: node.id,
+      startX: node.x,
+      startY: node.y,
+      screenX: e.clientX,
+      screenY: e.clientY,
+    };
+  }
+
+  // ── Keyboard shortcuts ──
+  useEffect(() => {
+    function isInputFocused() {
+      const tag = document.activeElement?.tagName;
+      return tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT";
+    }
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key === " " && !isInputFocused()) {
+        e.preventDefault();
+        setIsSpaceHeld(true);
+      }
+      if (e.key === "Escape") {
+        setSelectedNodeId(null);
+        if (panelMode === "optimize") {
+          setPanelMode("generate");
+          setOptimizeSourceNode(null);
+          setCompressedRef(null);
+        }
+        setShowDeleteConfirm(null);
+      }
+      if ((e.key === "Delete" || e.key === "Backspace") && !isInputFocused() && selectedNodeId) {
+        e.preventDefault();
+        setShowDeleteConfirm(selectedNodeId);
+      }
+      if (e.key === "e" && !isInputFocused() && selectedNodeId) {
+        const node = nodesRef.current.find((n) => n.id === selectedNodeId);
+        if (node?.status === "success") void enterOptimizeMode(node);
+      }
+      if (e.key === "m" && !isInputFocused()) {
+        setIsMinimapVisible((v) => !v);
+      }
+      if ((e.metaKey || e.ctrlKey) && (e.key === "=" || e.key === "+")) {
+        e.preventDefault();
+        const nz = clampZoomVal(viewportRef.current.zoom * 1.2);
+        zoomAtCenter(nz);
+      }
+      if ((e.metaKey || e.ctrlKey) && e.key === "-") {
+        e.preventDefault();
+        const nz = clampZoomVal(viewportRef.current.zoom / 1.2);
+        zoomAtCenter(nz);
+      }
+      if ((e.metaKey || e.ctrlKey) && e.key === "0") {
+        e.preventDefault();
+        zoomAtCenter(1);
+      }
+      if ((e.metaKey || e.ctrlKey) && e.shiftKey && (e.key === "f" || e.key === "F")) {
+        e.preventDefault();
+        fitAllNodes();
+      }
+    }
+    function onKeyUp(e: KeyboardEvent) {
+      if (e.key === " ") setIsSpaceHeld(false);
+    }
+    window.addEventListener("keydown", onKeyDown);
+    window.addEventListener("keyup", onKeyUp);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("keyup", onKeyUp);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedNodeId, panelMode]);
+
+  // ── Context menu prevention ──
+  function handleContextMenu(e: React.MouseEvent) {
+    e.preventDefault();
+  }
+
+  // ── Delete node ──
+  function confirmDeleteNode(id: string) {
+    const node = canvasNodes.find((n) => n.id === id);
+    if (node?.objectUrl) URL.revokeObjectURL(node.objectUrl);
+    setCanvasNodes((prev) => prev.filter((n) => n.id !== id));
+    setCanvasEdges((prev) => prev.filter((edge) => edge.fromNodeId !== id && edge.toNodeId !== id));
+    if (selectedNodeId === id) {
+      setSelectedNodeId(null);
+      if (panelMode === "optimize") {
+        setPanelMode("generate");
+        setOptimizeSourceNode(null);
+        setCompressedRef(null);
+      }
+    }
+    setShowDeleteConfirm(null);
+    void deleteCanvasImageFromDB(id);
+  }
+
+  // ── Download node ──
+  function downloadNode(node: CanvasNode) {
+    if (!node.objectUrl) return;
+    const a = document.createElement("a");
+    a.href = node.objectUrl;
+    a.download = `${node.model}-${node.params.aspectRatio.replace(":", "x")}-${Date.now()}.png`;
+    a.click();
+  }
+
+  // ── Copy prompt ──
+  function copyPrompt(node: CanvasNode) {
+    void navigator.clipboard.writeText(node.prompt);
+    showToast("提示词已复制");
+  }
+
+  // ── Enter optimize mode ──
+  async function enterOptimizeMode(node: CanvasNode) {
+    setPanelMode("optimize");
+    setOptimizeSourceNode(node);
+    setOptimizePrompt("");
+    setIsPanelOpen(true);
+    setCompressedRef(null);
+    // Compress the image
+    try {
+      const blob = await loadCanvasImageFromDB(node.id);
+      if (!blob) return;
+      const dataUrl = await blobToDataUrl(blob);
+      // Use createSquareThumbnail with maxEdge 1024
+      const result = await createSquareThumbnail(dataUrl, 1024);
+      const size = Math.round(result.dataUrl.length * 3 / 4); // approximate byte size
+      setCompressedRef({ dataUrl: result.dataUrl, size });
+    } catch {
+      // Failed to compress, use original objectUrl
+    }
+  }
+
+  // ── Generation flow ──
+  async function handleCanvasGenerate() {
+    const trimmedPrompt = canvasPrompt.trim();
+    if (!trimmedPrompt || !canvasModel || modelState.status !== "ready") return;
+
+    const aspectNum = aspectRatioToNumber(canvasAspectRatio);
+    const nodeW = CANVAS_DEFAULT_NODE_WIDTH;
+    const nodeH = Math.round(nodeW / aspectNum);
+    const center = viewportCenter();
+    const pos = findNonOverlappingPos(center.x, center.y, nodeW, nodeH);
+
+    const nodeId = uid();
+    const size = resolveRequestSize(canvasAspectRatio, canvasResolution, apiConfig.protocol, canvasModel);
+    const newNode: CanvasNode = {
+      id: nodeId,
+      type: "image",
+      x: pos.x,
+      y: pos.y,
+      width: nodeW,
+      height: nodeH,
+      prompt: trimmedPrompt,
+      model: canvasModel,
+      protocol: apiConfig.protocol,
+      params: {
+        aspectRatio: canvasAspectRatio,
+        size,
+        resolution: canvasResolution,
+        quality: canvasQuality,
+        outputFormat: "png",
+        batchCount: 1,
+        concurrency: 1,
+        retryLimit: 0,
+        seed: "",
+        negativePrompt: "",
+      },
+      status: "generating",
+      createdAt: Date.now(),
+    };
+
+    setCanvasNodes((prev) => [...prev, newNode]);
+    setCanvasPrompt("");
+    setIsGenerating(true);
+
+    const startedAt = Date.now();
+    try {
+      const response = await fetch("/api/images/generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          baseUrl: normalizeApiBaseUrl(apiConfig.baseUrl),
+          apiKey: apiConfig.apiKey,
+          clientId: getClientId(),
+          request: {
+            protocol: apiConfig.protocol,
+            model: canvasModel,
+            prompt: trimmedPrompt,
+            referenceImages: [],
+            aspectRatio: canvasAspectRatio,
+            size,
+            resolution: canvasResolution,
+            quality: canvasQuality,
+            outputFormat: "png",
+            seed: "",
+          },
+        }),
+      });
+      const payload = await readApiJson<GenerateProxyResponse>(response, "/api/images/generate");
+      if (!response.ok || !payload.ok || !payload.images?.[0]?.dataUrl) {
+        const detail = payload.detail && typeof payload.detail === "object"
+          ? (payload.detail as Record<string, unknown>).message || JSON.stringify(payload.detail)
+          : payload.detail || "生成失败";
+        throw new Error(String(detail));
+      }
+      const dataUrl = payload.images[0].dataUrl;
+      const blob = await dataUrlToBlob(dataUrl);
+      const objectUrl = URL.createObjectURL(blob);
+      const { width, height } = await getImageSize(objectUrl);
+      const duration = Date.now() - startedAt;
+      const adjustedH = Math.round(nodeW * (height / width));
+
+      setCanvasNodes((prev) => prev.map((n) =>
+        n.id === nodeId ? {
+          ...n,
+          status: "success" as const,
+          objectUrl,
+          width: nodeW,
+          height: adjustedH,
+          imageWidth: width,
+          imageHeight: height,
+          duration,
+        } : n
+      ));
+      await saveCanvasImageToDB(nodeId, blob);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      setCanvasNodes((prev) => prev.map((n) =>
+        n.id === nodeId ? { ...n, status: "error" as const, error: message } : n
+      ));
+    } finally {
+      setIsGenerating(false);
+    }
+  }
+
+  // ── Optimize generation flow ──
+  async function handleCanvasOptimize() {
+    if (!optimizeSourceNode || !compressedRef) return;
+    const sourceNode = optimizeSourceNode;
+    const supplement = optimizePrompt.trim();
+    const finalPrompt = supplement
+      ? `基于参考图进行优化。原始描述：${sourceNode.prompt}。优化方向：${supplement}`
+      : sourceNode.prompt;
+
+    const aspectNum = aspectRatioToNumber(canvasAspectRatio);
+    const nodeW = CANVAS_DEFAULT_NODE_WIDTH;
+    const nodeH = Math.round(nodeW / aspectNum);
+
+    // Position to the right of parent
+    let newX = sourceNode.x + sourceNode.width + 60;
+    let newY = sourceNode.y;
+    // If overlapping, shift down
+    let attempts = 0;
+    while (
+      nodesRef.current.some((n) =>
+        newX < n.x + n.width + 20 && newX + nodeW + 20 > n.x &&
+        newY < n.y + n.height + 20 && newY + nodeH + 20 > n.y
+      ) && attempts < 20
+    ) {
+      newY += nodeH + 40;
+      attempts++;
+    }
+
+    const nodeId = uid();
+    const edgeId = uid();
+    const size = resolveRequestSize(canvasAspectRatio, canvasResolution, apiConfig.protocol, canvasModel);
+    const newNode: CanvasNode = {
+      id: nodeId,
+      type: "image",
+      x: newX,
+      y: newY,
+      width: nodeW,
+      height: nodeH,
+      prompt: finalPrompt,
+      model: canvasModel,
+      protocol: apiConfig.protocol,
+      params: {
+        aspectRatio: canvasAspectRatio,
+        size,
+        resolution: canvasResolution,
+        quality: canvasQuality,
+        outputFormat: "png",
+        batchCount: 1,
+        concurrency: 1,
+        retryLimit: 0,
+        seed: "",
+        negativePrompt: "",
+      },
+      status: "generating",
+      parentId: sourceNode.id,
+      referenceNodeId: sourceNode.id,
+      createdAt: Date.now(),
+    };
+    const newEdge: CanvasEdge = { id: edgeId, fromNodeId: sourceNode.id, toNodeId: nodeId };
+
+    setCanvasNodes((prev) => [...prev, newNode]);
+    setCanvasEdges((prev) => [...prev, newEdge]);
+    setIsGenerating(true);
+
+    const startedAt = Date.now();
+    try {
+      const response = await fetch("/api/images/generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          baseUrl: normalizeApiBaseUrl(apiConfig.baseUrl),
+          apiKey: apiConfig.apiKey,
+          clientId: getClientId(),
+          request: {
+            protocol: apiConfig.protocol,
+            model: canvasModel,
+            prompt: finalPrompt,
+            referenceImages: [{
+              name: "reference.webp",
+              type: "image/webp",
+              dataUrl: compressedRef.dataUrl,
+              originalBytes: compressedRef.size,
+              requestBytes: compressedRef.size,
+              compressed: true,
+            }],
+            aspectRatio: canvasAspectRatio,
+            size,
+            resolution: canvasResolution,
+            quality: canvasQuality,
+            outputFormat: "png",
+            seed: "",
+          },
+        }),
+      });
+      const payload = await readApiJson<GenerateProxyResponse>(response, "/api/images/generate");
+      if (!response.ok || !payload.ok || !payload.images?.[0]?.dataUrl) {
+        const detail = payload.detail && typeof payload.detail === "object"
+          ? (payload.detail as Record<string, unknown>).message || JSON.stringify(payload.detail)
+          : payload.detail || "生成失败";
+        throw new Error(String(detail));
+      }
+      const dataUrl = payload.images[0].dataUrl;
+      const blob = await dataUrlToBlob(dataUrl);
+      const objectUrl = URL.createObjectURL(blob);
+      const { width, height } = await getImageSize(objectUrl);
+      const duration = Date.now() - startedAt;
+      const adjustedH = Math.round(nodeW * (height / width));
+
+      setCanvasNodes((prev) => prev.map((n) =>
+        n.id === nodeId ? {
+          ...n,
+          status: "success" as const,
+          objectUrl,
+          width: nodeW,
+          height: adjustedH,
+          imageWidth: width,
+          imageHeight: height,
+          duration,
+        } : n
+      ));
+      await saveCanvasImageToDB(nodeId, blob);
+      // Auto-select new node for chaining
+      setSelectedNodeId(nodeId);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      setCanvasNodes((prev) => prev.map((n) =>
+        n.id === nodeId ? { ...n, status: "error" as const, error: message } : n
+      ));
+    } finally {
+      setIsGenerating(false);
+    }
+  }
+
+  // ── Retry failed node ──
+  async function retryNode(node: CanvasNode) {
+    setCanvasNodes((prev) => prev.map((n) =>
+      n.id === node.id ? { ...n, status: "generating" as const, error: undefined } : n
+    ));
+    setIsGenerating(true);
+    const startedAt = Date.now();
+    try {
+      const referenceImages: SubmittedReference[] = [];
+      if (node.referenceNodeId && node.parentId) {
+        // Try to get parent's compressed reference
+        const parentBlob = await loadCanvasImageFromDB(node.parentId);
+        if (parentBlob) {
+          const parentDataUrl = await blobToDataUrl(parentBlob);
+          const compressed = await createSquareThumbnail(parentDataUrl, 1024);
+          referenceImages.push({
+            name: "reference.webp",
+            type: "image/webp",
+            dataUrl: compressed.dataUrl,
+            originalBytes: compressed.dataUrl.length,
+            requestBytes: compressed.dataUrl.length,
+            compressed: true,
+          });
+        }
+      }
+      const response = await fetch("/api/images/generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          baseUrl: normalizeApiBaseUrl(apiConfig.baseUrl),
+          apiKey: apiConfig.apiKey,
+          clientId: getClientId(),
+          request: {
+            protocol: node.protocol,
+            model: node.model,
+            prompt: node.prompt,
+            referenceImages,
+            aspectRatio: node.params.aspectRatio,
+            size: node.params.size,
+            resolution: node.params.resolution,
+            quality: node.params.quality,
+            outputFormat: node.params.outputFormat,
+            seed: "",
+          },
+        }),
+      });
+      const payload = await readApiJson<GenerateProxyResponse>(response, "/api/images/generate");
+      if (!response.ok || !payload.ok || !payload.images?.[0]?.dataUrl) {
+        const detail = payload.detail && typeof payload.detail === "object"
+          ? (payload.detail as Record<string, unknown>).message || JSON.stringify(payload.detail)
+          : payload.detail || "生成失败";
+        throw new Error(String(detail));
+      }
+      const dataUrl = payload.images[0].dataUrl;
+      const blob = await dataUrlToBlob(dataUrl);
+      const objectUrl = URL.createObjectURL(blob);
+      const { width, height } = await getImageSize(objectUrl);
+      const duration = Date.now() - startedAt;
+      const nodeW = CANVAS_DEFAULT_NODE_WIDTH;
+      const adjustedH = Math.round(nodeW * (height / width));
+
+      setCanvasNodes((prev) => prev.map((n) =>
+        n.id === node.id ? {
+          ...n,
+          status: "success" as const,
+          objectUrl,
+          width: nodeW,
+          height: adjustedH,
+          imageWidth: width,
+          imageHeight: height,
+          duration,
+          error: undefined,
+        } : n
+      ));
+      await saveCanvasImageToDB(node.id, blob);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      setCanvasNodes((prev) => prev.map((n) =>
+        n.id === node.id ? { ...n, status: "error" as const, error: message } : n
+      ));
+    } finally {
+      setIsGenerating(false);
+    }
+  }
+
+  // ── Computed values ──
+  const selectedNode = canvasNodes.find((n) => n.id === selectedNodeId) || null;
+  const supportedAspectRatios = getSupportedAspectRatios(apiConfig.protocol, canvasModel);
+  const resolvedSize = resolveRequestSize(canvasAspectRatio, canvasResolution, apiConfig.protocol, canvasModel);
+  const isApiReady = modelState.status === "ready" && apiConfig.apiKey.trim().length >= 8;
+
+  // ── Update model when global changes ──
+  useEffect(() => {
+    if (globalSelectedModel && selectableModels.includes(globalSelectedModel)) {
+      setCanvasModel(globalSelectedModel);
+    }
+  }, [globalSelectedModel, selectableModels]);
+
+  // ── Update aspect ratio when model changes ──
+  useEffect(() => {
+    const ratios = getSupportedAspectRatios(apiConfig.protocol, canvasModel);
+    if (!ratios.includes(canvasAspectRatio)) {
+      setCanvasAspectRatio(ratios[0] || "1:1");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [canvasModel, apiConfig.protocol]);
+
+  // ── Floating toolbar position ──
+  const toolbarPos = useMemo(() => {
+    if (!selectedNode || !containerRef.current) return null;
+    const rect = containerRef.current.getBoundingClientRect();
+    const screenX = (selectedNode.x - viewport.x) * viewport.zoom + rect.left + (selectedNode.width * viewport.zoom) / 2;
+    const screenY = (selectedNode.y - viewport.y) * viewport.zoom + rect.top;
+    const aboveY = screenY - 12;
+    const belowY = screenY + selectedNode.height * viewport.zoom + 12;
+    const y = aboveY > rect.top + 56 ? aboveY : belowY;
+    return {
+      x: clampNumber(screenX, rect.left + 100, rect.right - 100),
+      y: clampNumber(y, rect.top + 10, rect.bottom - 50),
+    };
+  }, [selectedNode, viewport]);
+
+  // ── Grid background style ──
+  const gridStyle = useMemo((): CSSProperties => {
+    if (viewport.zoom < 0.25) return {};
+    const spacing = viewport.zoom < 0.5 ? 40 : 20;
+    const rendered = spacing * viewport.zoom;
+    const ox = (-viewport.x * viewport.zoom) % rendered;
+    const oy = (-viewport.y * viewport.zoom) % rendered;
+    return {
+      backgroundImage: `radial-gradient(circle, #e5e5e5 ${Math.max(1, viewport.zoom)}px, transparent ${Math.max(1, viewport.zoom)}px)`,
+      backgroundSize: `${rendered}px ${rendered}px`,
+      backgroundPosition: `${ox}px ${oy}px`,
+    };
+  }, [viewport]);
+
+  // ── Minimap data ──
+  const minimapData = useMemo(() => {
+    if (!isMinimapVisible || canvasNodes.length === 0) return null;
+    const pad = 40;
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    for (const n of canvasNodes) {
+      if (n.x < minX) minX = n.x;
+      if (n.y < minY) minY = n.y;
+      if (n.x + n.width > maxX) maxX = n.x + n.width;
+      if (n.y + n.height > maxY) maxY = n.y + n.height;
+    }
+    const cw = maxX - minX + pad * 2;
+    const ch = maxY - minY + pad * 2;
+    const scale = Math.min(170 / cw, 110 / ch);
+    const rect = containerRef.current?.getBoundingClientRect();
+    const vpW = rect ? rect.width / viewport.zoom : 0;
+    const vpH = rect ? rect.height / viewport.zoom : 0;
+    return { minX: minX - pad, minY: minY - pad, scale, cw, ch, vpW, vpH };
+  }, [isMinimapVisible, canvasNodes, viewport]);
+
+  // ── Render ──
+  return (
+    <main className={`canvas-page ${isPanelOpen ? "" : "panel-collapsed"}`}>
+      <header className="canvas-topbar">
+        <button type="button" className="home-brand canvas-brand" onClick={onBackHome}>
+          <span><img src={sumapiLogo} alt="" /></span>
+          <strong>SumAPI 生图工作台</strong>
+          <span className="canvas-topbar-badge">Canvas</span>
+        </button>
+        <div className="canvas-topbar-nav">
+          <button type="button" className="subtle-button" onClick={onBackHome}>首页</button>
+          <button type="button" className="subtle-button" onClick={onEnterStudio}>工作台</button>
+          <button type="button" className="subtle-button" onClick={onEnterSquare}>广场</button>
+        </div>
+      </header>
+
+      {/* Canvas viewport */}
+      <div
+        className={`canvas-viewport ${isSpaceHeld ? "is-space-held" : ""} ${isPanningRef.current ? "is-panning" : ""}`}
+        ref={containerRef}
+        onPointerDown={handleCanvasPointerDown}
+        onPointerMove={handleCanvasPointerMove}
+        onPointerUp={handleCanvasPointerUp}
+        onContextMenu={handleContextMenu}
+        style={gridStyle}
+      >
+        {/* Transform layer */}
+        <div
+          className="canvas-transform-layer"
+          style={{
+            transform: `translate(${-viewport.x * viewport.zoom}px, ${-viewport.y * viewport.zoom}px) scale(${viewport.zoom})`,
+          }}
+        >
+          {/* SVG Edges */}
+          <svg className="canvas-edge-layer">
+            <defs>
+              <marker id="canvas-arrow" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto">
+                <path d="M0,0 L6,3 L0,6 Z" fill="rgba(16,185,129,0.4)" />
+              </marker>
+            </defs>
+            {canvasEdges.map((edge) => {
+              const from = canvasNodes.find((n) => n.id === edge.fromNodeId);
+              const to = canvasNodes.find((n) => n.id === edge.toNodeId);
+              if (!from || !to) return null;
+              const x1 = from.x + from.width;
+              const y1 = from.y + from.height / 2;
+              const x2 = to.x;
+              const y2 = to.y + to.height / 2;
+              const dx = Math.abs(x2 - x1) * 0.5;
+              return (
+                <path
+                  key={edge.id}
+                  className="canvas-edge-path"
+                  d={`M ${x1} ${y1} C ${x1 + dx} ${y1}, ${x2 - dx} ${y2}, ${x2} ${y2}`}
+                  markerEnd="url(#canvas-arrow)"
+                />
+              );
+            })}
+          </svg>
+
+          {/* Nodes */}
+          {canvasNodes.map((node) => (
+            <div
+              key={node.id}
+              className={`canvas-node ${node.status} ${selectedNodeId === node.id ? "selected" : ""} ${isDraggingNodeRef.current && dragStartRef.current.nodeId === node.id ? "dragging" : ""}`}
+              style={{
+                left: node.x,
+                top: node.y,
+                width: node.width,
+                height: node.height,
+              }}
+              onPointerDown={(e) => handleNodePointerDown(e, node)}
+              onDoubleClick={() => {
+                if (node.status === "success") void enterOptimizeMode(node);
+              }}
+            >
+              {node.status === "success" && node.objectUrl && (
+                <img src={node.objectUrl} alt="" draggable={false} className="canvas-node-image" />
+              )}
+              {node.status === "generating" && (
+                <div className="canvas-node-skeleton">
+                  <Loader2 size={24} className="spin" />
+                  <span>生成中...</span>
+                </div>
+              )}
+              {node.status === "error" && (
+                <div className="canvas-node-error-content">
+                  <AlertCircle size={20} />
+                  <span>{node.error || "生成失败"}</span>
+                </div>
+              )}
+              {node.status === "success" && (
+                <>
+                  <span className="canvas-node-badge">{node.model}</span>
+                  {node.duration != null && (
+                    <span className="canvas-node-duration">{formatDuration(node.duration)}</span>
+                  )}
+                </>
+              )}
+            </div>
+          ))}
+        </div>
+
+        {/* Empty state */}
+        {canvasLoaded && canvasNodes.length === 0 && (
+          <div className="canvas-empty-state">
+            <ImagePlus size={48} strokeWidth={1.2} />
+            <strong>无限画布</strong>
+            <p>在无边的空间中自由创作</p>
+            <p className="canvas-empty-hint">在右侧面板输入提示词，图片将生成到画布上。<br />选中图片后可以基于它继续优化。</p>
+            <button type="button" className="canvas-empty-action" onClick={() => { setIsPanelOpen(true); promptInputRef.current?.focus(); }}>
+              开始第一次生成 <ArrowRight size={16} />
+            </button>
+          </div>
+        )}
+
+        {/* Floating toolbar */}
+        {selectedNode && toolbarPos && (
+          <div
+            className="canvas-floating-toolbar"
+            style={{ position: "fixed", left: toolbarPos.x, top: toolbarPos.y, transform: "translate(-50%, -100%)" }}
+          >
+            {selectedNode.status === "success" && (
+              <>
+                <button type="button" onClick={() => void enterOptimizeMode(selectedNode)}>
+                  <WandSparkles size={14} /> 优化
+                </button>
+                <button type="button" onClick={() => downloadNode(selectedNode)}>
+                  <Download size={14} /> 下载
+                </button>
+                <button type="button" onClick={() => copyPrompt(selectedNode)}>
+                  <Copy size={14} /> 复制提示词
+                </button>
+                <button type="button" onClick={() => setShowDeleteConfirm(selectedNode.id)}>
+                  <Trash2 size={14} /> 删除
+                </button>
+              </>
+            )}
+            {selectedNode.status === "error" && (
+              <>
+                <button type="button" onClick={() => void retryNode(selectedNode)}>
+                  <RefreshCw size={14} /> 重试
+                </button>
+                <button type="button" onClick={() => setShowDeleteConfirm(selectedNode.id)}>
+                  <Trash2 size={14} /> 删除
+                </button>
+              </>
+            )}
+          </div>
+        )}
+
+        {/* Zoom bar */}
+        <div className="canvas-zoom-bar">
+          <button type="button" onClick={() => { const nz = clampZoomVal(viewport.zoom / 1.2); zoomAtCenter(nz); }}>-</button>
+          <input
+            type="range"
+            min={10}
+            max={300}
+            step={5}
+            value={Math.round(viewport.zoom * 100)}
+            onChange={(e) => zoomAtCenter(Number(e.target.value) / 100)}
+          />
+          <span className="canvas-zoom-label">{Math.round(viewport.zoom * 100)}%</span>
+          <button type="button" onClick={() => { const nz = clampZoomVal(viewport.zoom * 1.2); zoomAtCenter(nz); }}>+</button>
+          <button type="button" onClick={fitAllNodes} title="适应全部节点">
+            <Maximize2 size={15} />
+          </button>
+        </div>
+
+        {/* Minimap */}
+        {isMinimapVisible && minimapData && (
+          <div
+            className="canvas-minimap"
+            onPointerDown={(e) => {
+              const rect = e.currentTarget.getBoundingClientRect();
+              const mx = (e.clientX - rect.left) / minimapData.scale + minimapData.minX;
+              const my = (e.clientY - rect.top) / minimapData.scale + minimapData.minY;
+              setViewport((v) => ({
+                ...v,
+                x: mx - minimapData.vpW / 2,
+                y: my - minimapData.vpH / 2,
+              }));
+            }}
+          >
+            {canvasNodes.map((n) => (
+              <div
+                key={n.id}
+                className={`canvas-minimap-node ${n.status} ${n.id === selectedNodeId ? "selected" : ""}`}
+                style={{
+                  left: (n.x - minimapData.minX) * minimapData.scale,
+                  top: (n.y - minimapData.minY) * minimapData.scale,
+                  width: Math.max(4, n.width * minimapData.scale),
+                  height: Math.max(4, n.height * minimapData.scale),
+                }}
+              />
+            ))}
+            <div
+              className="canvas-minimap-viewport"
+              style={{
+                left: (viewport.x - minimapData.minX) * minimapData.scale,
+                top: (viewport.y - minimapData.minY) * minimapData.scale,
+                width: minimapData.vpW * minimapData.scale,
+                height: minimapData.vpH * minimapData.scale,
+              }}
+            />
+          </div>
+        )}
+      </div>
+
+      {/* Right panel */}
+      <aside className={`canvas-right-panel ${isPanelOpen ? "open" : "closed"}`}>
+        {panelMode === "generate" ? (
+          <>
+            <div className="canvas-panel-header">
+              <strong>画布生成</strong>
+              <button type="button" className="icon-button" onClick={() => setIsPanelOpen(false)} title="收起面板">
+                <PanelRightClose size={16} />
+              </button>
+            </div>
+
+            {/* Model selector */}
+            <div className="canvas-panel-section">
+              <label className="canvas-panel-label">模型</label>
+              <select
+                className="canvas-select"
+                value={canvasModel}
+                onChange={(e) => setCanvasModel(e.target.value)}
+              >
+                {selectableModels.map((m) => (
+                  <option key={m} value={m}>{m}</option>
+                ))}
+              </select>
+              <span className="canvas-panel-hint">{imageModelLaneLabel(canvasModel)}</span>
+            </div>
+
+            {/* Prompt */}
+            <div className="canvas-panel-section">
+              <label className="canvas-panel-label">提示词</label>
+              <textarea
+                ref={promptInputRef}
+                className="canvas-prompt-input"
+                value={canvasPrompt}
+                onChange={(e) => setCanvasPrompt(e.target.value)}
+                placeholder="描述你想生成的图片..."
+                rows={4}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !e.shiftKey) {
+                    e.preventDefault();
+                    void handleCanvasGenerate();
+                  }
+                }}
+              />
+            </div>
+
+            {/* Params */}
+            <details className="canvas-panel-details" open>
+              <summary>参数</summary>
+              <div className="canvas-params-grid">
+                <div className="canvas-param">
+                  <label>宽高比</label>
+                  <select
+                    className="canvas-select"
+                    value={canvasAspectRatio}
+                    onChange={(e) => setCanvasAspectRatio(e.target.value)}
+                  >
+                    {supportedAspectRatios.map((r) => (
+                      <option key={r} value={r}>{r}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="canvas-param">
+                  <label>分辨率</label>
+                  <select
+                    className="canvas-select"
+                    value={canvasResolution}
+                    onChange={(e) => setCanvasResolution(e.target.value as ImageResolution)}
+                  >
+                    <option value="1K">1K</option>
+                    <option value="2K">2K</option>
+                    <option value="4K">4K</option>
+                  </select>
+                </div>
+                <div className="canvas-param">
+                  <label>质量</label>
+                  <select
+                    className="canvas-select"
+                    value={canvasQuality}
+                    onChange={(e) => setCanvasQuality(e.target.value)}
+                  >
+                    <option value="auto">auto</option>
+                    <option value="low">low</option>
+                    <option value="medium">medium</option>
+                    <option value="high">high</option>
+                  </select>
+                </div>
+              </div>
+            </details>
+
+            {/* Size preview */}
+            <div className="canvas-size-preview">
+              {resolvedSize} &middot; {imageModelLaneLabel(canvasModel)}
+            </div>
+
+            {/* Generate button */}
+            <button
+              type="button"
+              className="canvas-generate-btn"
+              disabled={!canvasPrompt.trim() || !isApiReady || isGenerating}
+              onClick={() => void handleCanvasGenerate()}
+            >
+              {isGenerating ? <><Loader2 size={16} className="spin" /> 生成中...</> : "生成到画布"}
+            </button>
+
+            {!isApiReady && (
+              <div className="canvas-api-hint">
+                请先在工作台配置 API Key 并验证连接
+                <button type="button" className="link-button" onClick={onEnterStudio}>前往配置</button>
+              </div>
+            )}
+
+            {/* Selected node info */}
+            {selectedNode && selectedNode.status === "success" && panelMode === "generate" && (
+              <div className="canvas-panel-section canvas-selected-hint">
+                <span>已选中图片</span>
+                <button type="button" className="canvas-optimize-entry" onClick={() => void enterOptimizeMode(selectedNode)}>
+                  <WandSparkles size={14} /> 基于此图优化
+                </button>
+              </div>
+            )}
+          </>
+        ) : (
+          <>
+            {/* Optimize mode */}
+            <div className="canvas-panel-header">
+              <button type="button" className="canvas-back-btn" onClick={() => {
+                setPanelMode("generate");
+                setOptimizeSourceNode(null);
+                setCompressedRef(null);
+              }}>
+                &larr; 返回
+              </button>
+              <strong>优化图片</strong>
+            </div>
+
+            {/* Reference preview */}
+            {compressedRef && (
+              <div className="canvas-ref-preview">
+                <img src={compressedRef.dataUrl} alt="" />
+                <span className="canvas-ref-info">已自动压缩为参考图 &middot; {formatBytes(compressedRef.size)}</span>
+              </div>
+            )}
+            {!compressedRef && optimizeSourceNode && (
+              <div className="canvas-ref-preview loading">
+                <Loader2 size={20} className="spin" />
+                <span>压缩参考图中...</span>
+              </div>
+            )}
+
+            {/* Original prompt */}
+            {optimizeSourceNode && (
+              <div className="canvas-panel-section">
+                <label className="canvas-panel-label">原始提示词</label>
+                <div className="canvas-original-prompt">{optimizeSourceNode.prompt}</div>
+              </div>
+            )}
+
+            {/* Supplementary prompt */}
+            <div className="canvas-panel-section">
+              <label className="canvas-panel-label">补充优化提示词</label>
+              <textarea
+                ref={optimizePromptRef}
+                className="canvas-prompt-input"
+                value={optimizePrompt}
+                onChange={(e) => setOptimizePrompt(e.target.value)}
+                placeholder="描述你想要的修改，如：改为夜景、增加雪花效果..."
+                rows={3}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !e.shiftKey) {
+                    e.preventDefault();
+                    void handleCanvasOptimize();
+                  }
+                }}
+              />
+            </div>
+
+            {/* Model & params */}
+            <div className="canvas-panel-section">
+              <label className="canvas-panel-label">模型</label>
+              <select
+                className="canvas-select"
+                value={canvasModel}
+                onChange={(e) => setCanvasModel(e.target.value)}
+              >
+                {selectableModels.map((m) => (
+                  <option key={m} value={m}>{m}</option>
+                ))}
+              </select>
+            </div>
+
+            <div className="canvas-params-grid">
+              <div className="canvas-param">
+                <label>宽高比</label>
+                <select
+                  className="canvas-select"
+                  value={canvasAspectRatio}
+                  onChange={(e) => setCanvasAspectRatio(e.target.value)}
+                >
+                  {supportedAspectRatios.map((r) => (
+                    <option key={r} value={r}>{r}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="canvas-param">
+                <label>分辨率</label>
+                <select
+                  className="canvas-select"
+                  value={canvasResolution}
+                  onChange={(e) => setCanvasResolution(e.target.value as ImageResolution)}
+                >
+                  <option value="1K">1K</option>
+                  <option value="2K">2K</option>
+                  <option value="4K">4K</option>
+                </select>
+              </div>
+            </div>
+
+            {/* Size preview */}
+            <div className="canvas-size-preview">
+              {resolvedSize}
+            </div>
+
+            {/* Optimize button */}
+            <button
+              type="button"
+              className="canvas-generate-btn"
+              disabled={!compressedRef || !isApiReady || isGenerating}
+              onClick={() => void handleCanvasOptimize()}
+            >
+              {isGenerating ? <><Loader2 size={16} className="spin" /> 优化中...</> : "生成优化"}
+            </button>
+          </>
+        )}
+      </aside>
+
+      {/* Panel expand button when collapsed */}
+      {!isPanelOpen && (
+        <button type="button" className="canvas-panel-expand" onClick={() => setIsPanelOpen(true)}>
+          <PanelRightOpen size={18} />
+        </button>
+      )}
+
+      {/* Toast */}
+      {toastMessage && (
+        <div className="canvas-toast">{toastMessage}</div>
+      )}
+
+      {/* Delete confirmation dialog */}
+      {showDeleteConfirm && (
+        <div className="canvas-dialog-overlay" onClick={() => setShowDeleteConfirm(null)}>
+          <div className="canvas-dialog" onClick={(e) => e.stopPropagation()}>
+            <p>确认删除此图片？此操作不可撤销。</p>
+            <div className="canvas-dialog-actions">
+              <button type="button" className="subtle-button" onClick={() => setShowDeleteConfirm(null)}>取消</button>
+              <button type="button" className="canvas-dialog-danger" onClick={() => confirmDeleteNode(showDeleteConfirm)}>删除</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </main>
+  );
+}
+
+function HomePage({ onEnter, onSquare, onAdmin, onCanvas }: { onEnter: () => void; onSquare: () => void; onAdmin: () => void; onCanvas: () => void }) {
+  const openWorkflowImage = () => {
+    window.location.assign("https://imghub.clawopen.top");
+  };
+
+  const featureBands = [
+    {
+      title: "统一记录流",
+      body: "所有生成任务按时间自然归档，最新作品永远在最前。灵感、失败、重试和成片不再散落在不同页面。",
+    },
+    {
+      title: "发送前智能分析",
+      body: "在真正消耗生图额度前，先检查提示词风险、参数匹配度和可能失败的环节，再把建议交还给创作者决定。",
+    },
+    {
+      title: "本地图库资产",
+      body: "图片、参数、提示词和错误详情保存在当前浏览器本地。作品属于你的工作台，不被服务端额外留存。",
+    },
+  ];
+  const metrics = [
+    { value: "20/页", label: "按需懒加载" },
+    { value: "并行队列", label: "生成中继续提交" },
+    { value: "本地优先", label: "IndexedDB 保存" },
+  ];
+  const detailItems = [
+    "提示词优化、风格增强、失败预判和参数推荐被收进同一个发送流程。",
+    "左右侧栏可收起，主画布为图片记录让出更多空间。",
+    "多选、全选已显示、反选、批量下载和清除失败，让图库管理更接近专业素材库。",
+  ];
+  const scrollToSection = (sectionId: string) => {
+    document.getElementById(sectionId)?.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
+
+  return (
+    <main className="home-page">
+      <section
+        className="home-hero"
+        style={{
+          backgroundImage: `linear-gradient(90deg, rgba(247, 247, 245, 0.96) 0%, rgba(247, 247, 245, 0.84) 34%, rgba(247, 247, 245, 0.1) 72%), url(${homeHeroImage})`,
+        }}
+      >
+        <img className="home-hero-logo" src={sumapiLogo} alt="" aria-hidden="true" />
+        <nav className="home-nav">
+          <div className="home-brand">
+            <span>
+              <img src={sumapiLogo} alt="" />
+            </span>
+            <strong>SumAPI 生图工作台</strong>
+          </div>
+          <div className="home-nav-links" aria-label="首页导航">
+            <button type="button" onClick={() => scrollToSection("home-product")}>
+              工作台
+            </button>
+            <button type="button" onClick={() => scrollToSection("home-analysis")}>
+              智能分析
+            </button>
+            <button type="button" onClick={() => scrollToSection("home-agents")}>
+              行业 Agent
+            </button>
+            <button type="button" onClick={onSquare}>
+              广场
+            </button>
+            <button type="button" onClick={onCanvas}>
+              画布
+            </button>
+            <button type="button" onClick={() => scrollToSection("home-local")}>
+              本地优先
+            </button>
+          </div>
+          <div className="home-nav-actions">
+            <button type="button" className="home-nav-action" onClick={onEnter}>
+              打开工作台
+            </button>
+            <button type="button" className="home-nav-action" onClick={onSquare}>
+              进入广场
+            </button>
+            <button type="button" className="home-nav-action" onClick={onCanvas}>
+              画布模式
+            </button>
+            <button type="button" className="home-admin-link" onClick={onAdmin}>
+              <ShieldCheck size={16} />
+              管理后台
+            </button>
+          </div>
+        </nav>
+
+        <div className="home-hero-copy">
+          <span className="home-kicker">AI image workspace</span>
+          <h1>SumAPI 生图工作台</h1>
+          <p>
+            从一句提示词，到一组可复用的视觉资产。把智能分析、批量生成、并行队列和本地图库，放进一个安静、清晰、反应迅速的创作空间。
+          </p>
+          <div className="home-hero-actions">
+            <button type="button" className="home-primary" onClick={onEnter}>
+              开始生成
+              <ArrowRight size={18} />
+            </button>
+            <button type="button" className="home-secondary" onClick={() => scrollToSection("home-flow")}>
+              了解流程
+            </button>
+            <button type="button" className="home-secondary" onClick={onSquare}>
+              浏览广场
+            </button>
+            <button type="button" className="home-secondary" onClick={onCanvas}>
+              画布模式
+            </button>
+            <button type="button" className="home-secondary" onClick={openWorkflowImage}>
+              工作流生图
+              <ExternalLink size={15} />
+            </button>
+          </div>
+          <div className="home-metric-row" aria-label="产品能力摘要">
+            {metrics.map((metric) => (
+              <div className="home-metric" key={metric.label}>
+                <strong>{metric.value}</strong>
+                <span>{metric.label}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      <section className="home-flow" id="home-flow">
+        <div className="home-section-copy">
+          <span className="home-kicker">Built for creation</span>
+          <h2>一个屏幕，完成从构思到归档。</h2>
+          <p>
+            首页不再只是入口，而是产品能力的缩影：先让用户看到真实工作台，再用更少的文字说明它为什么值得信任。
+          </p>
+        </div>
+        <div className="home-feature-grid">
+          {featureBands.map((feature) => (
+            <article className="home-feature" key={feature.title}>
+              <strong>{feature.title}</strong>
+              <p>{feature.body}</p>
+            </article>
+          ))}
+        </div>
+      </section>
+
+      <section className="home-product-showcase" id="home-product">
+        <div className="home-showcase-copy">
+          <span className="home-kicker">Studio overview</span>
+          <h2>让生成记录，成为可以继续工作的画布。</h2>
+          <p>
+            中间区域统一展示全部生成记录，左侧保留最近记录入口，右侧承载配置。用户可以在生成中继续提交新批次，让探索过程保持连续。
+          </p>
+        </div>
+        <figure className="home-preview-frame home-preview-frame-wide">
+          <img src={homeStudioPreview} alt="SumAPI 生图工作台 工作台截图，展示生成记录流、左侧历史和右侧配置面板" />
+        </figure>
+      </section>
+
+      <section className="home-analysis-showcase" id="home-analysis">
+        <div className="home-analysis-media">
+          <img src={homePromptPreview} alt="SumAPI 生图工作台 提示词输入和预设提示词截图" />
+        </div>
+        <div className="home-showcase-copy">
+          <span className="home-kicker">Prompt intelligence</span>
+          <h2>发送之前，先把想法打磨到更接近成片。</h2>
+          <p>
+            默认开启自动优化。系统会在提交前分析提示词、推荐参数、预判失败原因，并把风格增强建议收束成可执行的生成方案。
+          </p>
+          <ul className="home-detail-list">
+            {detailItems.map((item) => (
+              <li key={item}>
+                <CheckCircle2 size={17} />
+                <span>{item}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      </section>
+
+      <section className="home-agent-section" id="home-agents">
+        <div className="home-section-copy">
+          <span className="home-kicker">Industry agents</span>
+          <h2>不是模板，是为行业准备的生图流程。</h2>
+          <p>
+            选择一个行业 Agent，填写业务目标，系统会自动补全 Brief、生成三套提示词、推荐比例和负面提示词，再进入发送前分析与批量生成。
+          </p>
+        </div>
+        <div className="home-agent-grid">
+          {INDUSTRY_AGENTS.slice(0, 6).map((agent) => (
+            <article className="home-agent-card" key={agent.id}>
+              <div>
+                <span>{agent.icon}</span>
+                <strong>{agent.name}</strong>
+              </div>
+              <p>{agent.description}</p>
+              <small>{agent.scenario}</small>
+              <button type="button" onClick={onEnter}>
+                进入工作台
+                <ArrowRight size={15} />
+              </button>
+            </article>
+          ))}
+        </div>
+      </section>
+
+      <section className="home-insight" id="home-local">
+        <div>
+          <span className="home-kicker">Private by design</span>
+          <h2>作品留在本地。创作更安心。</h2>
+        </div>
+        <p>
+          生成图片和历史仅保存到当前浏览器本地，服务端只做无状态协议转发。你可以批量下载、清理失败记录，也可以在下一次打开时继续查看自己的素材库。
+        </p>
+        <button type="button" className="home-primary dark" onClick={onEnter}>
+          进入工作台
+          <ArrowRight size={18} />
+        </button>
+      </section>
+    </main>
+  );
+}
+
+function SquarePage({
+  apiKey,
+  onBackHome,
+  onEnterStudio,
+  onCanvas,
+}: {
+  apiKey: string;
+  onBackHome: () => void;
+  onEnterStudio: () => void;
+  onCanvas: () => void;
+}) {
+  const [tab, setTab] = useState<SquareFeedTab>("latest");
+  const [items, setItems] = useState<SquareFeedItem[]>([]);
+  const [cursor, setCursor] = useState("");
+  const [hasMore, setHasMore] = useState(true);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [quota, setQuota] = useState<SquareQuotaResponse | null>(null);
+  const [pendingLikeIds, setPendingLikeIds] = useState<Set<string>>(() => new Set());
+  const [previewItem, setPreviewItem] = useState<SquareFeedItem | null>(null);
+  const pageRef = useRef<HTMLElement | null>(null);
+  const loadMoreRef = useRef<HTMLDivElement | null>(null);
+  const apiKeyReady = apiKey.trim().length >= API_KEY_MIN_LENGTH;
+
+  async function fetchQuota() {
+    if (!apiKeyReady) {
+      setQuota(null);
+      return;
+    }
+    try {
+      const response = await fetch("/api/square/quota", {
+        headers: { "x-sumapi-api-key": apiKey },
+      });
+      const payload = await readApiJson<SquareQuotaResponse>(response, "/api/square/quota");
+      if (!response.ok || !payload.ok) throw payload;
+      setQuota(payload);
+    } catch {
+      setQuota(null);
+    }
+  }
+
+  async function loadFeed(reset = false) {
+    if (isLoading) return;
+    if (!reset && !hasMore) return;
+    setIsLoading(true);
+    setError("");
+    try {
+      const query = new URLSearchParams({
+        tab,
+        limit: String(SQUARE_PAGE_SIZE),
+      });
+      if (!reset && cursor) query.set("cursor", cursor);
+      const headers: Record<string, string> = {};
+      if (apiKeyReady) headers["x-sumapi-api-key"] = apiKey;
+      const response = await fetch(`/api/square/feed?${query.toString()}`, { headers });
+      const payload = await readApiJson<SquareFeedResponse>(response, "/api/square/feed");
+      if (!response.ok || !payload.ok) throw payload;
+      setItems((current) => reset ? payload.items : mergeSquareItems(current, payload.items));
+      setCursor(payload.nextCursor || "");
+      setHasMore(payload.hasMore);
+    } catch (loadError) {
+      setError(formatError(loadError));
+    } finally {
+      setIsLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    setItems([]);
+    setCursor("");
+    setHasMore(true);
+    void loadFeed(true);
+    void fetchQuota();
+  }, [tab, apiKey]);
+
+  const loadFeedRef = useRef(loadFeed);
+  loadFeedRef.current = loadFeed;
+  const canLoadMore = hasMore && !isLoading;
+
+  useEffect(() => {
+    const marker = loadMoreRef.current;
+    const root = pageRef.current;
+    if (!marker || !root || !canLoadMore) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) void loadFeedRef.current(false);
+      },
+      { root, rootMargin: "420px 0px", threshold: 0 },
+    );
+    observer.observe(marker);
+    return () => observer.disconnect();
+  }, [canLoadMore]);
+
+  useEffect(() => {
+    if (!previewItem) return;
+    const updated = items.find((item) => item.id === previewItem.id);
+    if (updated && updated !== previewItem) setPreviewItem(updated);
+  }, [items, previewItem]);
+
+  async function toggleLike(item: SquareFeedItem) {
+    if (!apiKeyReady) {
+      setError("配置 API Key 后可点赞");
+      return;
+    }
+    setPendingLikeIds((current) => new Set(current).add(item.id));
+    setError("");
+    try {
+      const action = item.likedByRequester ? "unlike" : "like";
+      const response = await fetch("/api/square/like", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ apiKey, itemId: item.id, action }),
+      });
+      const payload = await readApiJson<SquareLikeResponse>(response, "/api/square/like");
+      if (!response.ok || !payload.ok) throw payload;
+      setItems((current) => current.map((candidate) =>
+        candidate.id === item.id
+          ? {
+            ...candidate,
+            likeCount: typeof payload.likeCount === "number" ? payload.likeCount : candidate.likeCount,
+            likedByRequester: payload.status === "liked" ? true : payload.status === "unliked" ? false : candidate.likedByRequester,
+          }
+          : candidate,
+      ));
+      void fetchQuota();
+    } catch (likeError) {
+      setError(formatError(likeError));
+    } finally {
+      setPendingLikeIds((current) => {
+        const next = new Set(current);
+        next.delete(item.id);
+        return next;
+      });
+    }
+  }
+
+  return (
+    <main className="square-page" ref={pageRef}>
+      <header className="square-topbar">
+        <button type="button" className="home-brand square-brand" onClick={onBackHome}>
+          <span>
+            <img src={sumapiLogo} alt="" />
+          </span>
+          <strong>SumAPI Square</strong>
+        </button>
+        <div className="square-topbar-actions">
+          <button type="button" className="subtle-button" onClick={onEnterStudio}>
+            <WandSparkles size={16} />
+            工作台
+          </button>
+          <button type="button" className="subtle-button" onClick={onCanvas}>
+            画布
+          </button>
+          <button type="button" className="subtle-button" onClick={onBackHome}>
+            首页
+          </button>
+        </div>
+      </header>
+
+      <section className="square-hero">
+        <div className="square-hero-copy">
+          <span className="home-kicker">Square</span>
+          <h1>广场</h1>
+          <p>创作者推荐的 AI 生成作品在这里展示。点赞你喜欢的创作，或者推荐你的得意之作。</p>
+          {items.length > 0 && (
+            <div className="square-metric-row">
+              <div className="square-metric">
+                <strong>{quota ? `${quota.shelfCount}/${quota.shelfLimit}` : "-/4"}</strong>
+                <span>我的展示位</span>
+              </div>
+              <div className="square-metric">
+                <strong>{quota ? quota.dailyRecommendLeft : "-"}</strong>
+                <span>今日推荐</span>
+              </div>
+              <div className="square-metric">
+                <strong>{quota ? quota.dailyLikeLeft : "-"}</strong>
+                <span>今日点赞</span>
+              </div>
+            </div>
+          )}
+        </div>
+      </section>
+
+      <section className="square-controls">
+        <div className="square-tabs" role="tablist" aria-label="广场排序">
+          {SQUARE_FEED_TABS.map((item) => {
+            const Icon = item.icon;
+            return (
+              <button
+                key={item.value}
+                type="button"
+                role="tab"
+                aria-selected={tab === item.value}
+                className={tab === item.value ? "active" : ""}
+                onClick={() => setTab(item.value)}
+              >
+                <Icon size={15} />
+                {item.label}
+              </button>
+            );
+          })}
+        </div>
+        <button type="button" className="subtle-button" onClick={() => void loadFeed(true)} disabled={isLoading}>
+          {isLoading ? <Loader2 size={15} className="spin" /> : <RefreshCw size={15} />}
+          刷新
+        </button>
+      </section>
+
+      {error && (
+        <div className="square-alert">
+          <AlertCircle size={16} />
+          <span>{error}</span>
+        </div>
+      )}
+
+      <section className="square-grid" aria-label="广场作品">
+        {items.map((item) => (
+          <SquareCard
+            key={item.id}
+            item={item}
+            apiKeyReady={apiKeyReady}
+            pendingLike={pendingLikeIds.has(item.id)}
+            onLike={() => void toggleLike(item)}
+            onCopyPrompt={() => void navigator.clipboard.writeText(item.prompt)}
+            onPreview={() => setPreviewItem(item)}
+          />
+        ))}
+        {isLoading && Array.from({ length: Math.max(4, SQUARE_PAGE_SIZE / 4) }, (_, index) => (
+          <div className="square-card square-skeleton" key={`square-skeleton-${index}`}>
+            <span />
+            <div />
+          </div>
+        ))}
+      </section>
+
+      {!isLoading && items.length === 0 && (
+        <div className="square-onboarding">
+          <div className="square-onboarding-header">
+            <h2>还没有作品，成为第一个推荐者</h2>
+            <p>只需三步，你的创作就会出现在广场上。</p>
+          </div>
+          <div className="square-steps">
+            <article className="square-step">
+              <span className="square-step-icon"><WandSparkles size={22} /></span>
+              <strong>生成作品</strong>
+              <p>在工作台输入提示词，选择模型和参数，提交生成。</p>
+            </article>
+            <span className="square-step-arrow"><ArrowRight size={18} /></span>
+            <article className="square-step">
+              <span className="square-step-icon"><ImagePlus size={22} /></span>
+              <strong>点击推荐</strong>
+              <p>生成成功后，点击结果左下角的「推荐广场」按钮。</p>
+            </article>
+            <span className="square-step-arrow"><ArrowRight size={18} /></span>
+            <article className="square-step">
+              <span className="square-step-icon"><Star size={22} /></span>
+              <strong>展示与互动</strong>
+              <p>作品出现在广场，其他创作者可以浏览和点赞。</p>
+            </article>
+          </div>
+          <button type="button" className="square-onboarding-cta" onClick={onEnterStudio}>
+            开始创作
+            <ArrowRight size={18} />
+          </button>
+          <div className="square-ghost-grid" aria-hidden="true">
+            {Array.from({ length: 4 }, (_, i) => (
+              <div className="square-ghost-card" key={i}>
+                <div className="square-ghost-image" />
+                <div className="square-ghost-body">
+                  <div className="square-ghost-line wide" />
+                  <div className="square-ghost-line narrow" />
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {hasMore && <div ref={loadMoreRef} className="load-more-sentinel" />}
+      {isLoading && <div className="load-more-state">加载中...</div>}
+      {!hasMore && items.length > 0 && <div className="load-more-state">已经到底了</div>}
+      {previewItem && (
+        <SquarePreviewModal
+          item={previewItem}
+          apiKeyReady={apiKeyReady}
+          pendingLike={pendingLikeIds.has(previewItem.id)}
+          onClose={() => setPreviewItem(null)}
+          onLike={() => void toggleLike(previewItem)}
+          onCopyPrompt={() => void navigator.clipboard.writeText(previewItem.prompt)}
+          onDownload={() => downloadUrl(previewItem.thumbnailUrl, `${sanitizeFilename(previewItem.caption || previewItem.id)}.png`)}
+        />
+      )}
+    </main>
+  );
+}
+
+function mergeSquareItems(current: SquareFeedItem[], incoming: SquareFeedItem[]) {
+  const seen = new Set(current.map((item) => item.id));
+  return [...current, ...incoming.filter((item) => !seen.has(item.id))];
+}
+
+function SquareCard({
+  item,
+  apiKeyReady,
+  pendingLike,
+  onLike,
+  onCopyPrompt,
+  onPreview,
+}: {
+  item: SquareFeedItem;
+  apiKeyReady: boolean;
+  pendingLike: boolean;
+  onLike: () => void;
+  onCopyPrompt: () => void;
+  onPreview: () => void;
+}) {
+  const params = item.params || {};
+  const sizeLabel = item.width && item.height ? `${item.width} x ${item.height}` : String(params.size || "-");
+  return (
+    <article className="square-card">
+      <button className="square-card-image" type="button" title="预览作品" onClick={onPreview}>
+        <img src={item.thumbnailUrl} alt={item.caption || item.prompt} loading="lazy" decoding="async" />
+        <span>{item.pageLabel || item.recommenderLabel}</span>
+        <strong>
+          <Maximize2 size={15} />
+          预览
+        </strong>
+      </button>
+      <div className="square-card-body">
+        <div className="square-card-title">
+          <strong title={item.caption || item.prompt}>{item.caption || "未命名作品"}</strong>
+          <small>{formatDate(item.createdAt)} · {item.recommenderLabel}</small>
+        </div>
+        <div className="square-card-tags">
+          <span>{item.model}</span>
+          <span>{String(params.aspectRatio || item.aspectRatio || "-")}</span>
+          <span>{String(params.resolution || DEFAULT_IMAGE_RESOLUTION)}</span>
+          <span>{sizeLabel}</span>
+        </div>
+        <p title={item.prompt}>{item.prompt}</p>
+        <div className="square-card-actions">
+          <button
+            type="button"
+            className={`square-like-button ${item.likedByRequester ? "liked" : ""}`}
+            disabled={!apiKeyReady || pendingLike}
+            title={apiKeyReady ? item.likedByRequester ? "取消点赞" : "点赞" : "配置 API Key 后可点赞"}
+            onClick={onLike}
+          >
+            {pendingLike ? <Loader2 size={15} className="spin" /> : <Heart size={15} />}
+            <span>{item.likeCount}</span>
+          </button>
+          <button type="button" className="icon-button" title="复制提示词" onClick={onCopyPrompt}>
+            <Copy size={15} />
+          </button>
+          <button type="button" className="icon-button" title="预览作品" onClick={onPreview}>
+            <Maximize2 size={15} />
+          </button>
+        </div>
+      </div>
+    </article>
+  );
+}
+
+function SquarePreviewModal({
+  item,
+  apiKeyReady,
+  pendingLike,
+  onClose,
+  onLike,
+  onCopyPrompt,
+  onDownload,
+}: {
+  item: SquareFeedItem;
+  apiKeyReady: boolean;
+  pendingLike: boolean;
+  onClose: () => void;
+  onLike: () => void;
+  onCopyPrompt: () => void;
+  onDownload: () => void;
+}) {
+  const params = item.params || {};
+  const sizeLabel = item.width && item.height ? `${item.width} x ${item.height}` : String(params.size || "-");
+  const promptTitle = item.caption || "广场作品";
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [onClose]);
+
+  return (
+    <div className="square-preview-modal" role="dialog" aria-modal="true" aria-label="广场作品预览">
+      <button className="preview-backdrop" type="button" aria-label="关闭预览" onClick={onClose} />
+      <div className="square-preview-shell">
+        <div className="square-preview-stage">
+          <img src={item.thumbnailUrl} alt={promptTitle} />
+        </div>
+        <aside className="square-preview-side">
+          <div className="preview-head">
+            <div>
+              <strong title={promptTitle}>{promptTitle}</strong>
+              <span>{formatDate(item.createdAt)} · {item.recommenderLabel}</span>
+            </div>
+            <button type="button" className="icon-button" onClick={onClose} title="关闭">
+              <X size={17} />
+            </button>
+          </div>
+          <div className="square-preview-meta">
+            <span>{item.model}</span>
+            <span>{String(params.aspectRatio || item.aspectRatio || "-")}</span>
+            <span>{String(params.resolution || DEFAULT_IMAGE_RESOLUTION)}</span>
+            <span>{sizeLabel}</span>
+            {item.pageLabel && <span>{item.pageLabel}</span>}
+          </div>
+          <div className="square-preview-prompt">{item.prompt}</div>
+          <div className="square-preview-actions">
+            <button
+              type="button"
+              className={`square-like-button ${item.likedByRequester ? "liked" : ""}`}
+              disabled={!apiKeyReady || pendingLike}
+              title={apiKeyReady ? item.likedByRequester ? "取消点赞" : "点赞" : "配置 API Key 后可点赞"}
+              onClick={onLike}
+            >
+              {pendingLike ? <Loader2 size={15} className="spin" /> : <Heart size={15} />}
+              <span>{item.likeCount}</span>
+            </button>
+            <button type="button" className="subtle-button" onClick={onCopyPrompt}>
+              <Copy size={15} />
+              复制提示词
+            </button>
+            <button type="button" className="subtle-button" onClick={onDownload}>
+              <Download size={15} />
+              下载预览图
+            </button>
+          </div>
+        </aside>
+      </div>
+    </div>
+  );
+}
+
+function OnboardingGuide({
+  step,
+  canGenerate,
+  modelState,
+  selectedModel,
+  apiKeyReady,
+  onStepChange,
+  onOpenSettings,
+  onFinish,
+}: {
+  step: number;
+  canGenerate: boolean;
+  modelState: ModelLoadState;
+  selectedModel: string;
+  apiKeyReady: boolean;
+  onStepChange: (step: number) => void;
+  onOpenSettings: () => void;
+  onFinish: () => void;
+}) {
+  const steps = [
+    {
+      target: "api",
+      title: "连接你的生图服务",
+      body: "先在右侧配置里选择服务地址并填入 API Key。地址已被限制为两个固定入口，避免请求落到未知服务。",
+      status: apiKeyReady ? "API Key 已填写" : "等待填写 API Key",
+    },
+    {
+      target: "model",
+      title: "读取并选择模型",
+      body: "点击读取模型列表，只能从接口返回的模型中选择。模型就绪后，顶部会显示已连接状态。",
+      status: modelState.status === "ready" && selectedModel ? `已选择 ${selectedModel}` : modelState.message,
+    },
+    {
+      target: "composer",
+      title: "输入提示词并生成",
+    body: "回到底部输入框描述画面，选择宽高比、分辨率、张数和并发。提交后提示词会在发送动画完成后自动清空。",
+      status: canGenerate ? "现在可以提交生成" : "等待提示词、模型和比例就绪",
+    },
+  ];
+  const current = steps[step] || steps[0];
+  const last = step >= steps.length - 1;
+  const [spotlightStyle, setSpotlightStyle] = useState<CSSProperties>({});
+  const [panelStyle, setPanelStyle] = useState<CSSProperties>({});
+
+  useLayoutEffect(() => {
+    let raf = 0;
+    let scrollTimer = 0;
+    const targetSelector = `[data-onboarding-target="${current.target}"]`;
+
+    if (current.target !== "composer") {
+      onOpenSettings();
+    }
+
+    const clamp = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value));
+    const measure = () => {
+      const target = document.querySelector<HTMLElement>(targetSelector);
+      if (!target) return;
+      const rect = target.getBoundingClientRect();
+      const padding = 10;
+      const left = clamp(rect.left - padding, 10, window.innerWidth - 40);
+      const top = clamp(rect.top - padding, 10, window.innerHeight - 40);
+      const width = Math.max(44, Math.min(rect.width + padding * 2, window.innerWidth - left - 10));
+      const height = Math.max(44, Math.min(rect.height + padding * 2, window.innerHeight - top - 10));
+      const panelWidth = Math.min(420, window.innerWidth - 28);
+      const panelHeightEstimate = 250;
+      const gap = 18;
+      let panelLeft = 14;
+      let panelTop = 14;
+
+      if (left > panelWidth + gap + 14) {
+        panelLeft = left - panelWidth - gap;
+        panelTop = clamp(top, 14, window.innerHeight - panelHeightEstimate - 14);
+      } else if (left + width + panelWidth + gap < window.innerWidth - 14) {
+        panelLeft = left + width + gap;
+        panelTop = clamp(top, 14, window.innerHeight - panelHeightEstimate - 14);
+      } else if (top > panelHeightEstimate + gap + 14) {
+        panelLeft = clamp(left, 14, window.innerWidth - panelWidth - 14);
+        panelTop = top - panelHeightEstimate - gap;
+      } else {
+        panelLeft = clamp(left, 14, window.innerWidth - panelWidth - 14);
+        panelTop = clamp(top + height + gap, 14, window.innerHeight - panelHeightEstimate - 14);
+      }
+
+      setSpotlightStyle({
+        left,
+        top,
+        width,
+        height,
+      });
+      setPanelStyle({
+        left: panelLeft,
+        top: panelTop,
+        right: "auto",
+        bottom: "auto",
+      });
+    };
+
+    const scheduleMeasure = () => {
+      window.cancelAnimationFrame(raf);
+      raf = window.requestAnimationFrame(measure);
+    };
+
+    const target = document.querySelector<HTMLElement>(targetSelector);
+    target?.scrollIntoView({ behavior: "smooth", block: "center", inline: "nearest" });
+    scheduleMeasure();
+    scrollTimer = window.setTimeout(scheduleMeasure, 260);
+    window.addEventListener("resize", scheduleMeasure);
+    window.addEventListener("scroll", scheduleMeasure, true);
+    return () => {
+      window.cancelAnimationFrame(raf);
+      window.clearTimeout(scrollTimer);
+      window.removeEventListener("resize", scheduleMeasure);
+      window.removeEventListener("scroll", scheduleMeasure, true);
+    };
+  }, [current.target]);
+
+  return (
+    <div className="onboarding-overlay" role="presentation">
+      <div className="onboarding-click-catcher" aria-hidden="true" />
+      <div className="onboarding-spotlight" aria-hidden="true" style={spotlightStyle} />
+      <div className="onboarding-panel" role="dialog" aria-modal="true" aria-label="首次使用引导" style={panelStyle}>
+        <div className="onboarding-progress">
+          {steps.map((item, index) => (
+            <button
+              key={item.title}
+              type="button"
+              className={index === step ? "active" : ""}
+              aria-label={`第 ${index + 1} 步`}
+              onClick={() => onStepChange(index)}
+            />
+          ))}
+        </div>
+        <div className="onboarding-copy">
+          <span>首次使用 · 第 {step + 1} 步 / {steps.length}</span>
+          <strong>{current.title}</strong>
+          <p>{current.body}</p>
+          <small>{current.status}</small>
+        </div>
+        <div className="onboarding-actions">
+          <button type="button" className="subtle-button" onClick={onFinish}>
+            跳过
+          </button>
+          {step === 0 && (
+            <button type="button" className="subtle-button" onClick={onOpenSettings}>
+              打开配置
+            </button>
+          )}
+          <button
+            type="button"
+            className="primary-action"
+            onClick={() => (last ? onFinish() : onStepChange(step + 1))}
+          >
+            {last ? "完成引导" : "下一步"}
+            {!last && <ArrowRight size={16} />}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+const JobCard = memo(function JobCard({
+  job,
+  highlighted,
+  recordRef,
+  selected,
+  selectionMode,
+  selectable,
+  onToggleSelect,
+  onRetry,
+  onPreview,
+  onDownload,
+  onCopyPrompt,
+  onRecommend,
+  recommendState,
+  canRecommend,
+}: {
+  job: Job;
+  highlighted: boolean;
+  recordRef: (element: HTMLElement | null) => void;
+  selected: boolean;
+  selectionMode: boolean;
+  selectable: boolean;
+  onToggleSelect: () => void;
+  onRetry: () => void;
+  onPreview: () => void;
+  onDownload: () => void;
+  onCopyPrompt: () => void;
+  onRecommend: () => void;
+  recommendState?: SquareRecommendStatus;
+  canRecommend: boolean;
+}) {
+  const [tickNow, setTickNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (job.status !== "running" || !job.startedAt) return;
+    setTickNow(Date.now());
+    const timer = window.setInterval(() => setTickNow(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, [job.status, job.startedAt]);
+  const elapsed = job.status === "running" && job.startedAt ? tickNow - job.startedAt : job.durationMs || 0;
+  const previewClass = aspectClass(job.width, job.height, job.params.aspectRatio);
+  const sizeLabel = job.width && job.height ? `${job.width} x ${job.height}` : job.params.size;
+  const durationLabel = job.status === "queued" ? "等待" : elapsed > 0 ? formatDuration(elapsed) : "-";
+  const compactPrompt = job.prompt.replace(/\s+/g, " ").trim();
+  const compactPromptChars = Array.from(compactPrompt);
+  const promptPreview = compactPromptChars.length > 64 ? `${compactPromptChars.slice(0, 64).join("")}...` : compactPrompt;
+  const storedReferenceImages = normalizeStoredReferenceImages(job.referenceImages);
+  return (
+    <article
+      ref={recordRef}
+      className={`job-card ${job.status} ${highlighted ? "highlighted" : ""} ${selected ? "selected" : ""} ${selectionMode ? "selection-mode" : ""}`}
+    >
+      <div className={`tile-preview ${previewClass}`}>
+        {(selectionMode || selectable) && (
+          <button
+            type="button"
+            className={`selection-toggle ${selected ? "selected" : ""}`}
+            title={selectable ? "选择图片" : "运行中不可选择"}
+            aria-pressed={selected}
+            disabled={!selectable}
+            onClick={(event) => {
+              event.stopPropagation();
+              onToggleSelect();
+            }}
+          >
+            {selected ? <CheckSquare size={18} /> : <Square size={18} />}
+          </button>
+        )}
+        {job.status === "success" && job.imageUrl && (
+          <button type="button" className="preview-button" onClick={onPreview} title="预览图片">
+            <img src={job.imageUrl} alt="" loading="lazy" decoding="async" />
+            <span>
+              <Maximize2 size={16} />
+            </span>
+          </button>
+        )}
+        {job.status === "running" && (
+          <div className="tile-state running">
+            <Loader2 className="spin" size={24} />
+            <strong>{formatDuration(elapsed)}</strong>
+          </div>
+        )}
+        {job.status === "queued" && (
+          <div className="tile-state queued">
+            <Clock3 size={22} />
+            <strong>{(job.attempt ?? 1) > 1 ? `重试中 ${job.attempt}/${job.maxAttempts}` : "排队中"}</strong>
+          </div>
+        )}
+        {job.status === "error" && (
+          <button type="button" className="tile-state tile-state-button error" onClick={onPreview} title="查看失败详情">
+            <AlertCircle size={22} />
+            <strong>生成失败</strong>
+            <span>{(job.attempt ?? 1) > 1 ? `重试 ${(job.attempt ?? 1) - 1} 次后仍失败 · 查看详情` : "查看详情"}</span>
+          </button>
+        )}
+        <div className="tile-index">#{job.index}</div>
+        {storedReferenceImages.length > 0 && (
+          <div className="tile-reference-stack" title={`已保存 ${storedReferenceImages.length} 张参考图`}>
+            <span>参考图 {storedReferenceImages.length}</span>
+            <div>
+              {storedReferenceImages.slice(0, 3).map((image) => (
+                <img key={image.id} src={image.thumbnailDataUrl || image.dataUrl} alt="" loading="lazy" decoding="async" />
+              ))}
+            </div>
+          </div>
+        )}
+        {job.status === "success" && job.imageUrl && (
+          <button
+            type="button"
+            className={`tile-square-action ${recommendState?.status || ""}`}
+            title={canRecommend ? recommendState?.message || "推荐到广场" : "配置 API Key 后可推荐到广场"}
+            disabled={!canRecommend || recommendState?.status === "submitting"}
+            onClick={(event) => {
+              event.stopPropagation();
+              onRecommend();
+            }}
+          >
+            {recommendState?.status === "submitting" ? <Loader2 size={13} className="spin" /> : <ExternalLink size={13} />}
+            <span>{recommendState?.status === "success" ? "已推荐" : recommendState?.status === "submitting" ? "推荐中" : "推荐广场"}</span>
+          </button>
+        )}
+      </div>
+
+      <div className="tile-body">
+        <div className="tile-summary-line">
+          <StatusBadge status={job.status} elapsed={elapsed} />
+          <strong className="tile-model" title={job.model}>{job.model}</strong>
+          <div className="tile-meta-compact">
+            <span>{job.params.aspectRatio}</span>
+            <span>{job.params.resolution || DEFAULT_IMAGE_RESOLUTION}</span>
+            <span title={sizeLabel}>{sizeLabel}</span>
+            <span>{durationLabel}</span>
+          </div>
+        </div>
+
+        {job.agentName && (
+          <div className="tile-agent-line" title={job.agentScenario || ""}>
+            <WandSparkles size={13} />
+            <span>{job.agentName}</span>
+            {job.promptVariant && <small>{PROMPT_VARIANT_LABELS[job.promptVariant]}</small>}
+          </div>
+        )}
+
+        {job.status === "error" && (
+          <button type="button" className="tile-error-line" title={serializeError(job.errorDetail)} onClick={onPreview}>
+            {formatError(job.errorDetail)}
+          </button>
+        )}
+
+        <div className="tile-bottom-line">
+          <div className="tile-prompt" title={job.prompt}>{promptPreview}</div>
+          <div className="job-actions">
+            <button type="button" className="icon-button" title="复制提示词" onClick={onCopyPrompt}>
+              <Copy size={16} />
+            </button>
+            {job.status === "success" && (
+              <button type="button" className="icon-button" title="预览图片" onClick={onPreview}>
+                <Maximize2 size={16} />
+              </button>
+            )}
+            {job.status === "success" && (
+              <button type="button" className="icon-button" title="下载图片" onClick={onDownload}>
+                <Download size={16} />
+              </button>
+            )}
+            {job.status === "error" && (
+              <button type="button" className="icon-button" title="查看失败详情" onClick={onPreview}>
+                <AlertCircle size={16} />
+              </button>
+            )}
+            {job.status === "error" && (
+              <button type="button" className="icon-button" title="重试" onClick={onRetry}>
+                <RefreshCw size={16} />
+              </button>
+            )}
+            {job.status === "queued" && (
+              <button type="button" className="icon-button" title="排队中" disabled>
+                <Clock3 size={16} />
+              </button>
+            )}
+            {job.status === "running" && (
+              <button type="button" className="icon-button" title="生成中" disabled>
+                <Loader2 size={16} className="spin" />
+              </button>
             )}
           </div>
         </div>
-      ) : null}
+      </div>
+    </article>
+  );
+}, (previous, next) =>
+  previous.job === next.job &&
+  previous.highlighted === next.highlighted &&
+  previous.selected === next.selected &&
+  previous.selectionMode === next.selectionMode &&
+  previous.selectable === next.selectable &&
+  previous.recommendState === next.recommendState &&
+  previous.canRecommend === next.canRecommend
+);
 
-      {previewImage ? (
-        <div
-          className='modal-overlay preview-overlay'
-          role='dialog'
-          aria-modal='true'
-          aria-label='图片预览'
-          onMouseDown={(event) => {
-            if (event.target === event.currentTarget) setPreviewImage(null)
-          }}
-        >
-          <div className='preview-dialog'>
-            <div className='preview-header'>
-              <div>
-                <strong>{previewImage.model}</strong>
-                <span>
-                  {previewImage.size} · {previewImage.quality} ·{' '}
-                  {new Date(previewImage.createdAt).toLocaleString()}
-                </span>
+function SidebarToggleButton({
+  side,
+  open,
+  title,
+  onClick,
+}: {
+  side: "left" | "right";
+  open: boolean;
+  title: string;
+  onClick: () => void;
+}) {
+  const Icon = side === "left"
+    ? open ? PanelLeftClose : PanelLeftOpen
+    : open ? PanelRightClose : PanelRightOpen;
+  return (
+    <button type="button" className="topbar-toggle" title={title} onClick={onClick} aria-pressed={open}>
+      <Icon size={18} />
+    </button>
+  );
+}
+
+function FrontendUpdateNotice({
+  version,
+  onRefresh,
+  onDismiss,
+}: {
+  version: string;
+  onRefresh: () => void;
+  onDismiss: () => void;
+}) {
+  return (
+    <div className="version-update-notice" role="status" aria-live="polite">
+      <div>
+        <strong>新版本可用</strong>
+        <span>检测到前端版本 v{version}，刷新后会加载最新样式和脚本。</span>
+      </div>
+      <button type="button" className="primary-action compact" onClick={onRefresh}>
+        <RefreshCw size={15} />
+        刷新
+      </button>
+      <button type="button" className="icon-button" title="稍后提醒" onClick={onDismiss}>
+        <X size={15} />
+      </button>
+    </div>
+  );
+}
+
+function BulkActionBar({
+  selectedCount,
+  downloadableCount,
+  selectableCount,
+  failedCount,
+  isDownloading,
+  onSelectAll,
+  onClearFailed,
+  onInvert,
+  onDownload,
+  onDelete,
+  onCancel,
+}: {
+  selectedCount: number;
+  downloadableCount: number;
+  selectableCount: number;
+  failedCount: number;
+  isDownloading: boolean;
+  onSelectAll: () => void;
+  onClearFailed: () => void;
+  onInvert: () => void;
+  onDownload: () => void;
+  onDelete: () => void;
+  onCancel: () => void;
+}) {
+  return (
+    <>
+      <strong>已选 {selectedCount} / 可选 {selectableCount}</strong>
+      <button type="button" className="subtle-button" onClick={onSelectAll} disabled={selectableCount === 0}>
+        全选已显示
+      </button>
+      <button type="button" className="subtle-button danger" onClick={onClearFailed} disabled={failedCount === 0}>
+        <Trash2 size={16} />
+        清除失败 {failedCount || ""}
+      </button>
+      <button type="button" className="subtle-button" onClick={onInvert} disabled={selectableCount === 0}>
+        反选
+      </button>
+      <button type="button" className="subtle-button" onClick={onDownload} disabled={downloadableCount === 0 || isDownloading}>
+        {isDownloading ? <Loader2 size={16} className="spin" /> : <Download size={16} />}
+        下载 {downloadableCount || ""}
+      </button>
+      <button type="button" className="subtle-button danger" onClick={onDelete} disabled={selectedCount === 0}>
+        <Trash2 size={16} />
+        删除
+      </button>
+      <button type="button" className="subtle-button" onClick={onCancel}>
+        <X size={16} />
+        取消选择
+      </button>
+    </>
+  );
+}
+
+function ConfirmDialog({
+  title,
+  body,
+  confirmLabel,
+  onCancel,
+  onConfirm,
+}: {
+  title: string;
+  body: string;
+  confirmLabel: string;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  return (
+    <div className="confirm-modal" role="dialog" aria-modal="true" aria-label={title}>
+      <button className="confirm-backdrop" type="button" aria-label="取消" onClick={onCancel} />
+      <div className="confirm-card">
+        <div>
+          <strong>{title}</strong>
+          <p>{body}</p>
+        </div>
+        <div className="confirm-actions">
+          <button type="button" className="subtle-button" onClick={onCancel}>
+            取消
+          </button>
+          <button type="button" className="subtle-button danger solid" onClick={onConfirm}>
+            <Trash2 size={16} />
+            {confirmLabel}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function AgentModeSwitch({
+  enabled,
+  status,
+  onToggle,
+}: {
+  enabled: boolean;
+  status: AgentModeStatus;
+  onToggle: () => void;
+}) {
+  return (
+    <div className={`agent-mode-switch ${enabled ? "is-on" : "is-off"} status-${status}`}>
+      <div className="agent-mode-switch-copy">
+        <strong>{AGENT_MODE_NAME}</strong>
+        <span>{enabled ? "理解任务并自动拆解" : "自动编排单图、多图与宣传画册"}</span>
+      </div>
+      <button
+        type="button"
+        role="switch"
+        aria-checked={enabled}
+        className={`agent-mode-toggle ${enabled ? "is-on" : "is-off"}`}
+        onClick={onToggle}
+        title={enabled ? "关闭 Agent 模式 A" : "开启 Agent 模式 A"}
+      >
+        <span className="agent-mode-toggle-track">
+          <span className="agent-mode-toggle-thumb">
+            {enabled ? <Bot size={14} /> : <WandSparkles size={14} />}
+          </span>
+        </span>
+      </button>
+    </div>
+  );
+}
+
+function AgentModeStatusPanel({
+  state,
+  onClear,
+  onReanalyze,
+}: {
+  state: AgentModeState;
+  onClear: () => void;
+  onReanalyze: () => void;
+}) {
+  if (!state.message && state.status === "idle") return null;
+  const icon = state.status === "analyzing" || state.status === "receiving" || state.status === "executing"
+    ? <Loader2 size={16} className="spin" />
+    : state.status === "error"
+      ? <AlertCircle size={16} />
+      : state.status === "planned"
+        ? <Bot size={16} />
+        : <CheckCircle2 size={16} />;
+  return (
+    <div className={`agent-mode-status-panel ${state.status}`} role="status" aria-live="polite">
+      <div className="agent-mode-status-head">
+        <div className="agent-mode-status-mark">{icon}</div>
+        <div>
+          <strong>
+            {state.status === "analyzing"
+              ? "正在理解任务"
+              : state.status === "receiving"
+                ? "AI 输出中"
+              : state.status === "needs_confirmation"
+                ? "等待确认"
+                : state.status === "planned"
+                  ? "画册规划已准备好"
+                  : state.status === "executing"
+                    ? "任务已进入队列"
+                    : state.status === "error"
+                      ? "解析失败"
+                      : AGENT_MODE_NAME}
+          </strong>
+          <span>{state.message}</span>
+          {(state.streamChunks || state.streamCharacters) && (
+            <small className="agent-mode-status-progress">
+              {`进度 · ${state.streamChunks || 0} 段 / ${state.streamCharacters || 0} 字`}
+            </small>
+          )}
+          {state.streamPreview && (
+            <pre className="agent-mode-status-stream">{state.streamPreview}</pre>
+          )}
+          {state.error && <small>{state.error}</small>}
+        </div>
+      </div>
+      <div className="agent-mode-status-actions">
+        {(state.status === "planned" || state.status === "needs_confirmation" || state.status === "error") && (
+          <button type="button" className="subtle-button" title="重新分析当前需求" onClick={onReanalyze}>
+            <RefreshCw size={15} />
+            重新分析
+          </button>
+        )}
+        {state.status !== "analyzing" && state.status !== "receiving" && (
+          <button type="button" className="icon-button" title="清除 Agent 状态" onClick={onClear}>
+            <X size={15} />
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function AgentModePlanModal({
+  plan,
+  onCancel,
+  onConfirm,
+  onReanalyze,
+}: {
+  plan: AgentModeAnalysisResult;
+  onCancel: () => void;
+  onConfirm: () => void;
+  onReanalyze: () => void;
+}) {
+  return (
+    <div className="confirm-modal" role="dialog" aria-modal="true" aria-label="Agent 任务拆解">
+      <button className="confirm-backdrop" type="button" aria-label="关闭 Agent 任务拆解" onClick={onCancel} />
+      <div className="confirm-card agent-plan-modal">
+        <div className="agent-plan-modal-head">
+          <div>
+            <strong>{AGENT_MODE_NAME} 任务拆解</strong>
+            <p>{plan.reasoningSummary}</p>
+          </div>
+          <span className={`risk-badge ${plan.estimatedCostLevel === "high" ? "high" : plan.estimatedCostLevel === "medium" ? "medium" : "low"}`}>
+            {plan.estimatedCostLevel === "high" ? "高消耗" : plan.estimatedCostLevel === "medium" ? "中消耗" : "低消耗"}
+          </span>
+        </div>
+        <div className="agent-plan-modal-list">
+          {plan.jobs.map((job, index) => (
+            <article className="agent-plan-job-card" key={job.id || `${job.title}-${index}`}>
+              <div className="agent-plan-job-head">
+                <strong>{job.title}</strong>
+                <small>{job.count || 1} 张 · {job.aspectRatio || "自动比例"} · {job.resolution || "自动清晰度"}</small>
               </div>
-              <button
-                className='icon-button'
-                onClick={() => void handleCopyPreviewPrompt(previewImage)}
-                aria-label='复制提示词'
-                title='复制提示词'
-              >
-                <Copy size={16} />
-              </button>
-              <button
-                className='icon-button'
-                onClick={() => handleDownloadImage(previewImage)}
-                aria-label='下载图片'
-                title='下载图片'
-              >
-                <Download size={16} />
-              </button>
-              <button
-                className='icon-button'
-                onClick={() => setPreviewImage(null)}
-                aria-label='关闭预览'
-              >
-                <X size={18} />
-              </button>
-            </div>
-            <div className='preview-frame'>
-              <img
-                src={previewImage.src}
-                alt={previewImage.revisedPrompt || previewImage.prompt}
-              />
-            </div>
-            <dl className='preview-info'>
-              <div>
-                <dt>协议</dt>
-                <dd>OpenAI 兼容</dd>
+              {job.objective && <span className="agent-plan-job-objective">{job.objective}</span>}
+              <p>{job.prompt}</p>
+            </article>
+          ))}
+        </div>
+        <div className="confirm-actions">
+          <button type="button" className="subtle-button" onClick={onReanalyze}>
+            <RefreshCw size={15} />
+            重新分析
+          </button>
+          <button type="button" className="subtle-button" onClick={onCancel}>
+            返回编辑
+          </button>
+          <button type="button" className="primary-action compact" onClick={onConfirm}>
+            <ArrowRight size={15} />
+            确认并生成 {plan.jobs.reduce((sum, job) => sum + (job.count || 1), 0)} 张
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function BrochurePlannerModal({
+  project,
+  onCancel,
+  onGenerateBoards,
+  onReanalyze,
+}: {
+  project: AgentModeBrochureProject;
+  onCancel: () => void;
+  onGenerateBoards: () => void;
+  onReanalyze: () => void;
+}) {
+  return (
+    <div className="confirm-modal" role="dialog" aria-modal="true" aria-label="宣传画册规划">
+      <button className="confirm-backdrop" type="button" aria-label="关闭宣传画册规划" onClick={onCancel} />
+      <div className="confirm-card brochure-plan-modal">
+        <div className="agent-plan-modal-head">
+          <div>
+            <strong>{project.title}</strong>
+            <p>{project.summary}</p>
+          </div>
+          <span className="brochure-plan-count">{project.pageCount} 页</span>
+        </div>
+        <div className="brochure-plan-meta">
+          <span>{project.companyName || "未指定公司名"}</span>
+          <span>{project.industry || "行业待细化"}</span>
+          <span>{project.purpose || "公司宣传"}</span>
+        </div>
+        <div className="brochure-plan-section">
+          <strong>页结构</strong>
+          <div className="brochure-outline-list">
+            {project.outline.map((page) => (
+              <div className="brochure-outline-item" key={`${page.pageNo}-${page.role}`}>
+                <span>#{page.pageNo}</span>
+                <div>
+                  <strong>{page.title}</strong>
+                  <small>{page.objective}</small>
+                </div>
               </div>
-              <div>
-                <dt>宽高比</dt>
-                <dd>{previewImageAspectRatio}</dd>
-              </div>
-              <div>
-                <dt>分辨率</dt>
-                <dd>{previewImage.size === 'auto' ? 'auto' : previewImage.size}</dd>
-              </div>
-              <div>
-                <dt>实际尺寸</dt>
-                <dd>
-                  {previewImageDimensions
-                    ? `${previewImageDimensions.width} x ${previewImageDimensions.height}`
-                    : '-'}
-                </dd>
-              </div>
-              <div>
-                <dt>请求尺寸</dt>
-                <dd>{previewImage.size}</dd>
-              </div>
-              <div>
-                <dt>质量</dt>
-                <dd>{previewImage.quality}</dd>
-              </div>
-              <div>
-                <dt>格式</dt>
-                <dd>{formatImageMimeType(previewImageMimeType)}</dd>
-              </div>
-              <div>
-                <dt>大小</dt>
-                <dd>{formatBytes(previewImageByteSize)}</dd>
-              </div>
-              <div>
-                <dt>类型</dt>
-                <dd>{previewImage.mode === 'image' ? '图生图' : '文生图'}</dd>
-              </div>
-              <div>
-                <dt>完成</dt>
-                <dd>{new Date(previewImage.createdAt).toLocaleString()}</dd>
-              </div>
-            </dl>
-            {previewImage.referenceImageNames?.length ? (
-              <div className='preview-reference-list'>
-                <strong>参考图</strong>
-                <span>{previewImage.referenceImageNames.join(' / ')}</span>
-              </div>
-            ) : null}
-            <div className='preview-caption'>
-              <p>{previewImage.revisedPrompt || previewImage.prompt}</p>
-            </div>
+            ))}
           </div>
         </div>
-      ) : null}
+        <div className="brochure-plan-section">
+          <strong>推荐模板方向</strong>
+          <div className="brochure-style-chip-row">
+            {project.styleDirections.map((direction) => (
+              <span key={direction}>{direction}</span>
+            ))}
+          </div>
+        </div>
+        <div className="confirm-actions">
+          <button type="button" className="subtle-button" onClick={onReanalyze}>
+            <RefreshCw size={15} />
+            重新分析
+          </button>
+          <button type="button" className="subtle-button" onClick={onCancel}>
+            稍后再说
+          </button>
+          <button type="button" className="primary-action compact" onClick={onGenerateBoards}>
+            <WandSparkles size={15} />
+            生成整本模板板
+          </button>
+        </div>
+      </div>
     </div>
-  )
+  );
 }
+
+function StatusBadge({ status, elapsed }: { status: JobStatus; elapsed: number }) {
+  const map = {
+    queued: { label: "排队", icon: <Clock3 size={15} /> },
+    running: { label: formatDuration(elapsed), icon: <Loader2 size={15} className="spin" /> },
+    success: { label: formatDuration(elapsed), icon: <CheckCircle2 size={15} /> },
+    error: { label: formatDuration(elapsed), icon: <AlertCircle size={15} /> },
+  };
+  return (
+    <div className={`status-badge ${status}`}>
+      {map[status].icon}
+      <span>{map[status].label}</span>
+    </div>
+  );
+}
+
+function ImageInfo({ job }: { job: Job | HistoryRecord | PreviewItem }) {
+  const params = job.params;
+  return (
+    <dl className="image-info">
+      <div>
+        <dt>协议</dt>
+        <dd>{job.protocol ? getProtocolDefinition(job.protocol).label : "-"}</dd>
+      </div>
+      <div>
+        <dt>宽高比</dt>
+        <dd>{params.aspectRatio || "-"}</dd>
+      </div>
+      <div>
+        <dt>分辨率</dt>
+        <dd>{params.resolution || DEFAULT_IMAGE_RESOLUTION}</dd>
+      </div>
+      <div>
+        <dt>实际尺寸</dt>
+        <dd>{job.width && job.height ? `${job.width} x ${job.height}` : "-"}</dd>
+      </div>
+      <div>
+        <dt>请求尺寸</dt>
+        <dd>{params.size}</dd>
+      </div>
+      <div>
+        <dt>质量</dt>
+        <dd>{params.quality}</dd>
+      </div>
+      <div>
+        <dt>格式</dt>
+        <dd>{params.outputFormat.toUpperCase()}</dd>
+      </div>
+      <div>
+        <dt>开始</dt>
+        <dd>{formatFullDate(job.startedAt)}</dd>
+      </div>
+      <div>
+        <dt>完成</dt>
+        <dd>{formatFullDate(job.finishedAt)}</dd>
+      </div>
+      <div>
+        <dt>耗时</dt>
+        <dd>{formatDuration(job.durationMs)}</dd>
+      </div>
+      {"agentName" in job && job.agentName && (
+        <div>
+          <dt>Agent</dt>
+          <dd>{job.agentName}{job.promptVariant ? ` · ${PROMPT_VARIANT_LABELS[job.promptVariant]}` : ""}</dd>
+        </div>
+      )}
+    </dl>
+  );
+}
+
+function HistoryDetail({
+  record,
+  onPreview,
+  onDownload,
+  onCopyPrompt,
+  onDelete,
+}: {
+  record: HistoryRecord;
+  onPreview: () => void;
+  onDownload: () => void;
+  onCopyPrompt: () => void;
+  onDelete: () => void;
+}) {
+  const previewClass = aspectClass(record.width, record.height, record.params.aspectRatio);
+  const previewAspect = previewStyle(record.width, record.height, record.params.aspectRatio);
+  const storedReferenceImages = normalizeStoredReferenceImages(record.referenceImages);
+  return (
+    <article className={`history-detail ${record.status}`}>
+      <div className="job-meta">
+        <div>
+          <span className="eyebrow">历史记录</span>
+          <strong>{record.model}</strong>
+        </div>
+        <StatusBadge status={record.status === "success" ? "success" : "error"} elapsed={record.durationMs || 0} />
+      </div>
+
+      {record.objectUrl ? (
+        <div className="result-layout large">
+          <button
+            type="button"
+            className={`result-preview-button ${previewClass}`}
+            style={previewAspect}
+            onClick={onPreview}
+          >
+            <img className="result-image" src={record.objectUrl} alt="" />
+            <span>
+              <Maximize2 size={17} />
+              预览
+            </span>
+          </button>
+          <ImageInfo job={record} />
+        </div>
+      ) : (
+        <div className="error-box">
+          <div>
+            <AlertCircle size={18} />
+            <strong>{formatError(record.errorDetail)}</strong>
+          </div>
+          <details open>
+            <summary>错误详情</summary>
+            <pre>{serializeError(record.errorDetail)}</pre>
+          </details>
+        </div>
+      )}
+
+      <div className="prompt-block">{record.prompt}</div>
+
+      {storedReferenceImages.length > 0 && (
+        <div className="reference-readonly">
+          {storedReferenceImages.map((image) => (
+            <div key={image.id}>
+              <img src={image.thumbnailDataUrl || image.dataUrl} alt="" />
+              <span>{image.name}</span>
+              <small>{referenceDimensionLabel(image)} · {formatBytes(image.size)}</small>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <div className="job-actions">
+        {record.objectUrl && (
+          <button type="button" className="subtle-button" onClick={onPreview}>
+            <Maximize2 size={16} />
+            预览
+          </button>
+        )}
+        <button type="button" className="subtle-button" onClick={onCopyPrompt}>
+          <Copy size={16} />
+          复制提示词
+        </button>
+        {record.objectUrl && (
+          <button type="button" className="subtle-button" onClick={onDownload}>
+            <Download size={16} />
+            下载
+          </button>
+        )}
+        <button type="button" className="subtle-button danger" onClick={onDelete}>
+          <Trash2 size={16} />
+          删除
+        </button>
+      </div>
+    </article>
+  );
+}
+
+function ImagePreviewModal({
+  item,
+  onClose,
+  onDownload,
+  onCopyPrompt,
+  onRecommend,
+  recommendState,
+  canRecommend,
+}: {
+  item: PreviewItem;
+  onClose: () => void;
+  onDownload: () => void;
+  onCopyPrompt: () => void;
+  onRecommend: () => void;
+  recommendState?: SquareRecommendStatus;
+  canRecommend: boolean;
+}) {
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const previewClass = aspectClass(item.width, item.height, item.params.aspectRatio);
+  const hasImage = Boolean(item.url);
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      if (isFullscreen) {
+        setIsFullscreen(false);
+        return;
+      }
+      onClose();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [isFullscreen, onClose]);
+
+  return (
+    <div className="preview-modal" role="dialog" aria-modal="true" aria-label={hasImage ? "图片预览" : "失败详情"}>
+      <button className="preview-backdrop" type="button" aria-label="关闭预览" onClick={onClose} />
+      <div className={`preview-shell ${isFullscreen ? "is-fullscreen" : ""}`}>
+        <div className={`preview-stage ${hasImage ? previewClass : "is-error-detail"}`}>
+          {hasImage ? (
+            <button
+              type="button"
+              className="preview-image-frame"
+              title={isFullscreen ? "退出全屏查看" : "全屏查看图片"}
+              onClick={() => setIsFullscreen((value) => !value)}
+            >
+              <img src={item.url} alt="" />
+            </button>
+          ) : (
+            <div className="preview-error-frame">
+              <AlertCircle size={30} />
+              <strong>生成失败</strong>
+              <span>{formatError(item.errorDetail)}</span>
+              {item.requestId && <code>requestID: {item.requestId}</code>}
+            </div>
+          )}
+          {hasImage && isFullscreen && (
+            <div className="preview-fullscreen-toolbar">
+              <button type="button" className="icon-button" onClick={() => setIsFullscreen(false)} title="退出全屏">
+                <X size={17} />
+              </button>
+            </div>
+          )}
+          {hasImage && (
+            <div className="preview-square-toolbar">
+              <button
+                type="button"
+                className={`subtle-button ${recommendState?.status === "success" ? "square-success" : ""}`}
+                title={canRecommend ? recommendState?.message || "推荐到广场" : "配置 API Key 后可推荐到广场"}
+                disabled={!canRecommend || recommendState?.status === "submitting"}
+                onClick={onRecommend}
+              >
+                {recommendState?.status === "submitting" ? <Loader2 size={15} className="spin" /> : <ExternalLink size={15} />}
+                {recommendState?.status === "success" ? "已推荐到广场" : recommendState?.status === "submitting" ? "推荐中" : "推荐到广场"}
+              </button>
+              {recommendState?.message && <span>{recommendState.message}</span>}
+            </div>
+          )}
+        </div>
+        <aside className="preview-side">
+          <div className="preview-head">
+            <div>
+              <span className="eyebrow">{hasImage ? "预览" : "失败详情"}</span>
+              <strong>{item.model}</strong>
+            </div>
+            <div className="preview-head-actions">
+              <button type="button" className="icon-button" onClick={onCopyPrompt} title="复制提示词">
+                <Copy size={16} />
+              </button>
+              {hasImage && (
+                <button type="button" className="icon-button" onClick={onDownload} title="下载图片">
+                  <Download size={16} />
+                </button>
+              )}
+              <button className="icon-button" type="button" onClick={onClose} title="关闭">
+                <X size={17} />
+              </button>
+            </div>
+          </div>
+          <ImageInfo job={item} />
+          {item.agentName && (
+            <div className="preview-agent-meta">
+              <span>{item.agentName}</span>
+              <small>{item.promptVariant ? PROMPT_VARIANT_LABELS[item.promptVariant] : "Agent"}</small>
+            </div>
+          )}
+          {item.submittedReferenceImages && item.submittedReferenceImages.length > 0 && (
+            <div className="preview-submitted-refs">
+              <div className="preview-submitted-refs-head">
+                <strong>提交的参考图</strong>
+                <small>压缩后 · 实际发送给上游的版本</small>
+              </div>
+              <div className="preview-submitted-refs-grid">
+                {item.submittedReferenceImages.map((ref, index) => (
+                  <a
+                    key={`${ref.name}-${index}`}
+                    className="preview-submitted-ref"
+                    href={ref.dataUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    title={`${ref.name} · ${formatBytes(ref.requestBytes)}${ref.compressed ? `（原 ${formatBytes(ref.originalBytes)}）` : ""}`}
+                  >
+                    <img src={ref.dataUrl} alt={ref.name} />
+                    <span>
+                      <strong>#{index + 1}</strong>
+                      <small>{formatBytes(ref.requestBytes)}{ref.compressed ? ` · 压缩自 ${formatBytes(ref.originalBytes)}` : " · 原图"}</small>
+                    </span>
+                  </a>
+                ))}
+              </div>
+            </div>
+          )}
+          {!hasImage && (
+            <div className="preview-error-detail">
+              <strong>失败详情</strong>
+              <pre>{serializeError(item.errorDetail)}</pre>
+            </div>
+          )}
+          <div className="preview-prompt">{item.prompt}</div>
+        </aside>
+      </div>
+    </div>
+  );
+}
+
+

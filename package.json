@@ -1,31 +1,25 @@
 {
-  "name": "image-tools",
-  "version": "1.0.0",
-  "description": "Sum ImgHub local-first web image generation tool for SumAPI and OpenAI-compatible image APIs.",
-  "license": "AGPL-3.0-or-later",
+  "name": "sumapi-image-studio",
   "private": true,
+  "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "build:styles": "node scripts/build-style-library.cjs",
+    "dev": "vite --host 0.0.0.0",
     "build": "tsc -b && vite build",
-    "preview": "vite preview",
-    "start": "node scripts/serve-app.cjs",
-    "start:static": "npm run preview"
+    "preview": "vite preview --host 0.0.0.0"
   },
   "dependencies": {
-    "@vitejs/plugin-react": "^5.1.1",
-    "@xyflow/react": "^12.10.2",
-    "lucide-react": "^0.561.0",
-    "react": "^19.2.3",
-    "react-dom": "^19.2.3"
+    "@vitejs/plugin-react": "^5.0.4",
+    "lucide-react": "^0.468.0",
+    "vite": "^6.0.5",
+    "typescript": "^5.7.2",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
   },
   "devDependencies": {
-    "@types/node": "^25.0.1",
-    "@types/react": "^19.2.7",
-    "@types/react-dom": "^19.2.3",
-    "fast-xml-parser": "^5.8.0",
-    "typescript": "^5.9.3",
-    "vite": "^7.2.7"
+    "@types/node": "^22.10.2",
+    "@types/react": "^19.0.1",
+    "@types/react-dom": "^19.0.2"
   }
 }
+

@@ -2648,8 +2648,7 @@ export function App() {
           throw new Error('风格协议仍在加载，请稍后重试')
         }
         const submittedPrompt = promptWithStyles(finalPrompt, selectedStyles)
-        const connectedReferenceImages = [...promptReferenceImages, ...upstreamReferenceImages]
-        const flowReferenceImages = [...connectedReferenceImages, ...resolvedReferences.images]
+        const flowReferenceImages = [...resolvedReferences.images, ...upstreamReferenceImages]
           .filter((image, index, list) => list.findIndex((item) => item.id === image.id) === index)
         const effectiveGenerationMode: 'text' | 'image' =
           flowReferenceImages.length > 0 ? 'image' : 'text'

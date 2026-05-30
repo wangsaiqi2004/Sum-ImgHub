@@ -104,6 +104,7 @@ const ADVANCED_SKETCH_WIDTH = 960
 const ADVANCED_SKETCH_HEIGHT = 540
 const CONFIGURATION_NOTICE_MESSAGE =
   '请先在控制台补全生图 API Key 和模型，配置完成后再继续使用其他页面。'
+const GENERATION_PROGRESS_ESTIMATE_MS = 600_000
 
 function normalizeImageRetryCount(value: unknown) {
   const count = Math.floor(Number(value))
@@ -196,6 +197,33 @@ function parseSizeValue(value: string) {
     width: Number(match[1]),
     height: Number(match[2]),
   }
+}
+
+function formatProgressDuration(ms: number) {
+  const totalSeconds = Math.max(0, Math.ceil(ms / 1000))
+  const minutes = Math.floor(totalSeconds / 60)
+  const seconds = totalSeconds % 60
+  return `${minutes}:${String(seconds).padStart(2, '0')}`
+}
+
+function estimateGenerationDurationMs(size: string, count: number, mode: 'text' | 'image') {
+  const parsedSize = parseSizeValue(size)
+  const pixels = parsedSize ? parsedSize.width * parsedSize.height : 1024 * 1024
+  const safeCount = Math.max(1, Math.floor(count))
+  let perImageMs = parsedSize ? 150_000 : GENERATION_PROGRESS_ESTIMATE_MS
+
+  if (pixels >= 7_000_000) {
+    perImageMs = 600_000
+  } else if (pixels >= 4_000_000) {
+    perImageMs = 420_000
+  } else if (pixels >= 2_000_000) {
+    perImageMs = 300_000
+  } else if (pixels >= 1_300_000) {
+    perImageMs = 210_000
+  }
+
+  if (mode === 'image') perImageMs += 60_000
+  return Math.max(90_000, perImageMs * safeCount)
 }
 
 function normalizedImageModelId(model = '') {
@@ -366,6 +394,12 @@ type AdvancedBackground = 'auto' | 'opaque' | 'transparent'
 type AdvancedCreativity = 'strict' | 'balanced' | 'exploratory'
 type AdvancedStyleWeight = 'weak' | 'medium' | 'strong'
 type AdvancedSketchWeight = 'reference' | 'strict' | 'layout'
+type GenerationProgressState = {
+  label: string
+  startedAt: number
+  estimatedMs: number
+  phase?: string
+} | null
 
 type WorkflowCanvas = {
   id: string
@@ -1523,6 +1557,8 @@ export function App() {
   const [isQuickGenerating, setIsQuickGenerating] = useState(false)
   const [isAdvancedGenerating, setIsAdvancedGenerating] = useState(false)
   const [isCommerceGenerating, setIsCommerceGenerating] = useState(false)
+  const [generationProgress, setGenerationProgress] = useState<GenerationProgressState>(null)
+  const [generationProgressNow, setGenerationProgressNow] = useState(() => Date.now())
   const [isOptimizingSimplePrompt, setIsOptimizingSimplePrompt] = useState(false)
   const [isOptimizingNegativePrompt, setIsOptimizingNegativePrompt] = useState(false)
   const [optimizingPromptNodeIds, setOptimizingPromptNodeIds] = useState<Set<string>>(
@@ -1586,6 +1622,23 @@ export function App() {
           : previewImage.size
       ) || '-'
     : '-'
+  const activeGenerationProgress = useMemo(() => {
+    if (!generationProgress) return null
+    const elapsedMs = Math.max(0, generationProgressNow - generationProgress.startedAt)
+    const estimatedMs = Math.max(1, generationProgress.estimatedMs)
+    const isOverEstimate = elapsedMs >= estimatedMs
+    const percent = isOverEstimate
+      ? 96
+      : Math.max(3, Math.min(95, Math.round((elapsedMs / estimatedMs) * 100)))
+    return {
+      ...generationProgress,
+      percent,
+      elapsedLabel: formatProgressDuration(elapsedMs),
+      remainingLabel: isOverEstimate
+        ? `仍在等待 ${formatProgressDuration(elapsedMs)}`
+        : `预计剩余 ${formatProgressDuration(estimatedMs - elapsedMs)}`,
+    }
+  }, [generationProgress, generationProgressNow])
 
   const activeCanvas = useMemo(
     () => canvases.find((canvas) => canvas.id === activeCanvasId) || canvases[0],
@@ -1833,6 +1886,13 @@ export function App() {
   }, [isConfigured])
 
   useEffect(() => {
+    if (!generationProgress) return
+    setGenerationProgressNow(Date.now())
+    const timer = window.setInterval(() => setGenerationProgressNow(Date.now()), 1000)
+    return () => window.clearInterval(timer)
+  }, [generationProgress])
+
+  useEffect(() => {
     const mediaQuery = window.matchMedia(CANVAS_DRAWER_AUTO_OPEN_QUERY)
     setIsCanvasDrawerOpen(mediaQuery.matches)
 
@@ -1879,10 +1939,17 @@ export function App() {
     setStatus('已取消生成请求')
   }
 
-  function beginTrackedGeneration() {
+  function beginTrackedGeneration(progress: Omit<NonNullable<GenerationProgressState>, 'startedAt'>) {
     const controller = new AbortController()
+    const startedAt = Date.now()
     activeGenerationAbortRef.current = controller
     activeGenerationTaskRef.current = null
+    setGenerationProgress({
+      ...progress,
+      startedAt,
+      estimatedMs: Math.max(1, progress.estimatedMs),
+    })
+    setGenerationProgressNow(startedAt)
     return controller
   }
 
@@ -1891,6 +1958,11 @@ export function App() {
       activeGenerationAbortRef.current = null
     }
     activeGenerationTaskRef.current = null
+    setGenerationProgress(null)
+  }
+
+  function updateGenerationProgressPhase(phase: string) {
+    setGenerationProgress((current) => (current ? { ...current, phase } : current))
   }
 
   function showGenerationFailure(errorValue: unknown, context: Record<string, unknown>) {
@@ -1903,6 +1975,32 @@ export function App() {
     setErrorLog(log)
     setErrorLogMessage(message)
     setGenerationSuccess(null)
+  }
+
+  function renderGenerationProgress(active: boolean) {
+    if (!active || !activeGenerationProgress) return null
+    return (
+      <div
+        className='generation-progress'
+        role='progressbar'
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-valuenow={activeGenerationProgress.percent}
+        aria-label={`${activeGenerationProgress.label}进度`}
+      >
+        <div className='generation-progress-meta'>
+          <strong>{activeGenerationProgress.label}</strong>
+          <span>{activeGenerationProgress.percent}%</span>
+        </div>
+        <div className='generation-progress-track'>
+          <span style={{ width: `${activeGenerationProgress.percent}%` }} />
+        </div>
+        <div className='generation-progress-foot'>
+          <span>{activeGenerationProgress.phase || '正在生成'}</span>
+          <span>{activeGenerationProgress.remainingLabel}</span>
+        </div>
+      </div>
+    )
   }
 
   useEffect(() => {
@@ -2629,7 +2727,11 @@ export function App() {
       return
     }
     const generatedRecordsByNode = new Map<string, LocalImageRecord[]>()
-    const generationController = beginTrackedGeneration()
+    const generationController = beginTrackedGeneration({
+      label: '工作流生成',
+      estimatedMs: estimateGenerationDurationMs(generationSize, count, generationMode),
+      phase: '准备工作流',
+    })
     let lastGenerationContext: Record<string, unknown> = {
       scope: 'workflow generation',
       canvasId: generatingCanvasId || undefined,
@@ -2787,6 +2889,7 @@ export function App() {
           signal: generationController.signal,
           onTaskUpdate: (task) => {
             activeGenerationTaskRef.current = task
+            updateGenerationProgressPhase(taskStatusLabel(task.status))
             currentTaskId = task.taskId
             if (generationContext.canvasId) {
               if (task.status === 'queued' || task.status === 'running') {
@@ -3153,7 +3256,17 @@ ${description}`
 
     setGenerationSuccess(null)
     const setGenerating = includeAdvancedControls ? setIsAdvancedGenerating : setIsQuickGenerating
-    const generationController = beginTrackedGeneration()
+    const estimatedMode: 'text' | 'image' =
+      !includeAdvancedControls && simpleReferenceImages.length > 0 ? 'image' : 'text'
+    const generationController = beginTrackedGeneration({
+      label: includeAdvancedControls ? '高级生成' : '快速生成',
+      estimatedMs: estimateGenerationDurationMs(
+        generationSize,
+        includeAdvancedControls ? advancedCount : count,
+        estimatedMode
+      ),
+      phase: includeAdvancedControls ? '准备参数' : '准备生成',
+    })
     let lastGenerationContext: Record<string, unknown> = {
       scope: includeAdvancedControls ? 'advanced generation' : 'quick generation',
       model: includeAdvancedControls ? advancedModel : model,
@@ -3219,6 +3332,7 @@ ${description}`
         signal: generationController.signal,
         onTaskUpdate: (task) => {
           activeGenerationTaskRef.current = task
+          updateGenerationProgressPhase(taskStatusLabel(task.status))
           setStatus(taskStatusLabel(task.status))
         },
       })
@@ -3330,7 +3444,11 @@ ${description}`
 
     setIsCommerceGenerating(true)
     setStatus(`正在分析目标${isDetail ? '详情' : ''}风格图...`)
-    const generationController = beginTrackedGeneration()
+    const generationController = beginTrackedGeneration({
+      label: outputLabel,
+      estimatedMs: estimateGenerationDurationMs(generationSize, count, 'image'),
+      phase: '分析风格图',
+    })
     let lastGenerationContext: Record<string, unknown> = {
       scope: 'commerce generation',
       kind,
@@ -3371,6 +3489,9 @@ ${description}`
           ? '提示词预热完成，正在合成商品多角度参考图...'
           : `提示词预热完成，正在生成${outputLabel}...`
       )
+      updateGenerationProgressPhase(
+        commerceProductImages.length > 1 ? '合成参考图' : `生成${outputLabel}`
+      )
       const productReferenceImage = await buildCommerceProductReferenceImage(commerceProductImages)
       const referenceImages = [productReferenceImage, commerceStyleImage]
       lastGenerationContext = {
@@ -3396,6 +3517,7 @@ ${description}`
         signal: generationController.signal,
         onTaskUpdate: (task) => {
           activeGenerationTaskRef.current = task
+          updateGenerationProgressPhase(taskStatusLabel(task.status))
           setStatus(taskStatusLabel(task.status))
         },
       })
@@ -4798,6 +4920,7 @@ ${description}`
                       )}
                       {isOptimizingSimplePrompt ? '优化中' : '优化提示词'}
                     </button>
+                    {renderGenerationProgress(isQuickGenerating)}
                     <button
                       type='button'
                       className='primary-action'
@@ -5126,6 +5249,7 @@ ${description}`
                   </label>
                 </div>
                 <div className='simple-actions'>
+                  {renderGenerationProgress(isAdvancedGenerating)}
                   <button
                     type='button'
                     className='primary-action'
@@ -5235,6 +5359,7 @@ ${description}`
                   </label>
                 </div>
                 <div className='simple-actions'>
+                  {renderGenerationProgress(isCommerceGenerating)}
                   <button
                     type='button'
                     className='primary-action'

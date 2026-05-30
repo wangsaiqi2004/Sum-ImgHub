@@ -2286,6 +2286,77 @@ select:disabled {
   min-height: 40px;
 }
 
+.generation-progress {
+  flex: 1 1 260px;
+  max-width: 360px;
+  min-width: 220px;
+  padding: 8px 10px;
+  color: var(--text);
+  background: rgb(10 13 20 / 68%);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 10px 30px rgb(0 0 0 / 18%);
+}
+
+:root[data-theme='light'] .generation-progress {
+  background: rgb(255 255 255 / 78%);
+  box-shadow: 0 12px 30px rgb(31 41 55 / 10%);
+}
+
+.generation-progress-meta,
+.generation-progress-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-width: 0;
+}
+
+.generation-progress-meta strong {
+  min-width: 0;
+  overflow: hidden;
+  font-size: 12px;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.generation-progress-meta span {
+  color: var(--green);
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.generation-progress-track {
+  height: 6px;
+  margin: 7px 0 6px;
+  overflow: hidden;
+  background: rgb(255 255 255 / 12%);
+  border-radius: 999px;
+}
+
+:root[data-theme='light'] .generation-progress-track {
+  background: rgb(17 24 39 / 10%);
+}
+
+.generation-progress-track span {
+  display: block;
+  height: 100%;
+  background: linear-gradient(90deg, var(--green), var(--blue));
+  border-radius: inherit;
+  transition: width 420ms ease;
+}
+
+.generation-progress-foot span {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-muted);
+  font-size: 11px;
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .primary-action {
   display: inline-flex;
   align-items: center;
@@ -4626,6 +4697,11 @@ select:disabled {
 
   .simple-actions {
     display: grid;
+  }
+
+  .generation-progress {
+    max-width: none;
+    min-width: 0;
   }
 
   .launch-card {

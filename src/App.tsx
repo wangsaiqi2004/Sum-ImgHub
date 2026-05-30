@@ -1701,7 +1701,12 @@ function normalizedImageModelId(model = "") {
 
 function isGptImage2Model(model = "") {
   const normalized = normalizedImageModelId(model);
-  return normalized === GPT_IMAGE_2_MODEL || normalized === GPT_IMAGE_2_FAMILY_MODEL || normalized.includes("image-2");
+  return normalized === GPT_IMAGE_2_MODEL
+    || normalized === GPT_IMAGE_2_FAMILY_MODEL
+    || normalized.includes("image-2")
+    || normalized.includes("image2")
+    || normalized.includes("img-2")
+    || normalized.includes("img2");
 }
 
 function isGptImage2ProModel(model = "") {
@@ -1709,7 +1714,9 @@ function isGptImage2ProModel(model = "") {
 }
 
 function isGemini3ProImageModel(model = "") {
-  return normalizedImageModelId(model) === GEMINI_3_PRO_IMAGE_MODEL;
+  const normalized = normalizedImageModelId(model);
+  return normalized === GEMINI_3_PRO_IMAGE_MODEL
+    || (normalized.includes("gemini-3") && normalized.includes("image"));
 }
 
 function protocolForImageModel(model: string, fallback: ImageProtocol = DEFAULT_PROTOCOL): ImageProtocol {
@@ -2751,7 +2758,18 @@ function loadInitialParams(): ImageParams {
 }
 
 function isAllowedImageModel(model: string) {
-  return isGptImage2Model(model) || isGemini3ProImageModel(model);
+  const normalized = normalizedImageModelId(model);
+  return isGptImage2Model(model)
+    || isGemini3ProImageModel(model)
+    || normalized.includes("image")
+    || normalized.includes("imagen")
+    || normalized.includes("banana")
+    || normalized.includes("dall-e")
+    || normalized.includes("flux")
+    || normalized.includes("stable")
+    || normalized.includes("stability")
+    || normalized.includes("midjourney")
+    || normalized.includes("mj-");
 }
 
 function imageModelPriority(model: string) {
@@ -2764,8 +2782,10 @@ function imageModelPriority(model: string) {
 }
 
 function filterAllowedImageModels(models: string[]) {
-  return [...new Set(models)]
-    .filter(isAllowedImageModel)
+  const uniqueModels = [...new Set(models.map((model) => model.trim()).filter(Boolean))];
+  const imageLikeModels = uniqueModels.filter(isAllowedImageModel);
+  const candidates = imageLikeModels.length > 0 ? imageLikeModels : uniqueModels;
+  return candidates
     .sort((a, b) => {
       const priority = imageModelPriority(a) - imageModelPriority(b);
       return priority || a.localeCompare(b);
@@ -5856,7 +5876,7 @@ export default function App() {
 
   function selectImageModel(model: string) {
     const nextModel = model.trim();
-    if (!isAllowedImageModel(nextModel)) return;
+    if (!nextModel) return;
     const nextProtocol = protocolForImageModel(nextModel, apiConfig.protocol);
     const protocolChanged = nextProtocol !== apiConfig.protocol;
     const nextDefinition = getProtocolDefinition(nextProtocol);

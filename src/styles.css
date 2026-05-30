@@ -3557,6 +3557,11 @@ select:disabled {
   box-shadow: 0 18px 44px var(--shadow);
 }
 
+.error-toast:has(.error-toast-log) {
+  align-items: start;
+  max-height: min(460px, calc(100vh - 36px));
+}
+
 .portal-error {
   position: fixed;
   top: 14px;
@@ -3739,10 +3744,50 @@ select:disabled {
   font-size: 12px;
 }
 
-.error-toast button {
+.error-toast .toast-close {
   grid-row: 1 / span 2;
   grid-column: 2;
   color: var(--danger);
+}
+
+.error-toast-log {
+  grid-column: 1 / -1;
+  max-height: 260px;
+  margin: 6px 0 0;
+  padding: 10px;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: var(--text);
+  background: rgb(0 0 0 / 22%);
+  border: 1px solid var(--danger-border);
+  border-radius: 8px;
+  font: 11px/1.5 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+}
+
+.error-toast .error-copy-action {
+  grid-row: auto;
+  grid-column: 1 / -1;
+  justify-self: start;
+  width: auto;
+  min-width: 112px;
+  height: 32px;
+  padding: 0 12px;
+  color: #160b0c;
+  background: var(--danger);
+  border-color: transparent;
+  font-weight: 850;
+}
+
+.error-toast .error-copy-action:hover,
+.error-toast .error-copy-action:focus-visible {
+  filter: brightness(1.04);
+  outline: none;
+  box-shadow: 0 0 0 3px var(--focus);
+}
+
+:root[data-theme='light'] .error-toast-log {
+  background: rgb(255 255 255 / 72%);
 }
 
 .success-toast .toast-action {

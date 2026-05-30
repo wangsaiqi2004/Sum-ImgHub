@@ -146,8 +146,29 @@ function assertApiSuccess<T>(
   return body.data
 }
 
-function delay(ms: number) {
-  return new Promise((resolve) => window.setTimeout(resolve, ms))
+function createAbortGenerationError() {
+  return new Error('用户已取消本次生成请求')
+}
+
+function delay(ms: number, signal?: AbortSignal | null) {
+  return new Promise((resolve, reject) => {
+    if (signal?.aborted) {
+      reject(createAbortGenerationError())
+      return
+    }
+
+    const timer = window.setTimeout(() => {
+      signal?.removeEventListener('abort', abort)
+      resolve(undefined)
+    }, ms)
+
+    function abort() {
+      window.clearTimeout(timer)
+      reject(createAbortGenerationError())
+    }
+
+    signal?.addEventListener('abort', abort, { once: true })
+  })
 }
 
 function normalizeRetryCount(value: unknown) {
@@ -162,6 +183,12 @@ function isTransientUpstreamStatus(status: number) {
 
 function networkFailureMessage(prefix: string) {
   return `${prefix}: 浏览器没有拿到接口响应。通常是网络中断、CORS/预检被拦、图片生成耗时过长导致连接断开，或当前静态部署没有启用生图代理。`
+}
+
+function isAbortError(error: unknown) {
+  return error instanceof DOMException
+    ? error.name === 'AbortError'
+    : error instanceof Error && error.name === 'AbortError'
 }
 
 async function fetchJsonWithRetry<T>(
@@ -180,15 +207,18 @@ async function fetchJsonWithRetry<T>(
       const response = await fetch(url, init)
       if (!response.ok && isTransientUpstreamStatus(response.status) && attempt < maxAttempts) {
         onRetry?.(attempt, maxAttempts, response.status)
-        await delay(800)
+        await delay(800, init.signal)
         continue
       }
       return await parseJsonResponse<T>(response, prefix)
     } catch (error) {
       lastError = error
+      if (isAbortError(error)) {
+        throw createAbortGenerationError()
+      }
       if (error instanceof TypeError && attempt < maxAttempts) {
         onRetry?.(attempt, maxAttempts, 0)
-        await delay(800)
+        await delay(800, init.signal)
         continue
       }
       if (error instanceof TypeError) {
@@ -329,12 +359,17 @@ function localImageProxyMissingMessage() {
   return '当前页面没有启用本地生图代理，不能安全处理 2K/4K 这类长请求。请用 npm start 或 docker compose up -d --build 启动后访问 http://127.0.0.1:19080，不要用 5173 的 Vite 开发服务直接生图。'
 }
 
-async function pollImageTask(taskId: string, onTaskUpdate?: (task: ImageGenerationTask) => void) {
+async function pollImageTask(
+  taskId: string,
+  onTaskUpdate?: (task: ImageGenerationTask) => void,
+  signal?: AbortSignal
+) {
   const maxPolls = 420
   for (let pollIndex = 0; pollIndex < maxPolls; pollIndex += 1) {
     const response = await fetch(`/api/openai/tasks/${encodeURIComponent(taskId)}`, {
       method: 'GET',
       headers: { Accept: 'application/json' },
+      signal,
     })
     const body = await parseJsonResponse<{ success?: boolean; message?: string; data?: ImageGenerationTask }>(
       response,
@@ -349,7 +384,10 @@ async function pollImageTask(taskId: string, onTaskUpdate?: (task: ImageGenerati
     if (task.status === 'failed' || task.status === 'expired') {
       throw new Error(task.error || '后台生图任务失败')
     }
-    await delay(Math.max(500, task.pollAfterMs || 1500))
+    if (signal?.aborted) {
+      throw new Error('用户已取消本次生成请求')
+    }
+    await delay(Math.max(500, task.pollAfterMs || 1500), signal)
   }
 
   throw new Error('后台生图任务仍未完成，请稍后到图库或服务器日志查看结果')
@@ -362,13 +400,14 @@ async function fetchImageJson<T>(
   prefix: string,
   retryCount?: number,
   onRetry?: (attempt: number, maxAttempts: number, status: number) => void,
-  onTaskUpdate?: (task: ImageGenerationTask) => void
+  onTaskUpdate?: (task: ImageGenerationTask) => void,
+  signal?: AbortSignal
 ) {
   const url = imageProxyUrl(baseUrl, upstreamPath)
   try {
     const body = await fetchJsonWithRetry<T | { success?: boolean; message?: string; data?: ImageGenerationTask }>(
       url,
-      init,
+      { ...init, signal },
       prefix,
       retryCount,
       onRetry
@@ -383,7 +422,7 @@ async function fetchImageJson<T>(
       if (task.status === 'failed' || task.status === 'expired') {
         throw new Error(task.error || '后台生图任务失败')
       }
-      return (await pollImageTask(task.taskId, onTaskUpdate)) as T
+      return (await pollImageTask(task.taskId, onTaskUpdate, signal)) as T
     }
     return body as T
   } catch (error) {
@@ -1118,7 +1157,8 @@ export const bridge: ImageApiClient = {
                 : `生图请求失败，正在重试 ${attempt}/${maxAttempts - 1}`,
             })
           },
-          payload.onTaskUpdate
+          payload.onTaskUpdate,
+          payload.signal
         )
         const parsed = await parseImageResult(result)
         payload.onTaskUpdate?.({
@@ -1183,7 +1223,8 @@ export const bridge: ImageApiClient = {
                 : `第 ${index + 1}/${requestedCount} 张生图请求失败，正在重试 ${attempt}/${maxAttempts - 1}`,
             })
           },
-          payload.onTaskUpdate
+          payload.onTaskUpdate,
+          payload.signal
         )
         const parsed = await parseImageResult(result)
         images.push(...parsed.images)

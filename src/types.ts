@@ -45,6 +45,7 @@ export type ImageGenerationPayload = {
   background?: 'auto' | 'opaque' | 'transparent'
   inputFidelity?: 'low' | 'high'
   retryCount?: number
+  signal?: AbortSignal
   referenceImages?: ReferenceImage[]
   onTaskUpdate?: (task: ImageGenerationTask) => void
 }

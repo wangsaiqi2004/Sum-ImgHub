@@ -1354,22 +1354,56 @@ function taskStatusLabel(status: ImageGenerationTask['status']) {
   return '生图失败'
 }
 
-const GENERATION_RETRY_MESSAGE = '生成失败，请重新尝试。'
-
 function generationErrorMessage(error: unknown) {
-  const message = error instanceof Error ? error.message : String(error || '')
-  if (
-    /Image (generation|edit) failed|Failed to fetch|HTTP 5\d\d|后台生图|浏览器没有拿到接口响应|生图服务|生图失败|网关|invalid size/i.test(
-      message
-    )
-  ) {
-    return GENERATION_RETRY_MESSAGE
+  if (!error) return '未知错误'
+  if (error instanceof Error) return error.message || error.name || '未知错误'
+  if (typeof error === 'string') return error || '未知错误'
+  try {
+    return JSON.stringify(error, null, 2)
+  } catch {
+    return String(error)
   }
-  return message || GENERATION_RETRY_MESSAGE
+}
+
+function formatGenerationFailureLog(error: unknown, context: Record<string, unknown>) {
+  const message = generationErrorMessage(error)
+  return JSON.stringify(
+    {
+      logId: createLocalId('generation-failure'),
+      message,
+      ...context,
+      error:
+        error instanceof Error
+          ? { name: error.name, message: error.message, stack: error.stack }
+          : error,
+      userAgent: navigator.userAgent,
+      time: new Date().toISOString(),
+    },
+    null,
+    2
+  )
 }
 
 function logGenerationError(scope: string, error: unknown) {
-  console.warn(`${scope} failed`)
+  console.warn(`${scope} failed`, error)
+}
+
+function isGenerationCancelled(error: unknown) {
+  return generationErrorMessage(error).includes('用户已取消本次生成请求')
+}
+
+function compactGenerationTask(task: ImageGenerationTask | null) {
+  if (!task) return null
+  return {
+    taskId: task.taskId,
+    status: task.status,
+    createdAt: task.createdAt,
+    updatedAt: task.updatedAt,
+    completedAt: task.completedAt,
+    error: task.error,
+    pollAfterMs: task.pollAfterMs,
+    hasResult: Boolean(task.result),
+  }
 }
 
 function promptWithStyles(
@@ -1504,6 +1538,8 @@ export function App() {
   const [selectingGalleryReferenceImageId, setSelectingGalleryReferenceImageId] = useState('')
   const [status, setStatus] = useState('未连接')
   const [error, setError] = useState('')
+  const [errorLog, setErrorLog] = useState('')
+  const [errorLogMessage, setErrorLogMessage] = useState('')
   const [notice, setNotice] = useState<{ id: number; message: string } | null>(null)
   const [generationSuccess, setGenerationSuccess] = useState<{
     title: string
@@ -1524,6 +1560,8 @@ export function App() {
   const advancedSketchCanvasRef = useRef<HTMLCanvasElement | null>(null)
   const isDrawingAdvancedSketchRef = useRef(false)
   const lastAdvancedSketchPointRef = useRef<{ x: number; y: number } | null>(null)
+  const activeGenerationAbortRef = useRef<AbortController | null>(null)
+  const activeGenerationTaskRef = useRef<ImageGenerationTask | null>(null)
   const commerceCategoryLevel1Node = commerceCategoryTree.find((item) => item.name === commerceCategoryLevel1)
   const commerceCategoryLevel2Options = commerceCategoryLevel1Node?.children || []
   const commerceCategoryLevel2Node = commerceCategoryLevel2Options.find((item) => item.name === commerceCategoryLevel2)
@@ -1817,6 +1855,55 @@ export function App() {
     window.addEventListener('keydown', closeOnEscape)
     return () => window.removeEventListener('keydown', closeOnEscape)
   }, [isSidebarDrawerOpen])
+
+  function clearGenerationError() {
+    setError('')
+    setErrorLog('')
+    setErrorLogMessage('')
+  }
+
+  async function copyErrorLog() {
+    const text = errorLog && errorLogMessage === error ? errorLog : error
+    if (!text) return
+    try {
+      await navigator.clipboard.writeText(text)
+      setStatus('失败日志已复制')
+    } catch {
+      setStatus('浏览器暂不支持自动复制，请手动复制失败日志')
+    }
+  }
+
+  function cancelActiveGeneration() {
+    if (!activeGenerationAbortRef.current) return
+    activeGenerationAbortRef.current.abort()
+    setStatus('已取消生成请求')
+  }
+
+  function beginTrackedGeneration() {
+    const controller = new AbortController()
+    activeGenerationAbortRef.current = controller
+    activeGenerationTaskRef.current = null
+    return controller
+  }
+
+  function finishTrackedGeneration(controller: AbortController) {
+    if (activeGenerationAbortRef.current === controller) {
+      activeGenerationAbortRef.current = null
+    }
+    activeGenerationTaskRef.current = null
+  }
+
+  function showGenerationFailure(errorValue: unknown, context: Record<string, unknown>) {
+    const message = generationErrorMessage(errorValue)
+    const log = formatGenerationFailureLog(errorValue, {
+      ...context,
+      task: compactGenerationTask(activeGenerationTaskRef.current),
+    })
+    setError(message)
+    setErrorLog(log)
+    setErrorLogMessage(message)
+    setGenerationSuccess(null)
+  }
 
   useEffect(() => {
     let cancelled = false
@@ -2529,6 +2616,7 @@ export function App() {
 
   async function handleGenerate(targetGenerateNodeId?: string) {
     const generatingCanvasId = activeCanvas?.id
+    clearGenerationError()
     const duplicateTitles = getDuplicateCanvasReferenceTitles(activeCanvas)
     if (duplicateTitles.length > 0) {
       setError(`画布内图片名称重复：${duplicateTitles.join('、')}`)
@@ -2540,8 +2628,13 @@ export function App() {
       setError(SAFE_SIZE_ERROR_MESSAGE)
       return
     }
-    setError('')
     const generatedRecordsByNode = new Map<string, LocalImageRecord[]>()
+    const generationController = beginTrackedGeneration()
+    let lastGenerationContext: Record<string, unknown> = {
+      scope: 'workflow generation',
+      canvasId: generatingCanvasId || undefined,
+      size: generationSize,
+    }
 
     const generateNodes = nodes.filter((node) => node.type === 'generate')
     const targetNode =
@@ -2657,6 +2750,7 @@ export function App() {
             ? flowReferenceImages.map((image) => image.title || image.name)
             : undefined
         const generationContext = {
+          scope: 'workflow generation',
           prompt: submittedPrompt,
           model,
           size: generationSize,
@@ -2666,6 +2760,7 @@ export function App() {
           canvasId: generatingCanvasId || undefined,
           generateNodeId: generateNode.id,
         }
+        lastGenerationContext = generationContext
 
         setStatus(
           effectiveGenerationMode === 'image'
@@ -2689,7 +2784,9 @@ export function App() {
           retryCount: imageRetryCount,
           referenceImages:
             effectiveGenerationMode === 'image' ? flowReferenceImages : undefined,
+          signal: generationController.signal,
           onTaskUpdate: (task) => {
+            activeGenerationTaskRef.current = task
             currentTaskId = task.taskId
             if (generationContext.canvasId) {
               if (task.status === 'queued' || task.status === 'running') {
@@ -2718,10 +2815,17 @@ export function App() {
       const records = await executeGenerateNode(targetNode, new Set())
       setStatus(`已生成 ${records.length} 张图片，结果已保存到本地图库`)
     } catch (err) {
-      logGenerationError('workflow generation', err)
-      setError(generationErrorMessage(err))
+      if (isGenerationCancelled(err)) {
+        clearGenerationError()
+        setStatus('已取消生成请求')
+      } else {
+        logGenerationError('workflow generation', err)
+        showGenerationFailure(err, lastGenerationContext)
+        setStatus('生成失败')
+      }
       if (generatingCanvasId) clearCanvasGenerationTask(generatingCanvasId)
-      setStatus('生成失败')
+    } finally {
+      finishTrackedGeneration(generationController)
     }
   }
 
@@ -3030,8 +3134,8 @@ ${description}`
       options?.includeAdvancedSketch || options?.includeAdvancedStyle
     )
     const prompt = (includeAdvancedControls ? advancedPrompt : simplePrompt).trim()
+    clearGenerationError()
     if (!isConfigured) {
-      setError('')
       setCurrentView('console')
       return
     }
@@ -3047,9 +3151,15 @@ ${description}`
       return
     }
 
-    setError('')
     setGenerationSuccess(null)
     const setGenerating = includeAdvancedControls ? setIsAdvancedGenerating : setIsQuickGenerating
+    const generationController = beginTrackedGeneration()
+    let lastGenerationContext: Record<string, unknown> = {
+      scope: includeAdvancedControls ? 'advanced generation' : 'quick generation',
+      model: includeAdvancedControls ? advancedModel : model,
+      size: generationSize,
+      promptMode: includeAdvancedControls ? 'advanced' : 'quick',
+    }
     setGenerating(true)
     setStatus('正在生成图片...')
 
@@ -3070,13 +3180,30 @@ ${description}`
       const selectedStyles =
         options?.includeAdvancedStyle && advancedSelectedStyle ? [advancedSelectedStyle] : []
       const finalPrompt = promptWithStyles(sketchPrompt, selectedStyles, advancedStyleWeight)
+      const generationMode: 'text' | 'image' =
+        !includeAdvancedControls && simpleReferenceImages.length > 0 ? 'image' : 'text'
+      const generationContext = {
+        scope: includeAdvancedControls ? 'advanced generation' : 'quick generation',
+        prompt: finalPrompt,
+        model: includeAdvancedControls ? advancedModel : model,
+        size: generationSize,
+        quality: includeAdvancedControls ? advancedQuality : quality,
+        count: includeAdvancedControls ? advancedCount : count,
+        responseFormat: includeAdvancedControls ? advancedResponseFormat : responseFormat,
+        mode: generationMode,
+        referenceImageNames:
+          generationMode === 'image'
+            ? simpleReferenceImages.map((image) => image.title || image.name)
+            : undefined,
+        selectedStyleNames: selectedStyles.map((style) => style.name),
+        hasAdvancedSketch: Boolean(options?.includeAdvancedSketch),
+        sketchDescription: sketchDescription || undefined,
+      }
+      lastGenerationContext = generationContext
       const result = await bridge.generateImages({
         baseUrl: imageBaseUrl,
         apiKey,
-        mode:
-          !includeAdvancedControls && simpleReferenceImages.length > 0
-            ? 'image'
-            : 'text',
+        mode: generationMode,
         model: includeAdvancedControls ? advancedModel : model,
         prompt: finalPrompt,
         size: generationSize,
@@ -3089,21 +3216,19 @@ ${description}`
             ? simpleReferenceImages
             : undefined,
         retryCount: imageRetryCount,
-        onTaskUpdate: (task) => setStatus(taskStatusLabel(task.status)),
+        signal: generationController.signal,
+        onTaskUpdate: (task) => {
+          activeGenerationTaskRef.current = task
+          setStatus(taskStatusLabel(task.status))
+        },
       })
       const records = await buildLocalImageRecords(result.images, {
         prompt: finalPrompt,
         model: includeAdvancedControls ? advancedModel : model,
         size: generationSize,
         quality: includeAdvancedControls ? advancedQuality : quality,
-        mode:
-          !includeAdvancedControls && simpleReferenceImages.length > 0
-            ? 'image'
-            : 'text',
-        referenceImageNames:
-          !includeAdvancedControls && simpleReferenceImages.length > 0
-            ? simpleReferenceImages.map((image) => image.title || image.name)
-            : undefined,
+        mode: generationMode,
+        referenceImageNames: generationContext.referenceImageNames as string[] | undefined,
       })
       await saveImages(records)
       await refreshImages()
@@ -3113,11 +3238,16 @@ ${description}`
         message: `${includeAdvancedControls ? '高级生成' : '快速生成'}已生成 ${records.length} 张图片，结果已保存到图库。`,
       })
     } catch (err) {
-      logGenerationError(includeAdvancedControls ? 'advanced generation' : 'quick generation', err)
-      setError(generationErrorMessage(err))
-      setGenerationSuccess(null)
-      setStatus('生成失败')
+      if (isGenerationCancelled(err)) {
+        clearGenerationError()
+        setStatus('已取消生成请求')
+      } else {
+        logGenerationError(includeAdvancedControls ? 'advanced generation' : 'quick generation', err)
+        showGenerationFailure(err, lastGenerationContext)
+        setStatus('生成失败')
+      }
     } finally {
+      finishTrackedGeneration(generationController)
       setGenerating(false)
     }
   }
@@ -3153,7 +3283,7 @@ ${description}`
       }))
     )
 
-    setError('')
+    clearGenerationError()
     if (kind === 'product') {
       setCommerceProductImages((current) =>
         [...current, ...images].slice(0, MAX_COMMERCE_PRODUCT_IMAGES).map((image, index) => ({
@@ -3169,8 +3299,8 @@ ${description}`
   async function handleCommerceGenerate(kind: 'main' | 'detail') {
     const isDetail = kind === 'detail'
     const outputLabel = isDetail ? '电商详情图' : '电商主图'
+    clearGenerationError()
     if (!isConfigured) {
-      setError('')
       setCurrentView('console')
       return
     }
@@ -3198,9 +3328,21 @@ ${description}`
     }
     const description = commerceDescription.trim()
 
-    setError('')
     setIsCommerceGenerating(true)
     setStatus(`正在分析目标${isDetail ? '详情' : ''}风格图...`)
+    const generationController = beginTrackedGeneration()
+    let lastGenerationContext: Record<string, unknown> = {
+      scope: 'commerce generation',
+      kind,
+      model,
+      size: generationSize,
+      quality,
+      count,
+      mode: 'image',
+      categoryPath: effectiveCommerceCategoryPath,
+      productImageNames: commerceProductImages.map((image) => image.title || image.name),
+      styleImageName: commerceStyleImage.title || commerceStyleImage.name,
+    }
 
     try {
       let preparedPrompt = ''
@@ -3231,6 +3373,11 @@ ${description}`
       )
       const productReferenceImage = await buildCommerceProductReferenceImage(commerceProductImages)
       const referenceImages = [productReferenceImage, commerceStyleImage]
+      lastGenerationContext = {
+        ...lastGenerationContext,
+        prompt,
+        referenceImageNames: referenceImages.map((image) => image.title || image.name),
+      }
       setStatus(`正在生成${outputLabel}...`)
 
       const result = await bridge.generateImages({
@@ -3246,7 +3393,11 @@ ${description}`
         inputFidelity,
         retryCount: imageRetryCount,
         referenceImages,
-        onTaskUpdate: (task) => setStatus(taskStatusLabel(task.status)),
+        signal: generationController.signal,
+        onTaskUpdate: (task) => {
+          activeGenerationTaskRef.current = task
+          setStatus(taskStatusLabel(task.status))
+        },
       })
       const records = await buildLocalImageRecords(result.images, {
         prompt,
@@ -3260,10 +3411,16 @@ ${description}`
       await refreshImages()
       setStatus(`已生成 ${records.length} 张${outputLabel}`)
     } catch (err) {
-      logGenerationError('commerce generation', err)
-      setError(generationErrorMessage(err))
-      setStatus('生成失败')
+      if (isGenerationCancelled(err)) {
+        clearGenerationError()
+        setStatus('已取消生成请求')
+      } else {
+        logGenerationError('commerce generation', err)
+        showGenerationFailure(err, lastGenerationContext)
+        setStatus('生成失败')
+      }
     } finally {
+      finishTrackedGeneration(generationController)
       setIsCommerceGenerating(false)
     }
   }
@@ -4367,7 +4524,15 @@ ${description}`
           <div className='error-toast' role='alert'>
             <strong>执行失败</strong>
             <span>{error}</span>
-            <button type='button' onClick={() => setError('')} aria-label='关闭错误提示'>
+            {errorLog && errorLogMessage === error ? (
+              <>
+                <pre className='error-toast-log'>{errorLog}</pre>
+                <button type='button' className='toast-action error-copy-action' onClick={() => void copyErrorLog()}>
+                  复制失败日志
+                </button>
+              </>
+            ) : null}
+            <button type='button' className='toast-close' onClick={clearGenerationError} aria-label='关闭错误提示'>
               <X size={15} />
             </button>
           </div>
@@ -4636,11 +4801,13 @@ ${description}`
                     <button
                       type='button'
                       className='primary-action'
-                      onClick={() => void handleSimpleGenerate()}
-                      disabled={isQuickGenerating || !isConfigured || !simplePrompt.trim()}
+                      onClick={() =>
+                        isQuickGenerating ? cancelActiveGeneration() : void handleSimpleGenerate()
+                      }
+                      disabled={!isConfigured || (!isQuickGenerating && !simplePrompt.trim())}
                     >
-                      {isQuickGenerating ? <Loader2 className='spin' size={16} /> : <Sparkles size={16} />}
-                      {isConfigured ? (isQuickGenerating ? '生成中' : '立即生成') : '先完成配置'}
+                      {isQuickGenerating ? <X size={16} /> : <Sparkles size={16} />}
+                      {isConfigured ? (isQuickGenerating ? '取消生成' : '立即生成') : '先完成配置'}
                     </button>
                   </div>
                 </section>
@@ -4963,20 +5130,25 @@ ${description}`
                     type='button'
                     className='primary-action'
                     onClick={() =>
-                      void handleSimpleGenerate({
-                        includeAdvancedSketch: true,
-                        includeAdvancedStyle: true,
-                      })
+                      isAdvancedGenerating
+                        ? cancelActiveGeneration()
+                        : void handleSimpleGenerate({
+                            includeAdvancedSketch: true,
+                            includeAdvancedStyle: true,
+                          })
                     }
                     disabled={
-                      isAdvancedGenerating ||
                       isAnalyzingAdvancedSketch ||
                       !isConfigured ||
-                      !advancedPrompt.trim()
+                      (!isAdvancedGenerating && !advancedPrompt.trim())
                     }
                   >
                     {isAdvancedGenerating || isAnalyzingAdvancedSketch ? (
-                      <Loader2 className='spin' size={16} />
+                      isAdvancedGenerating ? (
+                        <X size={16} />
+                      ) : (
+                        <Loader2 className='spin' size={16} />
+                      )
                     ) : (
                       <Sparkles size={16} />
                     )}
@@ -4984,7 +5156,7 @@ ${description}`
                       ? isAnalyzingAdvancedSketch
                         ? '识别草图'
                         : isAdvancedGenerating
-                          ? '生成中'
+                          ? '取消生成'
                           : '立即生成'
                       : '先完成配置'}
                   </button>
@@ -5066,11 +5238,15 @@ ${description}`
                   <button
                     type='button'
                     className='primary-action'
-                    onClick={() => void handleCommerceGenerate(commerceGenerateKind)}
-                    disabled={isCommerceGenerating || !commerceCanGenerate}
+                    onClick={() =>
+                      isCommerceGenerating
+                        ? cancelActiveGeneration()
+                        : void handleCommerceGenerate(commerceGenerateKind)
+                    }
+                    disabled={!isCommerceGenerating && !commerceCanGenerate}
                   >
-                    {isCommerceGenerating ? <Loader2 className='spin' size={16} /> : <Sparkles size={16} />}
-                    {isConfigured ? (isCommerceGenerating ? '生成中' : commerceCopy.action) : '先完成配置'}
+                    {isCommerceGenerating ? <X size={16} /> : <Sparkles size={16} />}
+                    {isConfigured ? (isCommerceGenerating ? '取消生成' : commerceCopy.action) : '先完成配置'}
                   </button>
                 </div>
               </section>
@@ -5351,7 +5527,15 @@ ${description}`
             <div className='error-toast portal-error' role='alert'>
               <strong>执行失败</strong>
               <span>{error}</span>
-              <button type='button' onClick={() => setError('')} aria-label='关闭错误提示'>
+              {errorLog && errorLogMessage === error ? (
+                <>
+                  <pre className='error-toast-log'>{errorLog}</pre>
+                  <button type='button' className='toast-action error-copy-action' onClick={() => void copyErrorLog()}>
+                    复制失败日志
+                  </button>
+                </>
+              ) : null}
+              <button type='button' className='toast-close' onClick={clearGenerationError} aria-label='关闭错误提示'>
                 <X size={15} />
               </button>
             </div>
